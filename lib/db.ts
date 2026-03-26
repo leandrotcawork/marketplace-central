@@ -46,13 +46,16 @@ export async function query(
 ): Promise<any> {
   const client = await getPool().connect()
   try {
-    // Set tenant context for RLS — current_tenant_id() reads from app.tenant_id
     const effectiveTenantId = tenantId || process.env.MS_TENANT_ID || 'tenant_default'
+    // set_config with is_local=true only persists within a transaction
+    await client.query('BEGIN')
     await client.query('SELECT set_config($1, $2, true)', ['app.tenant_id', effectiveTenantId])
-
-    // Execute the actual query
     const result = await client.query(sql, values)
+    await client.query('COMMIT')
     return result
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
   } finally {
     client.release()
   }
