@@ -21,7 +21,7 @@ const BASE_SELECT = `
     COALESCE(ppp.replacement_cost_amount, ppp.average_cost_amount, 0) as cost,
     COALESCE(ppp.price_amount, 0) as base_price,
     COALESCE(ipp.on_hand_quantity, 0) as stock,
-    MAX(CASE WHEN pi.identifier_type = 'referencia' THEN pi.identifier_value END) as referencia,
+    MAX(CASE WHEN pi.identifier_type = 'reference' THEN pi.identifier_value END) as referencia,
     MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean
   FROM catalog_products cp
   LEFT JOIN pricing_product_prices ppp ON cp.product_id = ppp.product_id

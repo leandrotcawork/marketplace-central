@@ -10,19 +10,16 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table'
-import { Pencil, Trash2, ChevronUp, ChevronDown, ChevronsUpDown, Search, Filter } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Filter } from 'lucide-react'
 import { useProductStore } from '@/stores/productStore'
 import { formatBRL } from '@/lib/formatters'
-import { ProductForm } from './ProductForm'
 import type { Product } from '@/types'
 
 export function ProductTable() {
-  const { products, removeProduct } = useProductStore()
+  const { products } = useProductStore()
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [editProduct, setEditProduct] = useState<Product | undefined>()
-  const [showForm, setShowForm] = useState(false)
 
   const categories = useMemo(
     () => ['all', ...Array.from(new Set(products.map((p) => p.category))).sort()],
@@ -148,35 +145,8 @@ export function ProductTable() {
           )
         },
       },
-      {
-        id: 'actions',
-        header: '',
-        size: 80,
-        cell: ({ row }) => (
-          <div className="flex items-center gap-1 justify-end">
-            <button
-              onClick={() => { setEditProduct(row.original); setShowForm(true) }}
-              className="p-1.5 rounded transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-primary)'; e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.backgroundColor = '' }}
-            >
-              <Pencil size={13} />
-            </button>
-            <button
-              onClick={() => removeProduct(row.original.id)}
-              className="p-1.5 rounded transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-danger)'; e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.backgroundColor = '' }}
-            >
-              <Trash2 size={13} />
-            </button>
-          </div>
-        ),
-      },
     ],
-    [removeProduct]
+    []
   )
 
   const table = useReactTable({
@@ -322,11 +292,6 @@ export function ProductTable() {
         )}
       </div>
 
-      <ProductForm
-        open={showForm}
-        onClose={() => { setShowForm(false); setEditProduct(undefined) }}
-        editProduct={editProduct}
-      />
     </>
   )
 }
