@@ -58,19 +58,22 @@ export interface Publication {
   publishedAt?: string
 }
 
-export interface Pack {
+export interface Classification {
   id: string
   name: string
-  description?: string
-  marketplaceIds: string[]
+  aiContext: string
   productIds: string[]
-  analysis?: {
-    competitorPrices?: any[]
-    aiAnalyses?: any[]
-    opportunities?: any[]
-  }
   createdAt: string
   updatedAt: string
+}
+
+export interface Group {
+  id: string           // taxonomy_node_id e.g. "tx_11"
+  name: string         // e.g. "ASSENTO PLASTICO"
+  level: number        // 0 = Grupo, 1 = Categoria, 2 = Subgrupo
+  levelLabel: string   // from catalog_taxonomy_level_defs.label
+  productIds: string[] // product_ids where primary_taxonomy_node_id = this node
+  syncedAt: string     // ISO timestamp of last import
 }
 
 export type StatusValue = 'idle' | 'progress' | 'complete'
