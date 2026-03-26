@@ -46,9 +46,9 @@ export async function query(
 ): Promise<any> {
   const client = await getPool().connect()
   try {
-    // Set tenant context for RLS
+    // Set tenant context for RLS — current_tenant_id() reads from app.tenant_id
     const effectiveTenantId = tenantId || process.env.MS_TENANT_ID || 'tenant_default'
-    await client.query('SET LOCAL app.current_tenant_id = $1', [effectiveTenantId])
+    await client.query('SELECT set_config($1, $2, true)', ['app.tenant_id', effectiveTenantId])
 
     // Execute the actual query
     const result = await client.query(sql, values)
@@ -69,9 +69,9 @@ export async function transaction<T>(
   try {
     await client.query('BEGIN')
 
-    // Set tenant context for RLS
+    // Set tenant context for RLS — current_tenant_id() reads from app.tenant_id
     const effectiveTenantId = tenantId || process.env.MS_TENANT_ID || 'tenant_default'
-    await client.query('SET LOCAL app.current_tenant_id = $1', [effectiveTenantId])
+    await client.query('SELECT set_config($1, $2, true)', ['app.tenant_id', effectiveTenantId])
 
     const result = await callback(client)
     await client.query('COMMIT')

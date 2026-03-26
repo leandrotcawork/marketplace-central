@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchAllProducts, searchProducts, fetchProductsByIds } from '@/lib/metalshopping-client'
+import { mapProductsFromDatabase } from '@/lib/product-mapper'
 
 /**
  * GET /api/products
@@ -30,11 +31,13 @@ export async function GET(request: NextRequest) {
       products = await fetchAllProducts(tenantId || undefined)
     }
 
+    const mapped = mapProductsFromDatabase(products)
+
     return NextResponse.json(
       {
         success: true,
-        data: products,
-        count: products.length,
+        data: mapped,
+        count: mapped.length,
       },
       { status: 200 }
     )

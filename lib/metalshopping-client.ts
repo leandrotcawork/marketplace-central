@@ -1,5 +1,4 @@
 import { query } from './db'
-import type { Product } from '@/types'
 
 export interface RawProductRow {
   product_id: string
@@ -13,79 +12,65 @@ export interface RawProductRow {
   ean?: string
 }
 
+const BASE_SELECT = `
+  SELECT
+    cp.product_id,
+    cp.sku,
+    cp.name,
+    cp.status,
+    COALESCE(ppp.replacement_cost_amount, ppp.average_cost_amount, 0) as cost,
+    COALESCE(ppp.price_amount, 0) as base_price,
+    COALESCE(ipp.on_hand_quantity, 0) as stock,
+    MAX(CASE WHEN pi.identifier_type = 'referencia' THEN pi.identifier_value END) as referencia,
+    MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean
+  FROM catalog_products cp
+  LEFT JOIN pricing_product_prices ppp ON cp.product_id = ppp.product_id
+    AND ppp.pricing_status = 'active'
+    AND ppp.effective_to IS NULL
+  LEFT JOIN inventory_product_positions ipp ON cp.product_id = ipp.product_id
+    AND ipp.position_status = 'active'
+    AND ipp.effective_to IS NULL
+  LEFT JOIN catalog_product_identifiers pi ON cp.product_id = pi.product_id
+`
+
+const BASE_GROUP_BY = `
+  GROUP BY
+    cp.product_id,
+    cp.sku,
+    cp.name,
+    cp.status,
+    ppp.replacement_cost_amount,
+    ppp.average_cost_amount,
+    ppp.price_amount,
+    ipp.on_hand_quantity
+`
+
 /**
- * Fetch all products from MetalShopping catalog with pricing and inventory
- * Includes referencia and EAN from product_identifiers
+ * Fetch all active products from MetalShopping catalog
  */
 export async function fetchAllProducts(tenantId?: string): Promise<RawProductRow[]> {
   const sql = `
-    SELECT DISTINCT
-      cp.product_id,
-      cp.sku,
-      cp.name,
-      cp.status,
-      COALESCE(ppp.price, 0) as cost,
-      COALESCE(ppp.price, 0) as base_price,
-      COALESCE(SUM(ipp.quantity), 0) as stock,
-      MAX(CASE WHEN pi.identifier_type = 'referencia' THEN pi.identifier_value END) as referencia,
-      MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean
-    FROM catalog_products cp
-    LEFT JOIN pricing_product_prices ppp ON cp.product_id = ppp.product_id
-      AND ppp.is_active = true
-      AND ppp.deleted_at IS NULL
-    LEFT JOIN inventory_product_positions ipp ON cp.product_id = ipp.product_id
-      AND ipp.deleted_at IS NULL
-    LEFT JOIN product_identifiers pi ON cp.product_id = pi.product_id
-      AND pi.deleted_at IS NULL
-    WHERE cp.deleted_at IS NULL
-    GROUP BY
-      cp.product_id,
-      cp.sku,
-      cp.name,
-      cp.status,
-      ppp.price
+    ${BASE_SELECT}
+    WHERE cp.status = 'active'
+    ${BASE_GROUP_BY}
     ORDER BY cp.name, cp.sku
   `
-
   const result = await query(sql, [], tenantId)
   return result.rows as RawProductRow[]
 }
 
 /**
- * Fetch a single product by ID with all related data
+ * Fetch a single product by ID
  */
 export async function fetchProductById(
   productId: string,
   tenantId?: string
 ): Promise<RawProductRow | null> {
   const sql = `
-    SELECT DISTINCT
-      cp.product_id,
-      cp.sku,
-      cp.name,
-      cp.status,
-      COALESCE(ppp.price, 0) as cost,
-      COALESCE(ppp.price, 0) as base_price,
-      COALESCE(SUM(ipp.quantity), 0) as stock,
-      MAX(CASE WHEN pi.identifier_type = 'referencia' THEN pi.identifier_value END) as referencia,
-      MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean
-    FROM catalog_products cp
-    LEFT JOIN pricing_product_prices ppp ON cp.product_id = ppp.product_id
-      AND ppp.is_active = true
-      AND ppp.deleted_at IS NULL
-    LEFT JOIN inventory_product_positions ipp ON cp.product_id = ipp.product_id
-      AND ipp.deleted_at IS NULL
-    LEFT JOIN product_identifiers pi ON cp.product_id = pi.product_id
-      AND pi.deleted_at IS NULL
-    WHERE cp.product_id = $1 AND cp.deleted_at IS NULL
-    GROUP BY
-      cp.product_id,
-      cp.sku,
-      cp.name,
-      cp.status,
-      ppp.price
+    ${BASE_SELECT}
+    WHERE cp.product_id = $1
+    ${BASE_GROUP_BY}
   `
-
   const result = await query(sql, [productId], tenantId)
   return (result.rows[0] || null) as RawProductRow | null
 }
@@ -100,38 +85,15 @@ export async function searchProducts(
   const searchPattern = `%${searchTerm}%`
 
   const sql = `
-    SELECT DISTINCT
-      cp.product_id,
-      cp.sku,
-      cp.name,
-      cp.status,
-      COALESCE(ppp.price, 0) as cost,
-      COALESCE(ppp.price, 0) as base_price,
-      COALESCE(SUM(ipp.quantity), 0) as stock,
-      MAX(CASE WHEN pi.identifier_type = 'referencia' THEN pi.identifier_value END) as referencia,
-      MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean
-    FROM catalog_products cp
-    LEFT JOIN pricing_product_prices ppp ON cp.product_id = ppp.product_id
-      AND ppp.is_active = true
-      AND ppp.deleted_at IS NULL
-    LEFT JOIN inventory_product_positions ipp ON cp.product_id = ipp.product_id
-      AND ipp.deleted_at IS NULL
-    LEFT JOIN product_identifiers pi ON cp.product_id = pi.product_id
-      AND pi.deleted_at IS NULL
-    WHERE cp.deleted_at IS NULL AND (
+    ${BASE_SELECT}
+    WHERE cp.status = 'active' AND (
       cp.name ILIKE $1
       OR cp.sku ILIKE $1
       OR pi.identifier_value ILIKE $1
     )
-    GROUP BY
-      cp.product_id,
-      cp.sku,
-      cp.name,
-      cp.status,
-      ppp.price
+    ${BASE_GROUP_BY}
     ORDER BY cp.name, cp.sku
   `
-
   const result = await query(sql, [searchPattern], tenantId)
   return result.rows as RawProductRow[]
 }
@@ -143,42 +105,16 @@ export async function fetchProductsByIds(
   productIds: string[],
   tenantId?: string
 ): Promise<RawProductRow[]> {
-  if (productIds.length === 0) {
-    return []
-  }
+  if (productIds.length === 0) return []
 
-  // Create $1, $2, $3... placeholders
   const placeholders = productIds.map((_, i) => `$${i + 1}`).join(',')
 
   const sql = `
-    SELECT DISTINCT
-      cp.product_id,
-      cp.sku,
-      cp.name,
-      cp.status,
-      COALESCE(ppp.price, 0) as cost,
-      COALESCE(ppp.price, 0) as base_price,
-      COALESCE(SUM(ipp.quantity), 0) as stock,
-      MAX(CASE WHEN pi.identifier_type = 'referencia' THEN pi.identifier_value END) as referencia,
-      MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean
-    FROM catalog_products cp
-    LEFT JOIN pricing_product_prices ppp ON cp.product_id = ppp.product_id
-      AND ppp.is_active = true
-      AND ppp.deleted_at IS NULL
-    LEFT JOIN inventory_product_positions ipp ON cp.product_id = ipp.product_id
-      AND ipp.deleted_at IS NULL
-    LEFT JOIN product_identifiers pi ON cp.product_id = pi.product_id
-      AND pi.deleted_at IS NULL
-    WHERE cp.product_id IN (${placeholders}) AND cp.deleted_at IS NULL
-    GROUP BY
-      cp.product_id,
-      cp.sku,
-      cp.name,
-      cp.status,
-      ppp.price
+    ${BASE_SELECT}
+    WHERE cp.product_id IN (${placeholders})
+    ${BASE_GROUP_BY}
     ORDER BY cp.name, cp.sku
   `
-
   const result = await query(sql, productIds, tenantId)
   return result.rows as RawProductRow[]
 }
