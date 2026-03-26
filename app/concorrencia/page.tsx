@@ -7,15 +7,26 @@ import { PriceComparison } from '@/components/concorrencia/PriceComparison'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
+import { usePackStore } from '@/stores/packStore'
 import { generateCompetitorData } from '@/lib/mock-competitors'
 
 export default function ConcorrenciaPage() {
-  const products = useProductStore((s) => s.products)
+  const allProducts = useProductStore((s) => s.products)
   const marketplaces = useMarketplaceStore((s) => s.marketplaces)
+  const { packs } = usePackStore()
   const setCompetitorData = useAnalysisStore((s) => s.setCompetitorData)
 
+  const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  // Filter products by selected pack
+  const products = selectedPackId
+    ? allProducts.filter((p) => {
+        const pack = packs.find((pk) => pk.id === selectedPackId)
+        return pack?.productIds.includes(p.id)
+      })
+    : allProducts
 
   function handleSearch(productId: string) {
     setIsLoading(true)
@@ -36,6 +47,36 @@ export default function ConcorrenciaPage() {
         subtitle="Compare seus preços com os concorrentes nos marketplaces"
       />
       <div className="flex-1 p-6 overflow-auto">
+        {/* Pack Selector */}
+        <div className="mb-6 flex items-center gap-4">
+          <label
+            className="text-sm font-medium"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Pack:
+          </label>
+          <select
+            value={selectedPackId || ''}
+            onChange={(e) => {
+              setSelectedPackId(e.target.value || null)
+              setSelectedProductId(null)
+            }}
+            className="px-3 py-2 rounded-lg border transition-colors"
+            style={{
+              borderColor: 'var(--border-color)',
+              backgroundColor: 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <option value="">Todos os Produtos</option>
+            {packs.map((pack) => (
+              <option key={pack.id} value={pack.id}>
+                {pack.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {products.length === 0 ? (
           <div
             className="flex flex-col items-center justify-center h-64 gap-3 rounded-lg border"

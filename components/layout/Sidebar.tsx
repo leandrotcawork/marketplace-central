@@ -8,6 +8,7 @@ import {
   Store,
   DollarSign,
   Search,
+  Grid3x3,
   Bot,
   BarChart3,
   Rocket,
@@ -19,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
+import { usePackStore } from '@/stores/packStore'
 import type { StatusValue } from '@/types'
 
 interface NavItem {
@@ -34,6 +36,7 @@ type SidebarStatusMap = {
   marketplaces: StatusValue
   simulador: StatusValue
   concorrencia: StatusValue
+  packs: StatusValue
   analiseIa: StatusValue
   dashboard: StatusValue
   publicar: StatusValue
@@ -43,6 +46,7 @@ function useSidebarStatus(): SidebarStatusMap {
   const { products, isLoaded } = useProductStore()
   const { marketplaces } = useMarketplaceStore()
   const { competitorPrices, aiAnalyses, publications } = useAnalysisStore()
+  const { packs } = usePackStore()
 
   const hasProducts = products.length > 0
   const activeMarketplaces = marketplaces.filter((m) => m.active).length
@@ -56,6 +60,7 @@ function useSidebarStatus(): SidebarStatusMap {
     marketplaces: activeMarketplaces === 0 ? 'idle' : activeMarketplaces < 3 ? 'progress' : 'complete',
     simulador: !hasProducts ? 'idle' : 'complete',
     concorrencia: !hasProducts ? 'idle' : hasCompetitors ? 'complete' : 'progress',
+    packs: packs.length === 0 ? 'idle' : 'complete',
     analiseIa: !hasProducts ? 'idle' : hasAnalyses ? 'complete' : 'progress',
     dashboard: !hasProducts ? 'idle' : hasAnalyses ? 'complete' : 'progress',
     publicar: !hasPublications ? 'idle' : publishedCount > 0 ? 'complete' : 'progress',
@@ -83,9 +88,10 @@ const NAV_ITEMS: NavItem[] = [
   { number: 2, icon: Store, label: 'Marketplaces', href: '/marketplaces', statusKey: 'marketplaces' },
   { number: 3, icon: DollarSign, label: 'Simulador', href: '/simulador', statusKey: 'simulador' },
   { number: 4, icon: Search, label: 'Concorrência', href: '/concorrencia', statusKey: 'concorrencia' },
-  { number: 5, icon: Bot, label: 'Análise IA', href: '/analise-ia', statusKey: 'analiseIa' },
-  { number: 6, icon: BarChart3, label: 'Dashboard', href: '/dashboard', statusKey: 'dashboard' },
-  { number: 7, icon: Rocket, label: 'Publicar', href: '/publicar', statusKey: 'publicar' },
+  { number: 5, icon: Grid3x3, label: 'Packs', href: '/packs', statusKey: 'packs' },
+  { number: 6, icon: Bot, label: 'Análise IA', href: '/analise-ia', statusKey: 'analiseIa' },
+  { number: 7, icon: BarChart3, label: 'Dashboard', href: '/dashboard', statusKey: 'dashboard' },
+  { number: 8, icon: Rocket, label: 'Publicar', href: '/publicar', statusKey: 'publicar' },
 ]
 
 export function Sidebar() {

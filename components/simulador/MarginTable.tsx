@@ -3,15 +3,28 @@
 import { useState, useMemo } from 'react'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
+import { usePackStore } from '@/stores/packStore'
 import { calculateMargin } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { MarginIndicator } from './MarginIndicator'
 
 type HealthFilter = 'all' | 'good' | 'warning' | 'critical'
 
-export function MarginTable() {
-  const products = useProductStore((s) => s.products)
+interface MarginTableProps {
+  packId?: string | null
+}
+
+export function MarginTable({ packId }: MarginTableProps) {
+  const allProducts = useProductStore((s) => s.products)
   const marketplaces = useMarketplaceStore((s) => s.marketplaces)
+  const packs = usePackStore((s) => s.packs)
+
+  // Filter products by pack if packId is provided
+  const products = useMemo(() => {
+    if (!packId) return allProducts
+    const pack = packs.find((p) => p.id === packId)
+    return allProducts.filter((p) => pack?.productIds.includes(p.id))
+  }, [allProducts, packId, packs])
 
   const activeMarketplaces = useMemo(
     () => marketplaces.filter((m) => m.active),

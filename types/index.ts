@@ -58,6 +58,21 @@ export interface Publication {
   publishedAt?: string
 }
 
+export interface Pack {
+  id: string
+  name: string
+  description?: string
+  marketplaceIds: string[]
+  productIds: string[]
+  analysis?: {
+    competitorPrices?: any[]
+    aiAnalyses?: any[]
+    opportunities?: any[]
+  }
+  createdAt: string
+  updatedAt: string
+}
+
 export type StatusValue = 'idle' | 'progress' | 'complete'
 
 export interface SidebarStatus {

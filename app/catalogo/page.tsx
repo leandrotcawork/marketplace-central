@@ -9,7 +9,7 @@ import { ProductForm } from '@/components/catalogo/ProductForm'
 import { PageHeader } from '@/components/layout/PageHeader'
 
 export default function CatalogoPage() {
-  const { products, clearAll } = useProductStore()
+  const { products, clearAll, fetchFromMetalShopping, isLoading, error } = useProductStore()
   const [showForm, setShowForm] = useState(false)
 
   return (
@@ -48,8 +48,34 @@ export default function CatalogoPage() {
       />
 
       <div className="flex-1 overflow-auto p-6">
-        <div className="mb-6">
-          <FileUpload />
+        <div className="mb-6 p-6 rounded-lg border" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
+            Origem dos Dados
+          </h3>
+          <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+            Carregue produtos do banco de dados MetalShopping_Final. Alternativamente, você pode importar um arquivo .xlsx.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={() => fetchFromMetalShopping()}
+              disabled={isLoading}
+              className="w-full px-4 py-2 rounded-lg text-white transition-colors disabled:opacity-50"
+              style={{ backgroundColor: 'var(--accent-primary)' }}
+            >
+              {isLoading ? 'Carregando...' : 'Buscar Produtos do MetalShopping'}
+            </button>
+            {error && (
+              <p className="text-sm" style={{ color: 'var(--accent-danger)' }}>
+                Erro: {error}
+              </p>
+            )}
+          </div>
+          <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--border-color)' }}>
+            <h4 className="text-xs font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+              Ou importar XLSX
+            </h4>
+            <FileUpload />
+          </div>
         </div>
 
         {products.length > 0 ? (
