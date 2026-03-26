@@ -71,7 +71,7 @@ function normalizeAnalysisResponse(
 
 export default function AnaliseIaPage() {
   const allProducts = useProductStore((s) => s.products)
-  const { marketplaces } = useMarketplaceStore()
+  const { marketplaces, commissionRules } = useMarketplaceStore()
   const { classifications } = useClassificationStore()
   const { groups } = useGroupStore()
   const { competitorPrices, aiAnalyses, addAnalysis } = useAnalysisStore()
@@ -124,7 +124,7 @@ export default function AnaliseIaPage() {
       setLoadingIds((prev) => new Set(prev).add(product.id))
 
       try {
-        const productMargins = calculateAllMargins([product], marketplaces)
+        const productMargins = calculateAllMargins([product], marketplaces, commissionRules)
 
         const storedCompetitors = competitorPrices.filter(
           (c) => c.productId === product.id

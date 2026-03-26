@@ -13,6 +13,8 @@ export function mapProductFromDatabase(row: RawProductRow): Product {
     ean: row.ean || undefined,
     name: row.name || '',
     category: row.taxonomy_group || 'Uncategorized',
+    primaryTaxonomyNodeId: row.primary_taxonomy_node_id || undefined,
+    primaryTaxonomyGroupName: row.taxonomy_group || undefined,
     cost: normalizeNumber(row.cost) || 0,
     basePrice: normalizeNumber(row.base_price) || 0,
     stock: normalizeNumber(row.stock) || 0,

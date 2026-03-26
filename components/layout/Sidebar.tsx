@@ -22,6 +22,7 @@ import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
 import { useClassificationStore } from '@/stores/classificationStore'
 import { useGroupStore } from '@/stores/groupStore'
+import { useMarketplaceCommissionScope } from '@/hooks/useMarketplaceCommissionScope'
 import type { StatusValue } from '@/types'
 
 interface NavItem {
@@ -56,7 +57,9 @@ function useSidebarStatus(): SidebarStatusMap {
   const hasCompetitors = competitorPrices.length > 0
   const hasAnalyses = aiAnalyses.length > 0
   const hasPublications = publications.length > 0
-  const publishedCount = publications.filter((p) => p.status === 'published').length
+  const publishedCount = publications.filter(
+    (p) => p.status === 'published' || p.status === 'partial'
+  ).length
 
   return {
     catalogo: !isLoaded ? 'idle' : hasProducts ? 'complete' : 'progress',
@@ -103,6 +106,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const statuses = useSidebarStatus()
+  useMarketplaceCommissionScope()
 
   return (
     <aside

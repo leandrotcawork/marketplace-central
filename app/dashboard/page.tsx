@@ -27,7 +27,7 @@ import { formatBRL, formatPercent } from '@/lib/formatters'
 
 export default function DashboardPage() {
   const { products } = useProductStore()
-  const { marketplaces } = useMarketplaceStore()
+  const { marketplaces, commissionRules } = useMarketplaceStore()
   const { aiAnalyses } = useAnalysisStore()
 
   const activeMarketplaces = useMemo(
@@ -35,8 +35,8 @@ export default function DashboardPage() {
     [marketplaces]
   )
   const allMargins = useMemo(
-    () => calculateAllMargins(products, marketplaces),
-    [products, marketplaces]
+    () => calculateAllMargins(products, marketplaces, commissionRules),
+    [products, marketplaces, commissionRules]
   )
 
   // ——— KPI: average margin ———

@@ -78,6 +78,7 @@ export function ProductForm({ open, onClose, editProduct }: ProductFormProps) {
       ean: form.ean.trim() || undefined,
       name: form.name.trim(),
       category: form.category || 'Outros',
+      primaryTaxonomyGroupName: form.category || 'Outros',
       cost: parseFloat(form.cost.replace(',', '.')),
       basePrice: parseFloat(form.basePrice.replace(',', '.')),
       stock: parseInt(form.stock) || 0,

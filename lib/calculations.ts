@@ -1,4 +1,5 @@
-import type { MarginResult, Product, Marketplace } from '@/types'
+import { resolveCommercialTerms } from '@/lib/marketplace-commercial'
+import type { MarginResult, Marketplace, MarketplaceCommissionRule, Product } from '@/types'
 
 export function getMarginHealth(marginPercent: number): 'good' | 'warning' | 'critical' {
   if (marginPercent >= 20) return 'good'
@@ -10,38 +11,82 @@ export function calculateMargin(
   sellingPrice: number,
   cost: number,
   commission: number,
-  fixedFee: number
-): Pick<MarginResult, 'margin' | 'marginPercent' | 'health'> {
-  const margin = sellingPrice - cost - sellingPrice * commission - fixedFee
+  fixedFee: number,
+  freightFixed = 0
+): Pick<
+  MarginResult,
+  | 'commission'
+  | 'commissionAmount'
+  | 'fixedFeeAmount'
+  | 'freightFixedAmount'
+  | 'totalFees'
+  | 'margin'
+  | 'marginPercent'
+  | 'health'
+> {
+  const commissionAmount = sellingPrice * commission
+  const totalFees = commissionAmount + fixedFee + freightFixed
+  const margin = sellingPrice - cost - totalFees
   const marginPercent = sellingPrice > 0 ? (margin / sellingPrice) * 100 : 0
   const health = getMarginHealth(marginPercent)
-  return { margin, marginPercent, health }
+
+  return {
+    commission,
+    commissionAmount,
+    fixedFeeAmount: fixedFee,
+    freightFixedAmount: freightFixed,
+    totalFees,
+    margin,
+    marginPercent,
+    health,
+  }
+}
+
+export function calculateMarginForMarketplace(
+  product: Product,
+  marketplace: Marketplace,
+  rules: MarketplaceCommissionRule[],
+  sellingPrice = product.basePrice
+): MarginResult {
+  const terms = resolveCommercialTerms(product, marketplace, rules)
+  const base = calculateMargin(
+    sellingPrice,
+    product.cost,
+    terms.commissionPercent,
+    terms.fixedFeeAmount,
+    terms.freightFixedAmount
+  )
+
+  return {
+    productId: product.id,
+    productGroupId: terms.groupId ?? product.primaryTaxonomyNodeId,
+    marketplaceId: marketplace.id,
+    sellingPrice,
+    commission: base.commission,
+    commissionAmount: base.commissionAmount,
+    fixedFeeAmount: base.fixedFeeAmount,
+    freightFixedAmount: base.freightFixedAmount,
+    totalFees: base.totalFees,
+    margin: base.margin,
+    marginPercent: base.marginPercent,
+    health: base.health,
+    ruleType: terms.ruleType,
+    reviewStatus: terms.reviewStatus,
+    sourceType: terms.sourceType,
+  }
 }
 
 export function calculateAllMargins(
   products: Product[],
-  marketplaces: Marketplace[]
+  marketplaces: Marketplace[],
+  rules: MarketplaceCommissionRule[] = []
 ): MarginResult[] {
   const results: MarginResult[] = []
 
   for (const product of products) {
     for (const marketplace of marketplaces) {
       if (!marketplace.active) continue
-      const { margin, marginPercent, health } = calculateMargin(
-        product.basePrice,
-        product.cost,
-        marketplace.commission,
-        marketplace.fixedFee
-      )
-      results.push({
-        productId: product.id,
-        marketplaceId: marketplace.id,
-        sellingPrice: product.basePrice,
-        commission: marketplace.commission,
-        margin,
-        marginPercent,
-        health,
-      })
+      results.push(calculateMarginForMarketplace(product, marketplace, rules))
     }
   }
 

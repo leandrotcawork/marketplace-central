@@ -1,177 +1,373 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus, X, Store } from 'lucide-react'
-import { useMarketplaceStore } from '@/stores/marketplaceStore'
-import { MarketplaceCard } from '@/components/marketplaces/MarketplaceCard'
+import { useEffect, useMemo, useState } from 'react'
+import { Plus, RefreshCcw } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { generateId } from '@/lib/formatters'
+import { MarketplaceBaseForm } from '@/components/marketplaces/MarketplaceBaseForm'
+import { MarketplaceCard } from '@/components/marketplaces/MarketplaceCard'
+import { MarketplaceCommercialMatrix } from '@/components/marketplaces/MarketplaceCommercialMatrix'
+import { MarketplaceConnectionForm } from '@/components/marketplaces/MarketplaceConnectionForm'
+import { useMarketplaceCommissionScope } from '@/hooks/useMarketplaceCommissionScope'
+import { calculateMarginForMarketplace } from '@/lib/calculations'
+import {
+  getMarketplaceCompleteness,
+  getMarketplaceScopedRules,
+} from '@/lib/marketplace-commercial'
+import { useMarketplaceStore } from '@/stores/marketplaceStore'
+import { useProductStore } from '@/stores/productStore'
+import type { MarketplaceConnection } from '@/types'
 
-function AddMarketplaceForm({ onClose }: { onClose: () => void }) {
-  const { addMarketplace } = useMarketplaceStore()
-  const [form, setForm] = useState({ name: '', commission: '15', fixedFee: '0', notes: '' })
-  const [error, setError] = useState('')
+export default function MarketplacesPage() {
+  const products = useProductStore((state) => state.products)
+  const {
+    marketplaces,
+    commissionRules,
+    selectedMarketplaceId,
+    setSelectedMarketplace,
+    toggleActive,
+    updateMarketplaceCommercialProfile,
+    updateMarketplaceCapabilities,
+    updateCommissionRule,
+    addMarketplace,
+    resetDefaults,
+    syncConnectionStatuses,
+  } = useMarketplaceStore()
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.name.trim()) { setError('Nome obrigatório'); return }
-    const commission = parseFloat(form.commission) / 100
-    if (isNaN(commission) || commission < 0 || commission > 1) { setError('Comissão inválida (0-100%)'); return }
-    addMarketplace({
-      id: generateId(),
-      name: form.name.trim(),
-      commission,
-      fixedFee: parseFloat(form.fixedFee) || 0,
-      active: true,
-      notes: form.notes || undefined,
-    })
-    onClose()
+  const { classifications, scopedGroups, groupsLoading, groupsError } = useMarketplaceCommissionScope()
+
+  const [connections, setConnections] = useState<MarketplaceConnection[]>([])
+  const [loadingConnections, setLoadingConnections] = useState(true)
+  const [savingChannelId, setSavingChannelId] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'config' | 'connection' | 'matrix'>('config')
+
+  useEffect(() => {
+    if (!selectedMarketplaceId && marketplaces[0]) {
+      setSelectedMarketplace(marketplaces[0].id)
+    }
+  }, [marketplaces, selectedMarketplaceId, setSelectedMarketplace])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadConnections() {
+      setLoadingConnections(true)
+      setErrorMessage(null)
+
+      try {
+        const response = await fetch('/api/marketplace-connections')
+        const payload = await response.json()
+
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error ?? 'Falha ao carregar conexoes')
+        }
+
+        if (!active) return
+        const nextConnections = payload.data as MarketplaceConnection[]
+        setConnections(nextConnections)
+        syncConnectionStatuses(nextConnections)
+      } catch (error) {
+        if (!active) return
+        setErrorMessage(error instanceof Error ? error.message : 'Falha ao carregar conexoes')
+      } finally {
+        if (active) setLoadingConnections(false)
+      }
+    }
+
+    void loadConnections()
+
+    return () => {
+      active = false
+    }
+  }, [syncConnectionStatuses])
+
+  const averageMarginByMarketplace = useMemo(() => {
+    const result = new Map<string, number | null>()
+
+    for (const marketplace of marketplaces) {
+      if (products.length === 0) {
+        result.set(marketplace.id, null)
+        continue
+      }
+
+      const rows = products.map((product) =>
+        calculateMarginForMarketplace(product, marketplace, commissionRules)
+      )
+      const average =
+        rows.reduce((sum, row) => sum + row.marginPercent, 0) / Math.max(rows.length, 1)
+      result.set(marketplace.id, average)
+    }
+
+    return result
+  }, [commissionRules, marketplaces, products])
+
+  const selectedMarketplace =
+    marketplaces.find((marketplace) => marketplace.id === selectedMarketplaceId) ?? marketplaces[0]
+
+  const selectedCompleteness = selectedMarketplace
+    ? getMarketplaceCompleteness(selectedMarketplace.id, scopedGroups, commissionRules)
+    : { total: 0, validated: 0, manualAssumption: 0, missing: 0 }
+
+  const selectedRules = selectedMarketplace
+    ? getMarketplaceScopedRules(selectedMarketplace.id, scopedGroups, commissionRules)
+    : []
+
+  const selectedConnection = selectedMarketplace
+    ? connections.find((connection) => connection.channelId === selectedMarketplace.id)
+    : undefined
+
+  async function handleSaveConnection(payload: {
+    channelId: string
+    displayName: string
+    accountId?: string
+    authStrategy: MarketplaceConnection['authStrategy']
+    status: MarketplaceConnection['status']
+    lastValidatedAt?: string
+    lastError?: string
+    secrets?: Record<string, string>
+  }) {
+    setSavingChannelId(payload.channelId)
+    setFeedback(null)
+    setErrorMessage(null)
+
+    try {
+      const response = await fetch('/api/marketplace-connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const result = await response.json()
+
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error ?? 'Falha ao salvar conexao')
+      }
+
+      const savedConnection = result.data as MarketplaceConnection
+      const nextConnections = [
+        ...connections.filter((connection) => connection.channelId !== savedConnection.channelId),
+        savedConnection,
+      ].sort((left, right) => left.channelId.localeCompare(right.channelId, 'pt-BR'))
+
+      setConnections(nextConnections)
+      syncConnectionStatuses(nextConnections)
+      setFeedback(`Conexao de ${savedConnection.displayName} atualizada no servidor.`)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Falha ao salvar conexao')
+    } finally {
+      setSavingChannelId(null)
+    }
   }
 
-  const inputStyle = {
-    backgroundColor: 'var(--bg-primary)',
-    border: '1px solid var(--border-color)',
-    color: 'var(--text-primary)',
-    fontFamily: 'var(--font-jetbrains-mono)',
-    fontSize: '13px',
-    borderRadius: '6px',
-    padding: '8px 10px',
-    width: '100%',
-    outline: 'none',
+  function handleAddMarketplace() {
+    const name = window.prompt('Nome do novo canal')
+    if (!name?.trim()) return
+    addMarketplace(name.trim())
   }
+
+  const tabs: { key: 'config' | 'connection' | 'matrix'; label: string }[] = [
+    { key: 'config', label: 'Configuração base' },
+    { key: 'connection', label: 'Conexão' },
+    { key: 'matrix', label: 'Matriz comercial' },
+  ]
 
   return (
-    <div
-      className="rounded-xl p-5"
-      style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--accent-primary)' }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}>
-          Novo Marketplace
-        </h3>
-        <button onClick={onClose} style={{ color: 'var(--text-secondary)' }}>
-          <X size={14} />
-        </button>
+    <div className="flex flex-col h-full">
+      <PageHeader
+        title="Marketplaces"
+        subtitle="Hub operacional dos canais, conexoes server-side e matriz comercial por grupo"
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={resetDefaults}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+            >
+              <RefreshCcw size={14} />
+              Resetar seeds
+            </button>
+            <button
+              type="button"
+              onClick={handleAddMarketplace}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+              style={{
+                backgroundColor: 'var(--accent-primary)',
+                color: '#fff',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+            >
+              <Plus size={14} />
+              Adicionar canal
+            </button>
+          </>
+        }
+      />
+
+      <div className="flex-1 overflow-auto p-6 flex flex-col gap-6">
+        {feedback && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{
+              backgroundColor: 'rgba(16,185,129,0.08)',
+              border: '1px solid rgba(16,185,129,0.2)',
+              color: 'var(--accent-success)',
+            }}
+          >
+            {feedback}
+          </div>
+        )}
+
+        {errorMessage && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              color: 'var(--accent-danger)',
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {marketplaces.map((marketplace) => {
+            const completeness = getMarketplaceCompleteness(
+              marketplace.id,
+              scopedGroups,
+              commissionRules
+            )
+
+            return (
+              <MarketplaceCard
+                key={marketplace.id}
+                marketplace={marketplace}
+                completeness={completeness}
+                averageMargin={averageMarginByMarketplace.get(marketplace.id) ?? null}
+                selected={marketplace.id === selectedMarketplace?.id}
+                onSelect={() => setSelectedMarketplace(marketplace.id)}
+              />
+            )
+          })}
+        </div>
+
+        {selectedMarketplace && (
+          <div className="flex flex-col gap-4">
+            {/* Tab bar */}
+            <div style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <div className="flex gap-0">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className="px-4 py-2 text-sm font-medium"
+                    style={{
+                      borderBottom: activeTab === tab.key
+                        ? '2px solid var(--accent-primary)'
+                        : '2px solid transparent',
+                      color: activeTab === tab.key
+                        ? 'var(--text-primary)'
+                        : 'var(--text-secondary)',
+                      fontFamily: 'var(--font-dm-sans)',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tab content panel */}
+            <div>
+              {activeTab === 'config' && (
+                <MarketplaceBaseForm
+                  marketplace={selectedMarketplace}
+                  completeness={selectedCompleteness}
+                  onToggleActive={() => toggleActive(selectedMarketplace.id)}
+                  onCommercialProfileChange={(partial) =>
+                    updateMarketplaceCommercialProfile(selectedMarketplace.id, partial)
+                  }
+                  onCapabilitiesChange={(partial) =>
+                    updateMarketplaceCapabilities(selectedMarketplace.id, partial)
+                  }
+                />
+              )}
+              {activeTab === 'connection' && (
+                <MarketplaceConnectionForm
+                  marketplace={selectedMarketplace}
+                  connection={selectedConnection}
+                  saving={savingChannelId === selectedMarketplace.id || loadingConnections}
+                  onSave={handleSaveConnection}
+                />
+              )}
+              {activeTab === 'matrix' && (
+                <MarketplaceCommercialMatrix
+                  marketplace={selectedMarketplace}
+                  rules={selectedRules}
+                  averageMargin={averageMarginByMarketplace.get(selectedMarketplace.id) ?? null}
+                  onRuleChange={updateCommissionRule}
+                />
+              )}
+            </div>
+
+            {/* Escopo comercial strip */}
+            <div
+              className="rounded-2xl border px-5 py-4 flex flex-wrap items-center gap-x-6 gap-y-3"
+              style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+            >
+              <div>
+                <span
+                  className="text-xs font-semibold"
+                  style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}
+                >
+                  Escopo comercial
+                </span>
+                <span className="ml-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {scopedGroups.length} grupos
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                <ScopeMetric label="Classificações ativas" value={String(classifications.length)} />
+                <ScopeMetric label="Grupos validados" value={String(selectedCompleteness.validated)} />
+                <ScopeMetric label="Manuais" value={String(selectedCompleteness.manualAssumption)} />
+                <ScopeMetric label="Faltando" value={String(selectedCompleteness.missing)} />
+              </div>
+              {classifications.length === 0 && (
+                <span className="text-xs" style={{ color: 'var(--accent-warning)' }}>
+                  Nenhuma classificação cadastrada — matriz comercial vazia.
+                </span>
+              )}
+              {groupsLoading && (
+                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Atualizando taxonomia...
+                </span>
+              )}
+              {groupsError && (
+                <span className="text-xs" style={{ color: 'var(--accent-danger)' }}>
+                  {groupsError}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
-          <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>Nome *</label>
-          <input
-            value={form.name}
-            onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-            style={inputStyle}
-            placeholder="Nome do marketplace"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>Comissão (%)</label>
-            <input
-              type="number"
-              value={form.commission}
-              onChange={(e) => setForm(f => ({ ...f, commission: e.target.value }))}
-              style={inputStyle}
-              min="0" max="100" step="0.5"
-            />
-          </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>Taxa Fixa (R$)</label>
-            <input
-              type="number"
-              value={form.fixedFee}
-              onChange={(e) => setForm(f => ({ ...f, fixedFee: e.target.value }))}
-              style={inputStyle}
-              min="0" step="0.5"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>Observações</label>
-          <input
-            value={form.notes}
-            onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
-            style={{ ...inputStyle, fontFamily: 'var(--font-ibm-plex-sans)' }}
-            placeholder="Ex: frete grátis acima de R$79"
-          />
-        </div>
-        {error && <p className="text-xs" style={{ color: 'var(--accent-danger)' }}>{error}</p>}
-        <div className="flex gap-2 pt-1">
-          <button
-            type="button" onClick={onClose}
-            className="flex-1 py-2 rounded-lg text-xs transition-colors"
-            style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="flex-1 py-2 rounded-lg text-xs text-white font-medium"
-            style={{ backgroundColor: 'var(--accent-primary)' }}
-          >
-            Adicionar
-          </button>
-        </div>
-      </form>
     </div>
   )
 }
 
-export default function MarketplacesPage() {
-  const { marketplaces } = useMarketplaceStore()
-  const [showAdd, setShowAdd] = useState(false)
-
-  const activeCount = marketplaces.filter((m) => m.active).length
-  const defaultIds = ['mercado-livre', 'amazon', 'shopee', 'magalu', 'leroy', 'madeira']
-
+function ScopeMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      <PageHeader
-        title="Marketplaces"
-        subtitle={`${activeCount} de ${marketplaces.length} marketplace${marketplaces.length !== 1 ? 's' : ''} ativo${activeCount !== 1 ? 's' : ''}`}
-        actions={
-          <button
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white transition-colors"
-            style={{ backgroundColor: 'var(--accent-primary)' }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
-          >
-            <Plus size={13} />
-            Adicionar marketplace
-          </button>
-        }
-      />
-
-      <div className="flex-1 overflow-auto p-6">
-        {/* Info banner */}
-        <div
-          className="flex items-center gap-3 rounded-lg px-4 py-3 mb-6 text-xs"
-          style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-        >
-          <Store size={14} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
-          <p>
-            Configure comissões e taxas de cada marketplace. Apenas os marketplaces <strong style={{ color: 'var(--text-primary)' }}>ativos</strong> serão incluídos no simulador e na análise de IA.
-          </p>
-        </div>
-
-        {/* Add form */}
-        {showAdd && (
-          <div className="mb-6">
-            <AddMarketplaceForm onClose={() => setShowAdd(false)} />
-          </div>
-        )}
-
-        {/* Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
-          {marketplaces.map((m) => (
-            <MarketplaceCard
-              key={m.id}
-              marketplace={m}
-              canDelete={!defaultIds.includes(m.id)}
-            />
-          ))}
-        </div>
-      </div>
+    <div className="flex items-center gap-2">
+      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+      <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-jetbrains-mono)' }}>{value}</span>
     </div>
   )
 }

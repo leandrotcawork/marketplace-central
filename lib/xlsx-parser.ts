@@ -80,6 +80,7 @@ export function parseXLSX(buffer: ArrayBuffer): Product[] {
       ean,
       name: name || 'Produto sem nome',
       category: category || 'Sem categoria',
+      primaryTaxonomyGroupName: category || undefined,
       cost,
       basePrice,
       stock: stock || 0,

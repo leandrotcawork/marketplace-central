@@ -1,3 +1,25 @@
+export type MarketplaceCapabilityStatus = 'supported' | 'partial' | 'planned' | 'blocked'
+export type MarketplaceRolloutStage = 'v1' | 'wave_2' | 'blocked'
+export type MarketplaceExecutionMode = 'live' | 'planned' | 'blocked'
+export type MarketplaceAuthStrategy =
+  | 'oauth2'
+  | 'lwa'
+  | 'api_key'
+  | 'token'
+  | 'seller_portal'
+  | 'unknown'
+export type MarketplaceRuleType = 'base' | 'group_override'
+export type MarketplaceRuleSourceType =
+  | 'official_doc'
+  | 'seller_portal'
+  | 'contract'
+  | 'manual_assumption'
+  | 'pending_doc'
+export type MarketplaceReviewStatus = 'validated' | 'manual_assumption' | 'missing'
+export type MarketplaceConnectionStatus = 'disconnected' | 'connected' | 'attention' | 'blocked'
+export type MarketplaceSyncJobType = 'publish' | 'price' | 'stock' | 'order_sync'
+export type MarketplaceSyncStatus = 'draft' | 'queued' | 'syncing' | 'published' | 'failed' | 'partial'
+
 export interface Product {
   id: string
   sku: string
@@ -5,29 +27,91 @@ export interface Product {
   ean?: string
   name: string
   category: string
+  primaryTaxonomyNodeId?: string
+  primaryTaxonomyGroupName?: string
   cost: number
   basePrice: number
   stock: number
   unit: string
 }
 
-export interface Marketplace {
+export interface MarketplaceCapabilityProfile {
+  publish: MarketplaceCapabilityStatus
+  priceSync: MarketplaceCapabilityStatus
+  stockSync: MarketplaceCapabilityStatus
+  orders: MarketplaceCapabilityStatus
+  messages: MarketplaceCapabilityStatus
+  questions: MarketplaceCapabilityStatus
+  freightQuotes: MarketplaceCapabilityStatus
+  webhooks: MarketplaceCapabilityStatus
+  sandbox: MarketplaceCapabilityStatus
+}
+
+export interface MarketplaceCommercialProfile {
+  commissionPercent: number // decimal 0-1
+  fixedFeeAmount: number
+  freightFixedAmount: number
+  sourceType: MarketplaceRuleSourceType
+  sourceRef?: string
+  evidenceDate?: string
+  reviewStatus: MarketplaceReviewStatus
+  notes?: string
+}
+
+export interface MarketplaceChannel {
   id: string
   name: string
-  commission: number // decimal 0-1
-  fixedFee: number
   active: boolean
+  rolloutStage: MarketplaceRolloutStage
+  executionMode: MarketplaceExecutionMode
+  authStrategy: MarketplaceAuthStrategy
+  connectionStatus: MarketplaceConnectionStatus
   notes?: string
+  capabilities: MarketplaceCapabilityProfile
+  commercialProfile: MarketplaceCommercialProfile
+}
+
+export type Marketplace = MarketplaceChannel
+
+export interface MarketplaceCommissionRule {
+  id: string
+  channelId: string
+  groupId: string
+  groupName: string
+  categoryLabel: string
+  ruleType: MarketplaceRuleType
+  commissionPercent: number
+  fixedFeeAmount: number
+  freightFixedAmount: number
+  sourceType: MarketplaceRuleSourceType
+  sourceRef?: string
+  evidenceDate?: string
+  reviewStatus: MarketplaceReviewStatus
+  notes?: string
+}
+
+export interface MarketplaceScopedGroup {
+  id: string
+  name: string
+  categoryLabel: string
 }
 
 export interface MarginResult {
   productId: string
+  productGroupId?: string
   marketplaceId: string
   sellingPrice: number
   commission: number
+  commissionAmount: number
+  fixedFeeAmount: number
+  freightFixedAmount: number
+  totalFees: number
   margin: number
   marginPercent: number
   health: 'good' | 'warning' | 'critical'
+  ruleType: MarketplaceRuleType
+  reviewStatus: MarketplaceReviewStatus
+  sourceType: MarketplaceRuleSourceType
 }
 
 export interface CompetitorPrice {
@@ -52,10 +136,23 @@ export interface Publication {
   id: string
   productId: string
   marketplaceId: string
+  connectionId?: string
+  syncJobId?: string
+  remoteListingId?: string
+  productGroupId?: string
   price: number
   margin: number
-  status: 'draft' | 'ready' | 'published'
+  commissionPercent: number
+  fixedFeeAmount: number
+  freightFixedAmount: number
+  totalFees: number
+  status: MarketplaceSyncStatus
+  ruleType: MarketplaceRuleType
+  reviewStatus: MarketplaceReviewStatus
+  sourceType: MarketplaceRuleSourceType
+  errorMessage?: string
   publishedAt?: string
+  syncedAt?: string
 }
 
 export interface Classification {
@@ -76,14 +173,51 @@ export interface Group {
   syncedAt: string     // ISO timestamp of last import
 }
 
-export type StatusValue = 'idle' | 'progress' | 'complete'
-
-export interface SidebarStatus {
-  catalogo: StatusValue
-  marketplaces: StatusValue
-  simulador: StatusValue
-  concorrencia: StatusValue
-  analiseIa: StatusValue
-  dashboard: StatusValue
-  publicar: StatusValue
+export interface MarketplaceConnection {
+  connectionId: string
+  channelId: string
+  displayName: string
+  accountId?: string
+  authStrategy: MarketplaceAuthStrategy
+  status: MarketplaceConnectionStatus
+  hasStoredSecret: boolean
+  lastValidatedAt?: string
+  lastError?: string
+  updatedAt: string
 }
+
+export interface MarketplaceSyncJob {
+  id: string
+  channelId: string
+  connectionId?: string
+  productId?: string
+  publicationId?: string
+  jobType: MarketplaceSyncJobType
+  status: MarketplaceSyncStatus
+  externalReference?: string
+  requestPayload?: unknown
+  resultPayload?: unknown
+  errorMessage?: string
+  createdAt: string
+  updatedAt: string
+  startedAt?: string
+  finishedAt?: string
+}
+
+export interface MarketplaceRemoteListing {
+  id: string
+  channelId: string
+  connectionId?: string
+  productId: string
+  externalListingId: string
+  externalSku?: string
+  status: MarketplaceSyncStatus
+  lastPrice?: number
+  lastStock?: number
+  lastSyncedAt?: string
+  rawPayload?: unknown
+  createdAt: string
+  updatedAt: string
+}
+
+export type StatusValue = 'idle' | 'progress' | 'complete'

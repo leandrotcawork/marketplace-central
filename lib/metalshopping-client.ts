@@ -10,6 +10,7 @@ export interface RawProductRow {
   stock?: number
   referencia?: string
   ean?: string
+  primary_taxonomy_node_id?: string
   taxonomy_group?: string
 }
 
@@ -32,6 +33,7 @@ const BASE_SELECT = `
     COALESCE(ipp.on_hand_quantity, 0) as stock,
     MAX(CASE WHEN pi.identifier_type = 'reference' THEN pi.identifier_value END) as referencia,
     MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean,
+    cp.primary_taxonomy_node_id,
     ctn.name as taxonomy_group
   FROM catalog_products cp
   LEFT JOIN pricing_product_prices ppp ON cp.product_id = ppp.product_id
@@ -54,6 +56,7 @@ const BASE_GROUP_BY = `
     ppp.average_cost_amount,
     ppp.price_amount,
     ipp.on_hand_quantity,
+    cp.primary_taxonomy_node_id,
     ctn.name
 `
 

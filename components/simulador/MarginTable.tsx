@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useGroupStore } from '@/stores/groupStore'
-import { calculateMargin } from '@/lib/calculations'
+import { calculateMarginForMarketplace } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { MarginIndicator } from './MarginIndicator'
 
@@ -17,6 +17,7 @@ interface MarginTableProps {
 export function MarginTable({ groupId }: MarginTableProps) {
   const allProducts = useProductStore((s) => s.products)
   const marketplaces = useMarketplaceStore((s) => s.marketplaces)
+  const commissionRules = useMarketplaceStore((s) => s.commissionRules)
   const groups = useGroupStore((s) => s.groups)
 
   // Filter products by taxonomy group if groupId is provided
@@ -52,6 +53,14 @@ export function MarginTable({ groupId }: MarginTableProps) {
     return sellingPrices[cellKey(productId, marketplaceId)] ?? basePrice
   }
 
+  function getMarketplaceResult(
+    product: (typeof allProducts)[number],
+    marketplace: (typeof marketplaces)[number],
+    sellingPrice: number
+  ) {
+    return calculateMarginForMarketplace(product, marketplace, commissionRules, sellingPrice)
+  }
+
   const filteredProducts = useMemo(() => {
     let list = products
     if (categoryFilter !== 'all') {
@@ -62,13 +71,13 @@ export function MarginTable({ groupId }: MarginTableProps) {
         activeMarketplaces.some((m) => {
           const priceKey = cellKey(p.id, m.id)
           const sp = sellingPrices[priceKey] ?? p.basePrice
-          const { health } = calculateMargin(sp, p.cost, m.commission, m.fixedFee)
+          const { health } = getMarketplaceResult(p, m, sp)
           return health === healthFilter
         })
       )
     }
     return list
-  }, [products, categoryFilter, healthFilter, sellingPrices, activeMarketplaces])
+  }, [products, categoryFilter, healthFilter, sellingPrices, activeMarketplaces, commissionRules])
 
   // Summary stats
   const summaryStats = useMemo(() => {
@@ -80,7 +89,7 @@ export function MarginTable({ groupId }: MarginTableProps) {
       for (const m of activeMarketplaces) {
         const priceKey = cellKey(p.id, m.id)
         const sp = sellingPrices[priceKey] ?? p.basePrice
-        const { marginPercent, health } = calculateMargin(sp, p.cost, m.commission, m.fixedFee)
+        const { marginPercent, health } = getMarketplaceResult(p, m, sp)
         totalMarginPct += marginPercent
         count++
         if (health === 'critical') criticalCount++
@@ -92,7 +101,7 @@ export function MarginTable({ groupId }: MarginTableProps) {
       criticalCount,
       totalProducts: filteredProducts.length,
     }
-  }, [filteredProducts, activeMarketplaces, sellingPrices])
+  }, [filteredProducts, activeMarketplaces, sellingPrices, commissionRules])
 
   function startEdit(productId: string, marketplaceId: string, currentPrice: number) {
     const key = cellKey(productId, marketplaceId)
@@ -121,7 +130,7 @@ export function MarginTable({ groupId }: MarginTableProps) {
       })
       const margins = activeMarketplaces.map((m) => {
         const sp = getSellingPrice(p.id, m.id, p.basePrice)
-        const { marginPercent } = calculateMargin(sp, p.cost, m.commission, m.fixedFee)
+        const { marginPercent } = getMarketplaceResult(p, m, sp)
         return marginPercent.toFixed(2)
       })
       return [p.sku, p.name, p.category, ...prices, ...margins]
@@ -320,8 +329,9 @@ export function MarginTable({ groupId }: MarginTableProps) {
                 >
                   <div style={{ color: 'var(--text-primary)' }}>{m.name}</div>
                   <div className="text-xs font-normal" style={{ color: 'var(--text-secondary)' }}>
-                    Comissão {formatPercent(m.commission * 100)}
-                    {m.fixedFee > 0 && ` + ${formatBRL(m.fixedFee)}`}
+                    Base {formatPercent(m.commercialProfile.commissionPercent * 100)}
+                    {m.commercialProfile.fixedFeeAmount > 0 &&
+                      ` + ${formatBRL(m.commercialProfile.fixedFeeAmount)}`}
                   </div>
                 </th>
               ))}
@@ -380,13 +390,8 @@ export function MarginTable({ groupId }: MarginTableProps) {
                   {activeMarketplaces.map((marketplace) => {
                     const key = cellKey(product.id, marketplace.id)
                     const sp = getSellingPrice(product.id, marketplace.id, product.basePrice)
-                    const { margin, marginPercent, health } = calculateMargin(
-                      sp,
-                      product.cost,
-                      marketplace.commission,
-                      marketplace.fixedFee
-                    )
-                    const commissionAmount = sp * marketplace.commission + marketplace.fixedFee
+                    const result = getMarketplaceResult(product, marketplace, sp)
+                    const { margin, marginPercent, health } = result
                     const isEditing = editingKey === key
 
                     return (
@@ -438,9 +443,16 @@ export function MarginTable({ groupId }: MarginTableProps) {
 
                         {/* Commission */}
                         <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
-                          Comissão:{' '}
+                          Taxas:{' '}
                           <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
-                            {formatBRL(commissionAmount)}
+                            {formatBRL(result.totalFees)}
+                          </span>
+                        </div>
+
+                        <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+                          Regra:{' '}
+                          <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
+                            {result.ruleType === 'group_override' ? 'excecao' : 'base'}
                           </span>
                         </div>
 
