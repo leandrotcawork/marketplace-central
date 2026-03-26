@@ -21,6 +21,7 @@ import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
 import { useClassificationStore } from '@/stores/classificationStore'
+import { useGroupStore } from '@/stores/groupStore'
 import type { StatusValue } from '@/types'
 
 interface NavItem {
@@ -36,7 +37,8 @@ type SidebarStatusMap = {
   marketplaces: StatusValue
   simulador: StatusValue
   concorrencia: StatusValue
-  packs: StatusValue
+  grupos: StatusValue
+  classificacoes: StatusValue
   analiseIa: StatusValue
   dashboard: StatusValue
   publicar: StatusValue
@@ -47,6 +49,7 @@ function useSidebarStatus(): SidebarStatusMap {
   const { marketplaces } = useMarketplaceStore()
   const { competitorPrices, aiAnalyses, publications } = useAnalysisStore()
   const { classifications } = useClassificationStore()
+  const { groups } = useGroupStore()
 
   const hasProducts = products.length > 0
   const activeMarketplaces = marketplaces.filter((m) => m.active).length
@@ -60,7 +63,8 @@ function useSidebarStatus(): SidebarStatusMap {
     marketplaces: activeMarketplaces === 0 ? 'idle' : activeMarketplaces < 3 ? 'progress' : 'complete',
     simulador: !hasProducts ? 'idle' : 'complete',
     concorrencia: !hasProducts ? 'idle' : hasCompetitors ? 'complete' : 'progress',
-    packs: classifications.length === 0 ? 'idle' : 'complete',
+    grupos: groups.length === 0 ? 'idle' : 'complete',
+    classificacoes: classifications.length === 0 ? 'idle' : 'complete',
     analiseIa: !hasProducts ? 'idle' : hasAnalyses ? 'complete' : 'progress',
     dashboard: !hasProducts ? 'idle' : hasAnalyses ? 'complete' : 'progress',
     publicar: !hasPublications ? 'idle' : publishedCount > 0 ? 'complete' : 'progress',
@@ -88,10 +92,11 @@ const NAV_ITEMS: NavItem[] = [
   { number: 2, icon: Store, label: 'Marketplaces', href: '/marketplaces', statusKey: 'marketplaces' },
   { number: 3, icon: DollarSign, label: 'Simulador', href: '/simulador', statusKey: 'simulador' },
   { number: 4, icon: Search, label: 'Concorrência', href: '/concorrencia', statusKey: 'concorrencia' },
-  { number: 5, icon: Grid3x3, label: 'Classificações', href: '/classificacoes', statusKey: 'packs' },
-  { number: 6, icon: Bot, label: 'Análise IA', href: '/analise-ia', statusKey: 'analiseIa' },
-  { number: 7, icon: BarChart3, label: 'Dashboard', href: '/dashboard', statusKey: 'dashboard' },
-  { number: 8, icon: Rocket, label: 'Publicar', href: '/publicar', statusKey: 'publicar' },
+  { number: 5, icon: Grid3x3, label: 'Grupos', href: '/grupos', statusKey: 'grupos' },
+  { number: 6, icon: Grid3x3, label: 'Classificações', href: '/classificacoes', statusKey: 'classificacoes' },
+  { number: 7, icon: Bot, label: 'Análise IA', href: '/analise-ia', statusKey: 'analiseIa' },
+  { number: 8, icon: BarChart3, label: 'Dashboard', href: '/dashboard', statusKey: 'dashboard' },
+  { number: 9, icon: Rocket, label: 'Publicar', href: '/publicar', statusKey: 'publicar' },
 ]
 
 export function Sidebar() {
