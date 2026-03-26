@@ -83,7 +83,6 @@ export function ProductSelector({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Back button */}
       <button
         onClick={onDone}
         className="inline-flex items-center gap-2 text-sm transition-colors"
@@ -93,7 +92,6 @@ export function ProductSelector({
         Voltar
       </button>
 
-      {/* Search */}
       <div className="relative">
         <Search
           size={16}
@@ -114,16 +112,13 @@ export function ProductSelector({
         />
       </div>
 
-      {/* Table */}
       <div
         className="border rounded-lg overflow-hidden"
         style={{ borderColor: 'var(--border-color)' }}
       >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead
-              style={{ backgroundColor: 'var(--bg-tertiary)' }}
-            >
+            <thead style={{ backgroundColor: 'var(--bg-tertiary)' }}>
               <tr>
                 <th className="w-12 p-3 text-left">
                   <input
@@ -229,7 +224,6 @@ export function ProductSelector({
         </div>
       </div>
 
-      {/* Info */}
       <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
         {selectedProductIds.length} de {filteredProducts.length} produto{filteredProducts.length !== 1 ? 's' : ''} selecionados
       </div>

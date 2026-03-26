@@ -7,7 +7,7 @@ import { AnalysisCard } from '@/components/analise-ia/AnalysisCard'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
-import { usePackStore } from '@/stores/packStore'
+import { useClassificationStore } from '@/stores/classificationStore'
 import { calculateAllMargins } from '@/lib/calculations'
 import { generateCompetitorData } from '@/lib/mock-competitors'
 import type { AIAnalysis } from '@/types'
@@ -71,21 +71,20 @@ function normalizeAnalysisResponse(
 export default function AnaliseIaPage() {
   const allProducts = useProductStore((s) => s.products)
   const { marketplaces } = useMarketplaceStore()
-  const { packs } = usePackStore()
+  const { classifications } = useClassificationStore()
   const { competitorPrices, aiAnalyses, addAnalysis } = useAnalysisStore()
 
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
+  const [selectedClassificationId, setSelectedClassificationId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [apiKeyMissing, setApiKeyMissing] = useState(false)
 
-  // Filter products by selected pack
-  const products = selectedPackId
-    ? allProducts.filter((p) => {
-        const pack = packs.find((pk) => pk.id === selectedPackId)
-        return pack?.productIds.includes(p.id)
-      })
+  const selectedClassification = classifications.find((c) => c.id === selectedClassificationId)
+
+  // Filter products by selected classification
+  const products = selectedClassificationId
+    ? allProducts.filter((p) => selectedClassification?.productIds.includes(p.id))
     : allProducts
 
   const allSelected = products.length > 0 && selectedIds.size === products.length
@@ -138,6 +137,7 @@ export default function AnaliseIaPage() {
             product,
             margins: productMargins,
             competitors,
+            groupAiContext: selectedClassification?.aiContext ?? null,
           }),
         })
 
@@ -220,18 +220,18 @@ export default function AnaliseIaPage() {
       />
 
       <div className="flex-1 overflow-auto p-6 flex flex-col gap-6">
-        {/* Pack Selector */}
+        {/* Classification Selector */}
         <div className="flex items-center gap-4">
           <label
             className="text-sm font-medium"
             style={{ color: 'var(--text-primary)' }}
           >
-            Pack:
+            Classificação:
           </label>
           <select
-            value={selectedPackId || ''}
+            value={selectedClassificationId || ''}
             onChange={(e) => {
-              setSelectedPackId(e.target.value || null)
+              setSelectedClassificationId(e.target.value || null)
               setSelectedIds(new Set())
             }}
             className="px-3 py-2 rounded-lg border transition-colors"
@@ -242,9 +242,9 @@ export default function AnaliseIaPage() {
             }}
           >
             <option value="">Todos os Produtos</option>
-            {packs.map((pack) => (
-              <option key={pack.id} value={pack.id}>
-                {pack.name}
+            {classifications.map((cls) => (
+              <option key={cls.id} value={cls.id}>
+                {cls.name}
               </option>
             ))}
           </select>

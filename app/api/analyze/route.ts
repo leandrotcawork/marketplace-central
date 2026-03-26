@@ -6,6 +6,7 @@ type AnalyzeRequestBody = {
   product: Product
   margins: MarginResult[]
   competitors: CompetitorPrice[]
+  groupAiContext: string | null
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -37,6 +38,8 @@ function sanitizeBody(raw: unknown): AnalyzeRequestBody | null {
   const competitors = Array.isArray(body.competitors)
     ? (body.competitors as CompetitorPrice[])
     : []
+  const groupAiContext =
+    typeof body.groupAiContext === 'string' ? body.groupAiContext.slice(0, 800) : null
 
   if (!isValidProduct(product)) return null
 
@@ -45,6 +48,7 @@ function sanitizeBody(raw: unknown): AnalyzeRequestBody | null {
     // Guard token/cost growth from oversized payloads.
     margins: margins.slice(0, 200),
     competitors: competitors.slice(0, 100),
+    groupAiContext,
   }
 }
 
@@ -71,7 +75,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { product, margins, competitors } = body
+    const { product, margins, competitors, groupAiContext } = body
 
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey || apiKey === 'your-key-here') {
@@ -83,9 +87,13 @@ export async function POST(req: NextRequest) {
 
     const openai = new OpenAI({ apiKey })
 
+    const groupSection = groupAiContext
+      ? `\nContexto do grupo de produtos:\n${groupAiContext}\n`
+      : ''
+
     const prompt = `Você é um analista de pricing para marketplace brasileiro de acabamentos (porcelanas, metais, cerâmicas).
 Analise os dados abaixo e retorne APENAS JSON válido, sem markdown, sem explicações.
-
+${groupSection}
 Produto: ${product.name}
 Custo: R$${product.cost}
 Preço atual: R$${product.basePrice}

@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
-import { usePackStore } from '@/stores/packStore'
+import { useClassificationStore } from '@/stores/classificationStore'
 import { calculateMargin } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { MarginIndicator } from './MarginIndicator'
@@ -11,20 +11,20 @@ import { MarginIndicator } from './MarginIndicator'
 type HealthFilter = 'all' | 'good' | 'warning' | 'critical'
 
 interface MarginTableProps {
-  packId?: string | null
+  groupId?: string | null
 }
 
-export function MarginTable({ packId }: MarginTableProps) {
+export function MarginTable({ groupId }: MarginTableProps) {
   const allProducts = useProductStore((s) => s.products)
   const marketplaces = useMarketplaceStore((s) => s.marketplaces)
-  const packs = usePackStore((s) => s.packs)
+  const classifications = useClassificationStore((s) => s.classifications)
 
-  // Filter products by pack if packId is provided
+  // Filter products by classification if groupId is provided
   const products = useMemo(() => {
-    if (!packId) return allProducts
-    const pack = packs.find((p) => p.id === packId)
-    return allProducts.filter((p) => pack?.productIds.includes(p.id))
-  }, [allProducts, packId, packs])
+    if (!groupId) return allProducts
+    const cls = classifications.find((c) => c.id === groupId)
+    return allProducts.filter((p) => cls?.productIds.includes(p.id))
+  }, [allProducts, groupId, classifications])
 
   const activeMarketplaces = useMemo(
     () => marketplaces.filter((m) => m.active),
