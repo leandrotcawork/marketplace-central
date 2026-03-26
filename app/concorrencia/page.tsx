@@ -7,24 +7,24 @@ import { PriceComparison } from '@/components/concorrencia/PriceComparison'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
-import { useClassificationStore } from '@/stores/classificationStore'
+import { useGroupStore } from '@/stores/groupStore'
 import { generateCompetitorData } from '@/lib/mock-competitors'
 
 export default function ConcorrenciaPage() {
   const allProducts = useProductStore((s) => s.products)
   const marketplaces = useMarketplaceStore((s) => s.marketplaces)
-  const { classifications } = useClassificationStore()
+  const { groups } = useGroupStore()
   const setCompetitorData = useAnalysisStore((s) => s.setCompetitorData)
 
-  const [selectedClassificationId, setSelectedClassificationId] = useState<string | null>(null)
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Filter products by selected classification
-  const products = selectedClassificationId
+  // Filter products by selected taxonomy group
+  const products = selectedGroupId
     ? allProducts.filter((p) => {
-        const cls = classifications.find((c) => c.id === selectedClassificationId)
-        return cls?.productIds.includes(p.id)
+        const group = groups.find((g) => g.id === selectedGroupId)
+        return group?.productIds.includes(p.id)
       })
     : allProducts
 
@@ -47,18 +47,18 @@ export default function ConcorrenciaPage() {
         subtitle="Compare seus preços com os concorrentes nos marketplaces"
       />
       <div className="flex-1 p-6 overflow-auto">
-        {/* Classification Selector */}
+        {/* Group Selector */}
         <div className="mb-6 flex items-center gap-4">
           <label
             className="text-sm font-medium"
             style={{ color: 'var(--text-primary)' }}
           >
-            Classificação:
+            Grupo:
           </label>
           <select
-            value={selectedClassificationId || ''}
+            value={selectedGroupId || ''}
             onChange={(e) => {
-              setSelectedClassificationId(e.target.value || null)
+              setSelectedGroupId(e.target.value || null)
               setSelectedProductId(null)
             }}
             className="px-3 py-2 rounded-lg border transition-colors"
@@ -69,9 +69,9 @@ export default function ConcorrenciaPage() {
             }}
           >
             <option value="">Todos os Produtos</option>
-            {classifications.map((cls) => (
-              <option key={cls.id} value={cls.id}>
-                {cls.name}
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
               </option>
             ))}
           </select>

@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
-import { useClassificationStore } from '@/stores/classificationStore'
+import { useGroupStore } from '@/stores/groupStore'
 import { calculateMargin } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { MarginIndicator } from './MarginIndicator'
@@ -17,14 +17,14 @@ interface MarginTableProps {
 export function MarginTable({ groupId }: MarginTableProps) {
   const allProducts = useProductStore((s) => s.products)
   const marketplaces = useMarketplaceStore((s) => s.marketplaces)
-  const classifications = useClassificationStore((s) => s.classifications)
+  const groups = useGroupStore((s) => s.groups)
 
-  // Filter products by classification if groupId is provided
+  // Filter products by taxonomy group if groupId is provided
   const products = useMemo(() => {
     if (!groupId) return allProducts
-    const cls = classifications.find((c) => c.id === groupId)
-    return allProducts.filter((p) => cls?.productIds.includes(p.id))
-  }, [allProducts, groupId, classifications])
+    const group = groups.find((g) => g.id === groupId)
+    return allProducts.filter((p) => group?.productIds.includes(p.id))
+  }, [allProducts, groupId, groups])
 
   const activeMarketplaces = useMemo(
     () => marketplaces.filter((m) => m.active),

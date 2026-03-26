@@ -5,21 +5,21 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { MarginTable } from '@/components/simulador/MarginTable'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
-import { useClassificationStore } from '@/stores/classificationStore'
+import { useGroupStore } from '@/stores/groupStore'
 
 export default function SimuladorPage() {
   const products = useProductStore((s) => s.products)
   const marketplaces = useMarketplaceStore((s) => s.marketplaces)
-  const { classifications } = useClassificationStore()
-  const [selectedClassificationId, setSelectedClassificationId] = useState<string | null>(null)
+  const { groups } = useGroupStore()
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
 
   const activeMarketplaces = marketplaces.filter((m) => m.active)
 
-  // Get products for selected classification or all products
-  const groupProducts = selectedClassificationId
+  // Get products for selected taxonomy group or all products
+  const groupProducts = selectedGroupId
     ? products.filter((p) => {
-        const cls = classifications.find((c) => c.id === selectedClassificationId)
-        return cls?.productIds.includes(p.id)
+        const group = groups.find((g) => g.id === selectedGroupId)
+        return group?.productIds.includes(p.id)
       })
     : products
 
@@ -29,8 +29,8 @@ export default function SimuladorPage() {
       : 'Simule preços e calcule margens por marketplace'
 
   const selectedGroupName =
-    selectedClassificationId && classifications.find((c) => c.id === selectedClassificationId)
-      ? classifications.find((c) => c.id === selectedClassificationId)!.name
+    selectedGroupId && groups.find((g) => g.id === selectedGroupId)
+      ? groups.find((g) => g.id === selectedGroupId)!.name
       : 'Todos os Produtos'
 
   return (
@@ -46,11 +46,11 @@ export default function SimuladorPage() {
             className="text-sm font-medium"
             style={{ color: 'var(--text-primary)' }}
           >
-            Classificação:
+            Grupo:
           </label>
           <select
-            value={selectedClassificationId || ''}
-            onChange={(e) => setSelectedClassificationId(e.target.value || null)}
+            value={selectedGroupId || ''}
+            onChange={(e) => setSelectedGroupId(e.target.value || null)}
             className="px-3 py-2 rounded-lg border transition-colors"
             style={{
               borderColor: 'var(--border-color)',
@@ -59,9 +59,9 @@ export default function SimuladorPage() {
             }}
           >
             <option value="">Todos os Produtos</option>
-            {classifications.map((cls) => (
-              <option key={cls.id} value={cls.id}>
-                {cls.name}
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
               </option>
             ))}
           </select>
@@ -73,7 +73,7 @@ export default function SimuladorPage() {
           </span>
         </div>
 
-        <MarginTable groupId={selectedClassificationId} />
+        <MarginTable groupId={selectedGroupId} />
       </div>
     </div>
   )

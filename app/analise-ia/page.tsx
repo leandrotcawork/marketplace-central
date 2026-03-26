@@ -8,6 +8,7 @@ import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
 import { useClassificationStore } from '@/stores/classificationStore'
+import { useGroupStore } from '@/stores/groupStore'
 import { calculateAllMargins } from '@/lib/calculations'
 import { generateCompetitorData } from '@/lib/mock-competitors'
 import type { AIAnalysis } from '@/types'
@@ -72,8 +73,10 @@ export default function AnaliseIaPage() {
   const allProducts = useProductStore((s) => s.products)
   const { marketplaces } = useMarketplaceStore()
   const { classifications } = useClassificationStore()
+  const { groups } = useGroupStore()
   const { competitorPrices, aiAnalyses, addAnalysis } = useAnalysisStore()
 
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedClassificationId, setSelectedClassificationId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
@@ -81,10 +84,11 @@ export default function AnaliseIaPage() {
   const [apiKeyMissing, setApiKeyMissing] = useState(false)
 
   const selectedClassification = classifications.find((c) => c.id === selectedClassificationId)
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId)
 
-  // Filter products by selected classification
-  const products = selectedClassificationId
-    ? allProducts.filter((p) => selectedClassification?.productIds.includes(p.id))
+  // Filter products by selected taxonomy group for scoping
+  const products = selectedGroupId
+    ? allProducts.filter((p) => selectedGroup?.productIds.includes(p.id))
     : allProducts
 
   const allSelected = products.length > 0 && selectedIds.size === products.length
@@ -220,34 +224,55 @@ export default function AnaliseIaPage() {
       />
 
       <div className="flex-1 overflow-auto p-6 flex flex-col gap-6">
-        {/* Classification Selector */}
-        <div className="flex items-center gap-4">
-          <label
-            className="text-sm font-medium"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            Classificação:
-          </label>
-          <select
-            value={selectedClassificationId || ''}
-            onChange={(e) => {
-              setSelectedClassificationId(e.target.value || null)
-              setSelectedIds(new Set())
-            }}
-            className="px-3 py-2 rounded-lg border transition-colors"
-            style={{
-              borderColor: 'var(--border-color)',
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-primary)',
-            }}
-          >
-            <option value="">Todos os Produtos</option>
-            {classifications.map((cls) => (
-              <option key={cls.id} value={cls.id}>
-                {cls.name}
-              </option>
-            ))}
-          </select>
+        {/* Scope and AI context selectors */}
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              Grupo:
+            </label>
+            <select
+              value={selectedGroupId || ''}
+              onChange={(e) => {
+                setSelectedGroupId(e.target.value || null)
+                setSelectedIds(new Set())
+              }}
+              className="px-3 py-2 rounded-lg border transition-colors"
+              style={{
+                borderColor: 'var(--border-color)',
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <option value="">Todos os Produtos</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              Classificação IA:
+            </label>
+            <select
+              value={selectedClassificationId || ''}
+              onChange={(e) => setSelectedClassificationId(e.target.value || null)}
+              className="px-3 py-2 rounded-lg border transition-colors"
+              style={{
+                borderColor: 'var(--accent-primary)',
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <option value="">Sem contexto de IA</option>
+              {classifications.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* API key missing banner */}
