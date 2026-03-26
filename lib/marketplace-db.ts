@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { transaction } from '@/lib/db'
-import { encryptSecretPayload } from '@/lib/marketplace-crypto'
+import { encryptSecretPayload, decryptSecretPayload } from '@/lib/marketplace-crypto'
 import type {
   MarketplaceAuthStrategy,
   MarketplaceConnection,
@@ -245,6 +245,57 @@ export async function upsertMarketplaceConnection(
 
     return mapConnectionRow(row)
   }, tenantId)
+}
+
+export async function getConnectionByChannelId(
+  channelId: string,
+  tenantId?: string
+): Promise<MarketplaceConnection | null> {
+  await ensureMarketplaceInfrastructure(tenantId)
+  const tenant = effectiveTenantId(tenantId)
+
+  const result = await transaction(async (client) => {
+    return client.query(
+      `SELECT
+        connection_id, channel_id, display_name, account_id,
+        auth_strategy, status, has_stored_secret,
+        last_validated_at, last_error, updated_at
+      FROM marketplace_connections
+      WHERE tenant_id = $1 AND channel_id = $2
+      LIMIT 1`,
+      [tenant, channelId]
+    )
+  }, tenantId)
+
+  const row = result.rows[0] as Record<string, unknown> | undefined
+  return row ? mapConnectionRow(row) : null
+}
+
+export async function getDecryptedConnectionSecrets(
+  connectionId: string,
+  tenantId?: string
+): Promise<Record<string, unknown> | null> {
+  await ensureMarketplaceInfrastructure(tenantId)
+  const tenant = effectiveTenantId(tenantId)
+
+  const result = await transaction(async (client) => {
+    return client.query(
+      `SELECT encrypted_payload
+       FROM marketplace_connection_secrets
+       WHERE connection_id = $1 AND tenant_id = $2
+       LIMIT 1`,
+      [connectionId, tenant]
+    )
+  }, tenantId)
+
+  const row = result.rows[0] as Record<string, unknown> | undefined
+  if (!row) return null
+
+  try {
+    return decryptSecretPayload(row.encrypted_payload as Parameters<typeof decryptSecretPayload>[0])
+  } catch {
+    return null
+  }
 }
 
 type CreateSyncJobInput = {

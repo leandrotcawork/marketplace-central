@@ -31,6 +31,7 @@ interface MarketplaceConnectionFormProps {
     lastError?: string
     secrets?: Record<string, string>
   }) => Promise<void> | void
+  onValidate?: (channelId: string) => Promise<void> | void
 }
 
 type SecretField = {
@@ -52,6 +53,9 @@ function getSecretFields(authStrategy: MarketplaceAuthStrategy): SecretField[] {
         { key: 'clientId', label: 'LWA Client ID', placeholder: 'Identificador Login with Amazon' },
         { key: 'clientSecret', label: 'LWA Client Secret', placeholder: 'Segredo LWA' },
         { key: 'refreshToken', label: 'Refresh Token', placeholder: 'Refresh token SP-API' },
+        { key: 'awsAccessKeyId', label: 'AWS Access Key ID', placeholder: 'AKIA...' },
+        { key: 'awsSecretAccessKey', label: 'AWS Secret Access Key', placeholder: 'Chave secreta IAM' },
+        { key: 'sellerId', label: 'Seller ID', placeholder: 'ID do seller na Amazon Brasil' },
       ]
     case 'api_key':
       return [
@@ -93,14 +97,40 @@ export function MarketplaceConnectionForm({
   connection,
   saving,
   onSave,
+  onValidate,
 }: MarketplaceConnectionFormProps) {
   const [draft, setDraft] = useState<ConnectionDraft>(() => buildDraft(marketplace, connection))
+  const [validating, setValidating] = useState(false)
+  const [validateResult, setValidateResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   useEffect(() => {
     setDraft(buildDraft(marketplace, connection))
   }, [connection, marketplace])
 
   const secretFields = getSecretFields(marketplace.authStrategy)
+
+  async function handleValidate() {
+    if (!connection?.hasStoredSecret) return
+    setValidating(true)
+    setValidateResult(null)
+    try {
+      const res = await fetch(
+        `/api/marketplace-connections/${encodeURIComponent(marketplace.id)}/validate`,
+        { method: 'POST' }
+      )
+      const payload = await res.json()
+      if (payload?.success) {
+        setValidateResult({ ok: true, message: `Conexão válida — conta: ${payload.data?.accountId ?? ''}` })
+      } else {
+        setValidateResult({ ok: false, message: payload?.error ?? 'Falha na validação' })
+      }
+    } catch (error) {
+      setValidateResult({ ok: false, message: error instanceof Error ? error.message : 'Erro ao validar' })
+    } finally {
+      setValidating(false)
+      if (onValidate) await onValidate(marketplace.id)
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -265,10 +295,38 @@ export function MarketplaceConnectionForm({
         </label>
       </div>
 
+      {validateResult && (
+        <div
+          className="mt-3 rounded-lg px-3 py-2 text-xs"
+          style={{
+            backgroundColor: validateResult.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+            color: validateResult.ok ? 'var(--accent-success)' : 'var(--accent-danger)',
+            border: `1px solid ${validateResult.ok ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+          }}
+        >
+          {validateResult.message}
+        </div>
+      )}
+
       <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          Salvar esta conexao atualiza o hub server-side e o status do card.
-        </p>
+        <div className="flex items-center gap-2">
+          {connection?.hasStoredSecret && (
+            <button
+              type="button"
+              onClick={handleValidate}
+              className="rounded-lg px-3 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+              disabled={validating || saving}
+            >
+              {validating ? 'Testando...' : 'Testar conexao'}
+            </button>
+          )}
+        </div>
         <button
           type="submit"
           className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-60"

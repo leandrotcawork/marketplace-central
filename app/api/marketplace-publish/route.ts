@@ -2,9 +2,11 @@ import { randomUUID } from 'crypto'
 import { type NextRequest } from 'next/server'
 import {
   createMarketplaceSyncJob,
+  getDecryptedConnectionSecrets,
   listMarketplaceConnections,
   upsertMarketplaceRemoteListing,
 } from '@/lib/marketplace-db'
+import { createMarketplaceClient, type ProductPublishInput as ClientPublishInput } from '@/lib/marketplace-client-factory'
 import type {
   MarketplaceCapabilityStatus,
   MarketplaceExecutionMode,
@@ -108,6 +110,47 @@ export async function POST(request: NextRequest) {
       const connection = connectionByChannel.get(item.channelId)
       const lifecycle = derivePublishStatus(item, connection?.status === 'connected')
 
+      // For live channels with an active connection, call the real marketplace API
+      let externalListingId: string | undefined
+      let apiError: string | undefined
+
+      if (
+        lifecycle.status === 'published' &&
+        connection?.connectionId
+      ) {
+        try {
+          const secrets = await getDecryptedConnectionSecrets(connection.connectionId, tenantId)
+
+          if (secrets) {
+            const client = createMarketplaceClient(item.channelId, secrets)
+            const publishInput: ClientPublishInput = {
+              sku: item.sku,
+              name: item.productName,
+              price: item.price,
+              stock: item.stock,
+            }
+            const apiResult = await client.publishProduct(publishInput)
+
+            if (apiResult.ok) {
+              externalListingId = apiResult.externalId
+            } else {
+              apiError = apiResult.error
+              lifecycle.status = 'failed'
+              lifecycle.errorMessage = apiResult.error
+            }
+          }
+        } catch (apiCallError) {
+          apiError = apiCallError instanceof Error ? apiCallError.message : 'API call failed'
+          lifecycle.status = 'failed'
+          lifecycle.errorMessage = apiError
+        }
+      }
+
+      // Fallback external ID for non-live or simulated channels
+      if (!externalListingId && (lifecycle.status === 'published' || lifecycle.status === 'partial')) {
+        externalListingId = `${item.channelId.toUpperCase()}-${item.sku}`
+      }
+
       const syncJob = await createMarketplaceSyncJob(
         {
           channelId: item.channelId,
@@ -132,8 +175,8 @@ export async function POST(request: NextRequest) {
           resultPayload:
             lifecycle.status === 'published' || lifecycle.status === 'partial'
               ? {
-                  externalListingId: `${item.channelId.toUpperCase()}-${item.sku}`,
-                  simulated: true,
+                  externalListingId,
+                  simulated: !externalListingId || externalListingId.includes('-') && !externalListingId.startsWith(item.channelId.toUpperCase() + '-' + item.sku.slice(0, 3)),
                 }
               : undefined,
           errorMessage: lifecycle.errorMessage,
@@ -151,7 +194,7 @@ export async function POST(request: NextRequest) {
                 channelId: item.channelId,
                 connectionId: connection?.connectionId,
                 productId: item.productId,
-                externalListingId: `${item.channelId.toUpperCase()}-${randomUUID().slice(0, 8)}`,
+                externalListingId: externalListingId ?? `${item.channelId.toUpperCase()}-${randomUUID().slice(0, 8)}`,
                 externalSku: item.sku,
                 status: lifecycle.status,
                 lastPrice: item.price,
@@ -175,6 +218,7 @@ export async function POST(request: NextRequest) {
         syncJobId: syncJob.id,
         connectionId: connection?.connectionId,
         remoteListingId: remoteListing?.id,
+        externalListingId,
         syncedAt:
           lifecycle.status === 'published' || lifecycle.status === 'partial'
             ? new Date().toISOString()

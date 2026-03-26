@@ -306,6 +306,20 @@ export default function MarketplacesPage() {
                   connection={selectedConnection}
                   saving={savingChannelId === selectedMarketplace.id || loadingConnections}
                   onSave={handleSaveConnection}
+                  onValidate={async () => {
+                    // Reload connections after validation to reflect any status changes
+                    try {
+                      const response = await fetch('/api/marketplace-connections')
+                      const payload = await response.json()
+                      if (payload?.success) {
+                        const nextConnections = payload.data as MarketplaceConnection[]
+                        setConnections(nextConnections)
+                        syncConnectionStatuses(nextConnections)
+                      }
+                    } catch {
+                      // non-blocking
+                    }
+                  }}
                 />
               )}
               {activeTab === 'matrix' && (
