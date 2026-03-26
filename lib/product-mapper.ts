@@ -12,7 +12,7 @@ export function mapProductFromDatabase(row: RawProductRow): Product {
     referencia: row.referencia || undefined,
     ean: row.ean || undefined,
     name: row.name || '',
-    category: 'Uncategorized', // TODO: fetch from catalog_categories if available
+    category: row.taxonomy_group || 'Uncategorized',
     cost: normalizeNumber(row.cost) || 0,
     basePrice: normalizeNumber(row.base_price) || 0,
     stock: normalizeNumber(row.stock) || 0,

@@ -10,6 +10,15 @@ export interface RawProductRow {
   stock?: number
   referencia?: string
   ean?: string
+  taxonomy_group?: string
+}
+
+export interface RawTaxonomyGroupRow {
+  taxonomy_node_id: string
+  name: string
+  level: number
+  level_label: string
+  product_ids: string[]
 }
 
 const BASE_SELECT = `
@@ -22,7 +31,8 @@ const BASE_SELECT = `
     COALESCE(ppp.price_amount, 0) as base_price,
     COALESCE(ipp.on_hand_quantity, 0) as stock,
     MAX(CASE WHEN pi.identifier_type = 'reference' THEN pi.identifier_value END) as referencia,
-    MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean
+    MAX(CASE WHEN pi.identifier_type = 'ean' THEN pi.identifier_value END) as ean,
+    ctn.name as taxonomy_group
   FROM catalog_products cp
   LEFT JOIN pricing_product_prices ppp ON cp.product_id = ppp.product_id
     AND ppp.pricing_status = 'active'
@@ -31,6 +41,7 @@ const BASE_SELECT = `
     AND ipp.position_status = 'active'
     AND ipp.effective_to IS NULL
   LEFT JOIN catalog_product_identifiers pi ON cp.product_id = pi.product_id
+  LEFT JOIN catalog_taxonomy_nodes ctn ON cp.primary_taxonomy_node_id = ctn.taxonomy_node_id
 `
 
 const BASE_GROUP_BY = `
@@ -42,7 +53,8 @@ const BASE_GROUP_BY = `
     ppp.replacement_cost_amount,
     ppp.average_cost_amount,
     ppp.price_amount,
-    ipp.on_hand_quantity
+    ipp.on_hand_quantity,
+    ctn.name
 `
 
 /**
@@ -117,4 +129,31 @@ export async function fetchProductsByIds(
   `
   const result = await query(sql, productIds, tenantId)
   return result.rows as RawProductRow[]
+}
+
+/**
+ * Fetch all taxonomy nodes with product counts from MetalShopping
+ */
+export async function fetchTaxonomyGroups(tenantId?: string): Promise<RawTaxonomyGroupRow[]> {
+  const sql = `
+    SELECT
+      ctn.taxonomy_node_id,
+      ctn.name,
+      ctn.level,
+      COALESCE(ctld.label, 'Grupo') as level_label,
+      COALESCE(
+        array_agg(cp.product_id ORDER BY cp.product_id) FILTER (WHERE cp.product_id IS NOT NULL),
+        '{}'
+      ) as product_ids
+    FROM catalog_taxonomy_nodes ctn
+    LEFT JOIN catalog_taxonomy_level_defs ctld ON ctn.level = ctld.level
+    LEFT JOIN catalog_products cp
+      ON cp.primary_taxonomy_node_id = ctn.taxonomy_node_id
+      AND cp.status = 'active'
+    WHERE ctn.is_active = true
+    GROUP BY ctn.taxonomy_node_id, ctn.name, ctn.level, ctld.label
+    ORDER BY ctn.level, ctn.name
+  `
+  const result = await query(sql, [], tenantId)
+  return result.rows as RawTaxonomyGroupRow[]
 }
