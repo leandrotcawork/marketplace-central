@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { MarketplaceBaseForm } from '@/components/marketplaces/MarketplaceBaseForm'
 import { MarketplaceCard } from '@/components/marketplaces/MarketplaceCard'
 import { MarketplaceCommercialMatrix } from '@/components/marketplaces/MarketplaceCommercialMatrix'
+import { MarketplaceCommissionImportPanel } from '@/components/marketplaces/MarketplaceCommissionImportPanel'
 import { MarketplaceConnectionForm } from '@/components/marketplaces/MarketplaceConnectionForm'
 import { useMarketplaceCommissionScope } from '@/hooks/useMarketplaceCommissionScope'
 import { calculateMarginForMarketplace } from '@/lib/calculations'
@@ -28,6 +29,7 @@ export default function MarketplacesPage() {
     updateMarketplaceCommercialProfile,
     updateMarketplaceCapabilities,
     updateCommissionRule,
+    applyCommissionImport,
     addMarketplace,
     resetDefaults,
     syncConnectionStatuses,
@@ -112,6 +114,18 @@ export default function MarketplacesPage() {
   const selectedRules = selectedMarketplace
     ? getMarketplaceScopedRules(selectedMarketplace.id, scopedGroups, commissionRules)
     : []
+
+  const scopedProducts = useMemo(() => {
+    if (classifications.length === 0 || products.length === 0) return []
+
+    const scopedProductIds = new Set(
+      classifications.flatMap((classification) => classification.productIds)
+    )
+
+    return products.filter(
+      (product) => scopedProductIds.has(product.id) && Boolean(product.primaryTaxonomyNodeId)
+    )
+  }, [classifications, products])
 
   const selectedConnection = selectedMarketplace
     ? connections.find((connection) => connection.channelId === selectedMarketplace.id)
@@ -323,12 +337,22 @@ export default function MarketplacesPage() {
                 />
               )}
               {activeTab === 'matrix' && (
-                <MarketplaceCommercialMatrix
-                  marketplace={selectedMarketplace}
-                  rules={selectedRules}
-                  averageMargin={averageMarginByMarketplace.get(selectedMarketplace.id) ?? null}
-                  onRuleChange={updateCommissionRule}
-                />
+                <div className="flex flex-col gap-4">
+                  {selectedMarketplace.id === 'mercado-livre' && (
+                    <MarketplaceCommissionImportPanel
+                      products={scopedProducts}
+                      onApply={(groups) =>
+                        applyCommissionImport(selectedMarketplace.id, groups)
+                      }
+                    />
+                  )}
+                  <MarketplaceCommercialMatrix
+                    marketplace={selectedMarketplace}
+                    rules={selectedRules}
+                    averageMargin={averageMarginByMarketplace.get(selectedMarketplace.id) ?? null}
+                    onRuleChange={updateCommissionRule}
+                  />
+                </div>
               )}
             </div>
 

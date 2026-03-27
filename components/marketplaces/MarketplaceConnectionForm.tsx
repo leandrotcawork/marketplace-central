@@ -40,41 +40,34 @@ type SecretField = {
   placeholder: string
 }
 
-function getSecretFields(authStrategy: MarketplaceAuthStrategy): SecretField[] {
+function getSecretFields(marketplaceId: string, authStrategy: MarketplaceAuthStrategy): SecretField[] {
+  switch (marketplaceId) {
+    case 'mercado-livre':
+      return [{ key: 'refreshToken', label: 'Refresh Token', placeholder: 'Token de renovacao' }]
+    case 'amazon':
+      return [
+        { key: 'refreshToken', label: 'Refresh Token', placeholder: 'Refresh token SP-API' },
+      ]
+    case 'magalu':
+      return []
+    case 'leroy':
+      return []
+    case 'madeira':
+      return []
+    default:
+      break
+  }
+
   switch (authStrategy) {
     case 'oauth2':
-      return [
-        { key: 'clientId', label: 'Client ID', placeholder: 'App ID do parceiro' },
-        { key: 'clientSecret', label: 'Client Secret', placeholder: 'Segredo da app' },
-        { key: 'refreshToken', label: 'Refresh Token', placeholder: 'Token de renovacao' },
-      ]
-    case 'lwa':
-      return [
-        { key: 'clientId', label: 'LWA Client ID', placeholder: 'Identificador Login with Amazon' },
-        { key: 'clientSecret', label: 'LWA Client Secret', placeholder: 'Segredo LWA' },
-        { key: 'refreshToken', label: 'Refresh Token', placeholder: 'Refresh token SP-API' },
-        { key: 'awsAccessKeyId', label: 'AWS Access Key ID', placeholder: 'AKIA...' },
-        { key: 'awsSecretAccessKey', label: 'AWS Secret Access Key', placeholder: 'Chave secreta IAM' },
-        { key: 'sellerId', label: 'Seller ID', placeholder: 'ID do seller na Amazon Brasil' },
-      ]
     case 'api_key':
-      return [
-        { key: 'apiKey', label: 'API Key', placeholder: 'Chave do seller portal' },
-        { key: 'apiSecret', label: 'API Secret', placeholder: 'Segredo opcional' },
-      ]
     case 'token':
-      return [
-        { key: 'accessToken', label: 'Access Token', placeholder: 'Token do canal' },
-      ]
     case 'seller_portal':
-      return [
-        { key: 'portalUser', label: 'Usuario', placeholder: 'Usuario do seller portal' },
-        { key: 'portalPassword', label: 'Senha', placeholder: 'Senha ou token' },
-      ]
+      return []
+    case 'lwa':
+      return [{ key: 'refreshToken', label: 'Refresh Token', placeholder: 'Refresh token SP-API' }]
     default:
-      return [
-        { key: 'credential', label: 'Credencial', placeholder: 'Cole aqui a credencial principal' },
-      ]
+      return []
   }
 }
 
@@ -107,7 +100,7 @@ export function MarketplaceConnectionForm({
     setDraft(buildDraft(marketplace, connection))
   }, [connection, marketplace])
 
-  const secretFields = getSecretFields(marketplace.authStrategy)
+  const secretFields = getSecretFields(marketplace.id, marketplace.authStrategy)
 
   async function handleValidate() {
     if (!connection?.hasStoredSecret) return
@@ -175,6 +168,9 @@ export function MarketplaceConnectionForm({
           </h3>
           <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
             Credenciais ficam apenas no servidor. Campos vazios nao sobrescrevem o segredo salvo.
+          </p>
+          <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+            Client ID, client secret, API keys e tokens de plataforma devem ficar no `.env`.
           </p>
         </div>
         <span
@@ -281,6 +277,20 @@ export function MarketplaceConnectionForm({
           </label>
         ))}
 
+        {secretFields.length === 0 && (
+          <div
+            className="rounded-lg border px-3 py-3 text-xs md:col-span-2"
+            style={{
+              borderColor: 'var(--border-color)',
+              backgroundColor: 'var(--bg-tertiary)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            Este canal está configurado para ler credenciais sensíveis diretamente do servidor via
+            `.env`. Use esta tela apenas para metadata da conexão, validação e OAuth quando houver.
+          </div>
+        )}
+
         <label className="flex flex-col gap-1.5 text-xs md:col-span-2">
           <span style={{ color: 'var(--text-secondary)' }}>Ultimo erro</span>
           <textarea
@@ -310,6 +320,22 @@ export function MarketplaceConnectionForm({
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
+          {marketplace.id === 'mercado-livre' && (
+            <a
+              href="/api/auth/mercado-livre/start"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg px-3 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+              style={{
+                backgroundColor: 'rgba(255,230,0,0.15)',
+                color: 'var(--text-primary)',
+                border: '1px solid rgba(255,230,0,0.3)',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+            >
+              Autorizar no Mercado Livre
+            </a>
+          )}
           {connection?.hasStoredSecret && (
             <button
               type="button"

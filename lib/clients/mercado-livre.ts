@@ -29,11 +29,52 @@ export type ProductPublishInput = {
   attributes?: Record<string, string>
 }
 
+export type MeLiCategorySuggestion = {
+  categoryId: string
+  categoryName?: string
+}
+
+export type MeLiListingPriceResult = {
+  categoryId: string
+  categoryName?: string
+  listingTypeId: string
+  commissionPercent: number
+  fixedFeeAmount: number
+  saleFeeAmount: number
+  sourceRef: string
+}
+
 type MeLiTokenResponse = {
   access_token: string
   refresh_token: string
   user_id: number
   expires_in: number
+}
+
+type MeLiDomainDiscoveryRow = {
+  category_id?: string
+  category_name?: string
+}
+
+type MeLiShippingOptionsResponse = {
+  coverage?: {
+    all_country?: {
+      list_cost?: number
+      currency_id?: string
+    }
+  }
+}
+
+type MeLiListingPriceRow = {
+  category_id?: string
+  listing_type_id?: string
+  sale_fee_amount?: number
+  sale_fee_details?: {
+    gross_amount?: number
+    percentage_fee?: number
+    meli_percentage_fee?: number
+    fixed_fee?: number
+  }
 }
 
 type MeLiValidateResult = { ok: true; accountId: string } | { ok: false; error: string }
@@ -222,16 +263,152 @@ export class MercadoLivreClient {
     }
   }
 
-  // --- Category helper ---
+  // --- Shipping ---
 
-  async suggestCategory(title: string): Promise<string | null> {
+  /**
+   * Looks up a product by EAN/GTIN in the ML catalog and returns its package dimensions
+   * in the format expected by getSellerShippingCost: "HxWxL,weight_grams".
+   *
+   * This mirrors what ML's own website does when you add a product by EAN —
+   * they already have dimensions stored in the catalog.
+   *
+   * Returns null if the EAN is not found or the item has no dimension data.
+   */
+  async getCatalogDimensions(ean: string): Promise<string | null> {
     try {
-      const res = await this.fetch<{ category_id: string }[]>(
-        `/sites/MLB/domain_discovery/search?q=${encodeURIComponent(title)}&limit=1`
+      type SearchResult = { id: string; shipping?: { dimensions?: string } }
+      const searchRes = await this.fetch<{ results: SearchResult[] }>(
+        `/sites/MLB/search?gtin=${encodeURIComponent(ean)}&limit=1`
       )
-      return res[0]?.category_id ?? null
+
+      const item = searchRes.results?.[0]
+      if (!item?.id) return null
+
+      // Search results sometimes already include shipping.dimensions
+      if (item.shipping?.dimensions) return item.shipping.dimensions
+
+      // Otherwise fetch the full item to get dimensions
+      const fullItem = await this.fetch<{ shipping?: { dimensions?: string } }>(
+        `/items/${item.id}`
+      )
+
+      return fullItem.shipping?.dimensions ?? null
     } catch {
       return null
     }
   }
+
+  /**
+   * Returns the actual seller cost (after mandatory ML discount) for free shipping
+   * on a gold_special / me2 / drop_off listing.
+   *
+   * dimensions format: "HxWxL,weight_grams" — e.g. "10x60x60,25000" for a 25 kg tile
+   * Returns null if the request fails or the endpoint doesn't cover the region.
+   */
+  async getSellerShippingCost(params: {
+    dimensions: string
+    itemPrice: number
+    listingTypeId?: string
+  }): Promise<number | null> {
+    try {
+      if (!this.userId) await this.validateConnection()
+
+      const query = new URLSearchParams({
+        dimensions: params.dimensions,
+        item_price: String(params.itemPrice),
+        listing_type_id: params.listingTypeId ?? 'gold_special',
+        mode: 'me2',
+        condition: 'new',
+        logistic_type: 'drop_off',
+        free_shipping: 'True',
+        verbose: 'true',
+      })
+
+      const res = await this.fetch<MeLiShippingOptionsResponse>(
+        `/users/${this.userId}/shipping_options/free?${query}`
+      )
+
+      return res.coverage?.all_country?.list_cost ?? null
+    } catch {
+      return null
+    }
+  }
+
+  // --- Category helper ---
+
+  async suggestCategory(title: string): Promise<string | null> {
+    const suggestion = await this.suggestCategoryDetailed(title)
+    return suggestion?.categoryId ?? null
+  }
+
+  async suggestCategoryDetailed(title: string): Promise<MeLiCategorySuggestion | null> {
+    try {
+      const res = await this.fetch<MeLiDomainDiscoveryRow[]>(
+        `/sites/MLB/domain_discovery/search?q=${encodeURIComponent(title)}&limit=1`
+      )
+      const first = res[0]
+      if (!first?.category_id) return null
+
+      return {
+        categoryId: first.category_id,
+        categoryName: first.category_name,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  async getListingPrice(params: {
+    price: number
+    categoryId: string
+    categoryName?: string
+    listingTypeId?: string
+  }): Promise<MeLiListingPriceResult> {
+    const listingTypeId = params.listingTypeId ?? 'gold_special'
+    const query = new URLSearchParams({
+      price: String(params.price),
+      category_id: params.categoryId,
+      listing_type_id: listingTypeId,
+    })
+
+    const raw = await this.fetch<MeLiListingPriceRow | MeLiListingPriceRow[]>(
+      `/sites/MLB/listing_prices?${query.toString()}`
+    )
+
+    const payload = Array.isArray(raw) ? raw[0] : raw
+
+    if (!payload) {
+      throw new Error('MeLi listing_prices retornou vazio')
+    }
+
+    const saleFeeAmount = normalizeNumber(
+      payload.sale_fee_amount ?? payload.sale_fee_details?.gross_amount
+    )
+    const fixedFeeAmount = normalizeNumber(payload.sale_fee_details?.fixed_fee)
+    const percentageFee =
+      normalizeNumber(payload.sale_fee_details?.percentage_fee) ||
+      normalizeNumber(payload.sale_fee_details?.meli_percentage_fee)
+
+    const commissionPercent =
+      percentageFee > 0
+        ? percentageFee / 100
+        : params.price > 0
+        ? Math.max((saleFeeAmount - fixedFeeAmount) / params.price, 0)
+        : 0
+
+    return {
+      categoryId: payload.category_id ?? params.categoryId,
+      categoryName: params.categoryName,
+      listingTypeId: payload.listing_type_id ?? listingTypeId,
+      commissionPercent,
+      fixedFeeAmount,
+      saleFeeAmount,
+      sourceRef: `ML listing_prices category=${payload.category_id ?? params.categoryId} listing_type=${payload.listing_type_id ?? listingTypeId}`,
+    }
+  }
+}
+
+function normalizeNumber(value: unknown): number {
+  const parsed = typeof value === 'string' ? Number(value) : Number(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
 }

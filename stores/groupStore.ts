@@ -1,7 +1,8 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { sqliteStorage } from '@/lib/sqlite-storage'
 import type { Group } from '@/types'
 
 interface GroupState {
@@ -49,6 +50,6 @@ export const useGroupStore = create<GroupState>()(
 
       clearAll: () => set({ groups: [], lastSyncedAt: null }),
     }),
-    { name: 'mc-taxonomy-groups' }
+    { name: 'mc-taxonomy-groups', storage: createJSONStorage(() => sqliteStorage) }
   )
 )

@@ -19,23 +19,19 @@ export async function POST(
       )
     }
 
-    if (!connection.hasStoredSecret) {
-      return Response.json(
-        { success: false, error: 'Nenhuma credencial salva para este canal' },
-        { status: 400 }
-      )
-    }
+    const secrets =
+      connection.hasStoredSecret
+        ? await getDecryptedConnectionSecrets(connection.connectionId, tenantId)
+        : {}
 
-    const secrets = await getDecryptedConnectionSecrets(connection.connectionId, tenantId)
-
-    if (!secrets) {
+    if (connection.hasStoredSecret && !secrets) {
       return Response.json(
         { success: false, error: 'Falha ao descriptografar credenciais' },
         { status: 500 }
       )
     }
 
-    const client = createMarketplaceClient(channelId, secrets)
+    const client = createMarketplaceClient(channelId, secrets ?? {})
     const result = await client.validateConnection()
 
     if (!result.ok) {

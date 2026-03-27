@@ -1,7 +1,8 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { sqliteStorage } from '@/lib/sqlite-storage'
 import { syncCommissionRulesToScope } from '@/lib/marketplace-commercial'
 import { getDefaultMarketplaces } from '@/lib/marketplace-seed'
 import { generateId } from '@/lib/formatters'
@@ -9,6 +10,7 @@ import type {
   Marketplace,
   MarketplaceCapabilityProfile,
   MarketplaceCommercialProfile,
+  MarketplaceCommissionImportGroupPreview,
   MarketplaceCommissionRule,
   MarketplaceConnection,
   MarketplaceScopedGroup,
@@ -77,6 +79,10 @@ interface MarketplaceState {
   syncConnectionStatuses: (connections: MarketplaceConnection[]) => void
   syncCommissionScope: (scopedGroups: MarketplaceScopedGroup[]) => void
   updateCommissionRule: (id: string, partial: Partial<MarketplaceCommissionRule>) => void
+  applyCommissionImport: (
+    channelId: string,
+    groups: MarketplaceCommissionImportGroupPreview[]
+  ) => void
   addMarketplace: (name: string) => void
   removeMarketplace: (id: string) => void
   resetDefaults: () => void
@@ -227,6 +233,46 @@ export const useMarketplaceStore = create<MarketplaceState>()(
           }),
         })),
 
+      applyCommissionImport: (channelId, groups) =>
+        set((state) => {
+          const importedGroups = new Map(
+            groups
+              .filter(
+                (group) =>
+                  group.status === 'importable' &&
+                  typeof group.commissionPercent === 'number' &&
+                  typeof group.fixedFeeAmount === 'number'
+              )
+              .map((group) => [group.groupId, group] as const)
+          )
+
+          if (importedGroups.size === 0) {
+            return state
+          }
+
+          return {
+            commissionRules: state.commissionRules.map((rule) => {
+              if (rule.channelId !== channelId) return rule
+
+              const imported = importedGroups.get(rule.groupId)
+              if (!imported) return rule
+
+              return {
+                ...rule,
+                ruleType: 'group_override',
+                commissionPercent: imported.commissionPercent ?? rule.commissionPercent,
+                fixedFeeAmount: imported.fixedFeeAmount ?? rule.fixedFeeAmount,
+                freightFixedAmount: imported.freightFixedAmount ?? rule.freightFixedAmount,
+                sourceType: 'official_doc',
+                sourceRef: imported.sourceRef,
+                evidenceDate: new Date().toISOString(),
+                reviewStatus: 'validated',
+                notes: imported.notes,
+              }
+            }),
+          }
+        }),
+
       addMarketplace: (name) =>
         set((state) => {
           const nextMarketplace = buildCustomMarketplace(name)
@@ -255,6 +301,7 @@ export const useMarketplaceStore = create<MarketplaceState>()(
     }),
     {
       name: 'mc-marketplaces',
+      storage: createJSONStorage(() => sqliteStorage),
       version: 2,
       migrate: (persistedState: unknown, version) => {
         if (!persistedState || typeof persistedState !== 'object') {

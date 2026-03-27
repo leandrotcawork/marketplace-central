@@ -1,7 +1,8 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { sqliteStorage } from '@/lib/sqlite-storage'
 import type { Product } from '@/types'
 
 interface ProductState {
@@ -87,6 +88,7 @@ export const useProductStore = create<ProductState>()(
     }),
     {
       name: 'mc-products',
+      storage: createJSONStorage(() => sqliteStorage),
     }
   )
 )

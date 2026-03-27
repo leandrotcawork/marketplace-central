@@ -43,3 +43,8 @@ next-env.d.ts
 # local dev / AI session data
 .claude/
 .brain/
+
+# local sqlite database
+/data/
+
+certificates

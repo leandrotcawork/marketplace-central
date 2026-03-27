@@ -68,6 +68,14 @@ function str(secrets: Record<string, unknown>, key: string): string {
   return typeof val === 'string' ? val : ''
 }
 
+function fromSecretOrEnv(
+  secrets: Record<string, unknown>,
+  key: string,
+  envName: string
+): string {
+  return str(secrets, key) || process.env[envName] || ''
+}
+
 export function createMarketplaceClient(
   channelId: string,
   secrets: Record<string, unknown>
@@ -75,9 +83,9 @@ export function createMarketplaceClient(
   switch (channelId) {
     case 'mercado-livre': {
       const s: MeLiSecrets = {
-        clientId: str(secrets, 'clientId'),
-        clientSecret: str(secrets, 'clientSecret'),
-        refreshToken: str(secrets, 'refreshToken'),
+        clientId: fromSecretOrEnv(secrets, 'clientId', 'MELI_CLIENT_ID'),
+        clientSecret: fromSecretOrEnv(secrets, 'clientSecret', 'MELI_CLIENT_SECRET'),
+        refreshToken: fromSecretOrEnv(secrets, 'refreshToken', 'MELI_REFRESH_TOKEN'),
         accessToken: str(secrets, 'accessToken') || undefined,
         userId: str(secrets, 'userId') || undefined,
       }
@@ -86,38 +94,43 @@ export function createMarketplaceClient(
 
     case 'amazon': {
       const s: AmazonSecrets = {
-        clientId: str(secrets, 'clientId'),
-        clientSecret: str(secrets, 'clientSecret'),
-        refreshToken: str(secrets, 'refreshToken'),
-        awsAccessKeyId: str(secrets, 'awsAccessKeyId'),
-        awsSecretAccessKey: str(secrets, 'awsSecretAccessKey'),
-        awsSessionToken: str(secrets, 'awsSessionToken') || undefined,
-        sellerId: str(secrets, 'sellerId') || undefined,
+        clientId: fromSecretOrEnv(secrets, 'clientId', 'AMAZON_CLIENT_ID'),
+        clientSecret: fromSecretOrEnv(secrets, 'clientSecret', 'AMAZON_CLIENT_SECRET'),
+        refreshToken: fromSecretOrEnv(secrets, 'refreshToken', 'AMAZON_REFRESH_TOKEN'),
+        awsAccessKeyId: fromSecretOrEnv(secrets, 'awsAccessKeyId', 'AMAZON_AWS_ACCESS_KEY_ID'),
+        awsSecretAccessKey: fromSecretOrEnv(
+          secrets,
+          'awsSecretAccessKey',
+          'AMAZON_AWS_SECRET_ACCESS_KEY'
+        ),
+        awsSessionToken:
+          str(secrets, 'awsSessionToken') || process.env.AMAZON_AWS_SESSION_TOKEN || undefined,
+        sellerId: str(secrets, 'sellerId') || process.env.AMAZON_SELLER_ID || undefined,
       }
       return new AmazonClient(s)
     }
 
     case 'magalu': {
       const s: MagaluSecrets = {
-        clientId: str(secrets, 'clientId'),
-        clientSecret: str(secrets, 'clientSecret'),
-        sellerId: str(secrets, 'sellerId') || undefined,
+        clientId: fromSecretOrEnv(secrets, 'clientId', 'MAGALU_CLIENT_ID'),
+        clientSecret: fromSecretOrEnv(secrets, 'clientSecret', 'MAGALU_CLIENT_SECRET'),
+        sellerId: str(secrets, 'sellerId') || process.env.MAGALU_SELLER_ID || undefined,
       }
       return new MagaluClient(s)
     }
 
     case 'leroy': {
       const s: LeroySecrets = {
-        apiKey: str(secrets, 'apiKey'),
-        shopId: str(secrets, 'shopId') || undefined,
+        apiKey: fromSecretOrEnv(secrets, 'apiKey', 'LEROY_API_KEY'),
+        shopId: str(secrets, 'shopId') || process.env.LEROY_SHOP_ID || undefined,
       }
       return new LeroyMerlinClient(s)
     }
 
     case 'madeira': {
       const s: MadeiraSecrets = {
-        accessToken: str(secrets, 'accessToken'),
-        sellerId: str(secrets, 'sellerId') || undefined,
+        accessToken: fromSecretOrEnv(secrets, 'accessToken', 'MADEIRA_ACCESS_TOKEN'),
+        sellerId: str(secrets, 'sellerId') || process.env.MADEIRA_SELLER_ID || undefined,
       }
       return new MadeiraMadeiraClient(s)
     }

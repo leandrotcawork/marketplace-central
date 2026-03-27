@@ -1,7 +1,8 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { sqliteStorage } from '@/lib/sqlite-storage'
 import type { Classification } from '@/types'
 
 interface ClassificationState {
@@ -60,6 +61,6 @@ export const useClassificationStore = create<ClassificationState>()(
 
       clearAll: () => set({ classifications: [], selectedClassificationId: null }),
     }),
-    { name: 'mc-classifications' }
+    { name: 'mc-classifications', storage: createJSONStorage(() => sqliteStorage) }
   )
 )

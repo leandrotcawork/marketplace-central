@@ -1,7 +1,8 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { sqliteStorage } from '@/lib/sqlite-storage'
 import type { CompetitorPrice, AIAnalysis, Publication } from '@/types'
 
 interface AnalysisState {
@@ -117,6 +118,7 @@ export const useAnalysisStore = create<AnalysisState>()(
     }),
     {
       name: 'mc-analysis',
+      storage: createJSONStorage(() => sqliteStorage),
       version: 2,
       migrate: (persistedState: unknown, version) => {
         if (!persistedState || typeof persistedState !== 'object') {

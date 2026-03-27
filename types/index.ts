@@ -220,4 +220,59 @@ export interface MarketplaceRemoteListing {
   updatedAt: string
 }
 
+export type MarketplaceCommissionImportStatus =
+  | 'importable'
+  | 'conflict'
+  | 'missing'
+  | 'error'
+
+export interface MarketplaceCommissionImportProductPreview {
+  productId: string
+  sku: string
+  name: string
+  groupId: string
+  groupName: string
+  basePrice: number
+  status: MarketplaceCommissionImportStatus
+  categoryId?: string
+  categoryName?: string
+  listingTypeId?: string
+  commissionPercent?: number
+  fixedFeeAmount?: number
+  saleFeeAmount?: number
+  freightFixedAmount?: number
+  sourceRef?: string
+  error?: string
+}
+
+export interface MarketplaceCommissionImportGroupPreview {
+  groupId: string
+  groupName: string
+  categoryLabel: string
+  status: MarketplaceCommissionImportStatus
+  productCount: number
+  resolvedProductCount: number
+  categoryId?: string
+  categoryName?: string
+  listingTypeId?: string
+  commissionPercent?: number
+  fixedFeeAmount?: number
+  saleFeeAmount?: number
+  freightFixedAmount?: number
+  sourceRef?: string
+  notes?: string
+  sampleProducts: MarketplaceCommissionImportProductPreview[]
+}
+
+export interface MarketplaceCommissionImportResult {
+  channelId: string
+  importedGroups: MarketplaceCommissionImportGroupPreview[]
+  conflictGroups: MarketplaceCommissionImportGroupPreview[]
+  missingGroups: MarketplaceCommissionImportGroupPreview[]
+  errorGroups: MarketplaceCommissionImportGroupPreview[]
+  productPreviews: MarketplaceCommissionImportProductPreview[]
+  generatedAt: string
+  listingTypeId: string
+}
+
 export type StatusValue = 'idle' | 'progress' | 'complete'
