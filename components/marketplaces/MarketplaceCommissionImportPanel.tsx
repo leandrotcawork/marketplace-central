@@ -3,6 +3,8 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, DownloadCloud, RefreshCcw, XCircle } from 'lucide-react'
 import { formatBRL, formatPercent } from '@/lib/formatters'
+import { useProductDimensionsStore } from '@/stores/productDimensionsStore'
+import { useProductCategoryStore } from '@/stores/productCategoryStore'
 import type {
   MarketplaceCommissionImportGroupPreview,
   MarketplaceCommissionImportResult,
@@ -18,6 +20,8 @@ export function MarketplaceCommissionImportPanel({
   products,
   onApply,
 }: MarketplaceCommissionImportPanelProps) {
+  const { getDimensions } = useProductDimensionsStore()
+  const { categories: storedCategories, setMany: saveCategories } = useProductCategoryStore()
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
   const [result, setResult] = useState<MarketplaceCommissionImportResult | null>(null)
@@ -44,10 +48,34 @@ export function MarketplaceCommissionImportPanel({
     setMessage(null)
 
     try {
+      // Build per-product dimensions map from local store
+      // ML API requires integer dimensions — round up to avoid underestimating
+      const productDimensions: Record<string, string> = {}
+      for (const p of products) {
+        const d = getDimensions(p.id)
+        if (d?.heightCm != null && d?.widthCm != null && d?.lengthCm != null && d?.weightG != null) {
+          productDimensions[p.id] = `${Math.ceil(d.heightCm)}x${Math.ceil(d.widthCm)}x${Math.ceil(d.lengthCm)},${Math.ceil(d.weightG)}`
+        }
+      }
+
+      // Build per-product category overrides from local store
+      const productCategories: Record<string, { categoryId: string; categoryName?: string }> = {}
+      for (const p of products) {
+        const cat = storedCategories[p.id]
+        if (cat?.categoryId) {
+          productCategories[p.id] = cat
+        }
+      }
+
       const response = await fetch('/api/marketplace-commission-import/mercado-livre', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ products, dimensions: dimensions.trim() || undefined }),
+        body: JSON.stringify({
+          products,
+          dimensions: dimensions.trim() || undefined,
+          productDimensions: Object.keys(productDimensions).length > 0 ? productDimensions : undefined,
+          productCategories: Object.keys(productCategories).length > 0 ? productCategories : undefined,
+        }),
       })
       const payload = await response.json()
 
@@ -55,7 +83,24 @@ export function MarketplaceCommissionImportPanel({
         throw new Error(payload?.error ?? 'Falha ao importar comissoes do Mercado Livre')
       }
 
-      setResult(payload.data as MarketplaceCommissionImportResult)
+      const importResult = payload.data as MarketplaceCommissionImportResult
+
+      // Save newly discovered categories to store for next time
+      const newCategories: Record<string, { categoryId: string; categoryName?: string }> = {}
+      for (const group of importResult.importedGroups) {
+        if (group.status === 'importable' && group.categoryId) {
+          for (const sp of group.sampleProducts ?? []) {
+            if (sp.categoryId && !storedCategories[sp.productId]) {
+              newCategories[sp.productId] = { categoryId: sp.categoryId, categoryName: sp.categoryName }
+            }
+          }
+        }
+      }
+      if (Object.keys(newCategories).length > 0) {
+        saveCategories(newCategories)
+      }
+
+      setResult(importResult)
       setMessage('Preview de comissao gerado com sucesso.')
     } catch (fetchError) {
       setError(

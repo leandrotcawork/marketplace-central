@@ -1,40 +1,28 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useGroupStore } from '@/stores/groupStore'
-import { calculateMarginForMarketplace } from '@/lib/calculations'
+import { useClassificationStore } from '@/stores/classificationStore'
+import { calculateMargin, calculateMarginForMarketplace } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { MarginIndicator } from './MarginIndicator'
+import type { MarginResult } from '@/types'
 
 type HealthFilter = 'all' | 'good' | 'warning' | 'critical'
 
-interface MarginTableProps {
-  groupId?: string | null
-}
-
-export function MarginTable({ groupId }: MarginTableProps) {
+export function MarginTable() {
   const allProducts = useProductStore((s) => s.products)
   const marketplaces = useMarketplaceStore((s) => s.marketplaces)
   const commissionRules = useMarketplaceStore((s) => s.commissionRules)
+  const productImportOverrides = useMarketplaceStore((s) => s.productImportOverrides)
   const groups = useGroupStore((s) => s.groups)
-
-  // Filter products by taxonomy group if groupId is provided
-  const products = useMemo(() => {
-    if (!groupId) return allProducts
-    const group = groups.find((g) => g.id === groupId)
-    return allProducts.filter((p) => group?.productIds.includes(p.id))
-  }, [allProducts, groupId, groups])
+  const classifications = useClassificationStore((s) => s.classifications)
 
   const activeMarketplaces = useMemo(
     () => marketplaces.filter((m) => m.active),
     [marketplaces]
-  )
-
-  const categories = useMemo(
-    () => Array.from(new Set(products.map((p) => p.category))).sort(),
-    [products]
   )
 
   // sellingPrices: key = `${productId}::${marketplaceId}`
@@ -42,8 +30,42 @@ export function MarginTable({ groupId }: MarginTableProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState<string>('')
 
-  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedClassifications, setSelectedClassifications] = useState<Set<string>>(new Set())
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set())
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all')
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 50
+
+  function toggleFilter(set: Set<string>, id: string, setter: (s: Set<string>) => void) {
+    const next = new Set(set)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setter(next)
+    setPage(0)
+  }
+
+  // Pre-filter products by classification and group
+  const products = useMemo(() => {
+    let list = allProducts
+    if (selectedClassifications.size > 0) {
+      const allowedIds = new Set<string>()
+      for (const clsId of selectedClassifications) {
+        const cls = classifications.find((c) => c.id === clsId)
+        if (cls) cls.productIds.forEach((id) => allowedIds.add(id))
+      }
+      list = list.filter((p) => allowedIds.has(p.id))
+    }
+    if (selectedGroups.size > 0) {
+      const allowedIds = new Set<string>()
+      for (const gId of selectedGroups) {
+        const group = groups.find((g) => g.id === gId)
+        if (group) group.productIds.forEach((id) => allowedIds.add(id))
+      }
+      list = list.filter((p) => allowedIds.has(p.id))
+    }
+    return list
+  }, [allProducts, selectedClassifications, selectedGroups, classifications, groups])
 
   function cellKey(productId: string, marketplaceId: string) {
     return `${productId}::${marketplaceId}`
@@ -57,14 +79,42 @@ export function MarginTable({ groupId }: MarginTableProps) {
     product: (typeof allProducts)[number],
     marketplace: (typeof marketplaces)[number],
     sellingPrice: number
-  ) {
+  ): MarginResult {
+    // Check per-product import overrides first (from "Aplicar importação")
+    const override = productImportOverrides[marketplace.id]?.[product.id]
+    if (override?.status === 'importable') {
+      const base = calculateMargin(
+        sellingPrice,
+        product.cost,
+        override.commissionPercent ?? 0,
+        override.fixedFeeAmount ?? 0,
+        override.freightFixedAmount ?? 0
+      )
+      return {
+        ...base,
+        productId: product.id,
+        productGroupId: product.primaryTaxonomyNodeId,
+        marketplaceId: marketplace.id,
+        sellingPrice,
+        ruleType: 'group_override',
+        reviewStatus: 'validated',
+        sourceType: 'official_doc',
+      }
+    }
+    // Fall back to group-level commission rules
     return calculateMarginForMarketplace(product, marketplace, commissionRules, sellingPrice)
   }
 
   const filteredProducts = useMemo(() => {
     let list = products
-    if (categoryFilter !== 'all') {
-      list = list.filter((p) => p.category === categoryFilter)
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      list = list.filter((p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        (p.referencia?.toLowerCase().includes(q) ?? false) ||
+        (p.ean?.toLowerCase().includes(q) ?? false)
+      )
     }
     if (healthFilter !== 'all') {
       list = list.filter((p) =>
@@ -77,7 +127,13 @@ export function MarginTable({ groupId }: MarginTableProps) {
       )
     }
     return list
-  }, [products, categoryFilter, healthFilter, sellingPrices, activeMarketplaces, commissionRules])
+  }, [products, searchQuery, healthFilter, sellingPrices, activeMarketplaces, commissionRules])
+
+  const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE)
+  const paginatedProducts = useMemo(
+    () => filteredProducts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [filteredProducts, page]
+  )
 
   // Summary stats
   const summaryStats = useMemo(() => {
@@ -230,29 +286,36 @@ export function MarginTable({ groupId }: MarginTableProps) {
         </div>
       </div>
 
-      {/* Filters + export */}
+      {/* Search + Filters + export */}
       <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-md border px-3 py-1.5 text-sm"
+        <input
+          type="text"
+          placeholder="Buscar por nome, SKU, referência ou EAN..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setPage(0) }}
+          className="rounded-md border px-3 py-1.5 text-sm flex-1 min-w-[200px]"
           style={{
             backgroundColor: 'var(--bg-tertiary)',
             borderColor: 'var(--border-color)',
             color: 'var(--text-primary)',
           }}
-        >
-          <option value="all">Todas as categorias</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        />
+        <MultiSelectDropdown
+          label="Classificação"
+          items={classifications.map((c) => ({ id: c.id, name: `${c.name} (${c.productIds.length})` }))}
+          selected={selectedClassifications}
+          onToggle={(id) => toggleFilter(selectedClassifications, id, setSelectedClassifications)}
+        />
+        <MultiSelectDropdown
+          label="Grupo"
+          items={groups.map((g) => ({ id: g.id, name: g.name }))}
+          selected={selectedGroups}
+          onToggle={(id) => toggleFilter(selectedGroups, id, setSelectedGroups)}
+        />
 
         <select
           value={healthFilter}
-          onChange={(e) => setHealthFilter(e.target.value as HealthFilter)}
+          onChange={(e) => { setHealthFilter(e.target.value as HealthFilter); setPage(0) }}
           className="rounded-md border px-3 py-1.5 text-sm"
           style={{
             backgroundColor: 'var(--bg-tertiary)',
@@ -338,7 +401,7 @@ export function MarginTable({ groupId }: MarginTableProps) {
             </tr>
           </thead>
           <tbody>
-            {filteredProducts.length === 0 ? (
+            {paginatedProducts.length === 0 ? (
               <tr>
                 <td
                   colSpan={activeMarketplaces.length + 1}
@@ -349,7 +412,7 @@ export function MarginTable({ groupId }: MarginTableProps) {
                 </td>
               </tr>
             ) : (
-              filteredProducts.map((product, rowIdx) => (
+              paginatedProducts.map((product, rowIdx) => (
                 <tr
                   key={product.id}
                   className="border-b transition-colors hover:opacity-90"
@@ -441,20 +504,32 @@ export function MarginTable({ groupId }: MarginTableProps) {
                           )}
                         </div>
 
-                        {/* Commission */}
-                        <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
-                          Taxas:{' '}
+                        {/* Commission + Freight breakdown */}
+                        <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>
+                          Comissão:{' '}
                           <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
-                            {formatBRL(result.totalFees)}
+                            {formatBRL(result.commissionAmount)}
+                          </span>
+                          <span style={{ fontSize: '10px', marginLeft: '2px' }}>
+                            ({formatPercent(result.commission * 100, 1)})
                           </span>
                         </div>
-
-                        <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
-                          Regra:{' '}
-                          <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
-                            {result.ruleType === 'group_override' ? 'excecao' : 'base'}
-                          </span>
-                        </div>
+                        {result.freightFixedAmount > 0 && (
+                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>
+                            Frete:{' '}
+                            <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
+                              {formatBRL(result.freightFixedAmount)}
+                            </span>
+                          </div>
+                        )}
+                        {result.fixedFeeAmount > 0 && (
+                          <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+                            Taxa fixa:{' '}
+                            <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
+                              {formatBRL(result.fixedFeeAmount)}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Margin */}
                         <div className="text-xs mb-1.5" style={{ color: 'var(--text-secondary)' }}>
@@ -489,6 +564,124 @@ export function MarginTable({ groupId }: MarginTableProps) {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div
+          className="flex items-center justify-between px-4 py-3 rounded-lg border text-sm"
+          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+        >
+          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-jetbrains-mono)' }}>
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filteredProducts.length)} de {filteredProducts.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="rounded-md border px-3 py-1 text-sm disabled:opacity-40"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', backgroundColor: 'var(--bg-tertiary)' }}
+            >
+              Anterior
+            </button>
+            <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-jetbrains-mono)' }}>
+              {page + 1} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              className="rounded-md border px-3 py-1 text-sm disabled:opacity-40"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', backgroundColor: 'var(--bg-tertiary)' }}
+            >
+              Próximo
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MultiSelectDropdown({
+  label,
+  items,
+  selected,
+  onToggle,
+}: {
+  label: string
+  items: { id: string; name: string }[]
+  selected: Set<string>
+  onToggle: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const count = selected.size
+  const displayLabel = count === 0 ? label : `${label} (${count})`
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5"
+        style={{
+          backgroundColor: count > 0 ? 'rgba(59,130,246,0.08)' : 'var(--bg-tertiary)',
+          borderColor: count > 0 ? 'rgba(59,130,246,0.3)' : 'var(--border-color)',
+          color: count > 0 ? 'var(--accent-primary)' : 'var(--text-primary)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {displayLabel}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ opacity: 0.5 }}>
+          <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-1 z-50 rounded-lg border shadow-lg overflow-auto"
+          style={{
+            backgroundColor: 'var(--bg-secondary)',
+            borderColor: 'var(--border-color)',
+            minWidth: '200px',
+            maxHeight: '280px',
+          }}
+        >
+          {items.map((item) => {
+            const checked = selected.has(item.id)
+            return (
+              <label
+                key={item.id}
+                className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:opacity-80"
+                style={{
+                  color: 'var(--text-primary)',
+                  borderBottom: '1px solid var(--border-color)',
+                  backgroundColor: checked ? 'rgba(59,130,246,0.06)' : 'transparent',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggle(item.id)}
+                  className="accent-[var(--accent-primary)]"
+                />
+                <span className="truncate">{item.name}</span>
+              </label>
+            )
+          })}
+          {items.length === 0 && (
+            <div className="px-3 py-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+              Nenhum item
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

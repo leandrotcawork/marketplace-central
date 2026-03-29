@@ -10,16 +10,20 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table'
-import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Filter } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Filter, Ruler } from 'lucide-react'
 import { useProductStore } from '@/stores/productStore'
+import { useProductDimensionsStore } from '@/stores/productDimensionsStore'
 import { formatBRL } from '@/lib/formatters'
+import { ProductDimensionsPanel } from './ProductDimensionsPanel'
 import type { Product } from '@/types'
 
 export function ProductTable() {
   const { products } = useProductStore()
+  const { getDimensions } = useProductDimensionsStore()
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
 
   const categories = useMemo(
     () => ['all', ...Array.from(new Set(products.map((p) => p.category))).sort()],
@@ -145,8 +149,22 @@ export function ProductTable() {
           )
         },
       },
+      {
+        id: 'dimensions',
+        header: '',
+        size: 36,
+        cell: ({ row }) => {
+          const dims = getDimensions(row.original.id)
+          const has = dims != null && Object.values(dims).some((v) => v != null)
+          return has ? (
+            <span title="Dimensões salvas">
+              <Ruler size={13} style={{ color: 'var(--accent-primary)', opacity: 0.8 }} />
+            </span>
+          ) : null
+        },
+      },
     ],
-    []
+    [getDimensions]
   )
 
   const table = useReactTable({
@@ -161,6 +179,13 @@ export function ProductTable() {
 
   return (
     <>
+      {selectedProduct && (
+        <ProductDimensionsPanel
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+        />
+      )}
+
       {/* Filters */}
       <div className="flex items-center gap-3 mb-3">
         <div
@@ -261,11 +286,19 @@ export function ProductTable() {
                     key={row.id}
                     style={{
                       borderBottom: '1px solid var(--border-color)',
-                      backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                      backgroundColor: selectedProduct?.id === row.original.id
+                        ? 'var(--bg-tertiary)'
+                        : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
                       transition: 'background-color 0.1s',
+                      cursor: 'pointer',
                     }}
+                    onClick={() => setSelectedProduct(row.original)}
                     onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}
+                    onMouseLeave={(e) => {
+                      if (selectedProduct?.id !== row.original.id) {
+                        e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)'
+                      }
+                    }}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <td key={cell.id} className="px-4 py-3">

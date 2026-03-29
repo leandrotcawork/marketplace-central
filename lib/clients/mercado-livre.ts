@@ -34,6 +34,61 @@ export type MeLiCategorySuggestion = {
   categoryName?: string
 }
 
+export interface ShippingSimulationParams {
+  /** ID do item já publicado no ML (alternativa a dimensions) */
+  itemId?: string
+  /** Dimensões do pacote: "AlturaxLarguaraxComprimento,peso_gramas" — ex: "9x17x22,462" */
+  dimensions?: string
+  /** Preço unitário do item */
+  itemPrice: number
+  /** Nível de publicação (padrão: gold_special) */
+  listingTypeId?: string
+  /** Modo de envio (padrão: me2) */
+  mode?: 'me2' | 'me1' | 'custom'
+  /** Condição do item (padrão: new) */
+  condition?: 'new' | 'used'
+  /** Tipo de logística (padrão: drop_off) */
+  logisticType?: 'cross_docking' | 'drop_off' | 'fulfillment' | 'xd_drop_off' | 'self_service'
+  /** Incluir desconto na resposta (padrão: true) */
+  verbose?: boolean
+  /** Oferecer frete grátis (padrão: true) */
+  freeShipping?: boolean
+  /** Categoria do item */
+  categoryId?: string
+  /** Variação do item */
+  variationId?: number
+  /** Moeda (padrão inferido pelo site) */
+  currencyId?: string
+  /** Nível do vendedor Líder */
+  sellerStatus?: 'platinum' | 'gold' | 'silver'
+  /** Tipo de loja */
+  sellerType?: string
+  /** Reputação do vendedor */
+  reputation?: 'red' | 'orange' | 'yellow' | 'light_green' | 'green'
+  /** ID do estado de origem */
+  stateId?: string
+  /** ID da cidade de origem */
+  cityId?: string
+  /** CEP de origem */
+  zipCode?: number
+  /** Tags do item (ex: self_service para Flex) */
+  tags?: string
+}
+
+export type ShippingSimulationResult =
+  | {
+      ok: true
+      /** Custo bruto que o vendedor pagará pelo envio */
+      listCost: number
+      /** Desconto aplicado (disponível com verbose=true) */
+      discount?: number
+      /** Custo líquido após desconto */
+      netCost?: number
+      /** Moeda do custo */
+      currencyId: string
+    }
+  | { ok: false; error: string }
+
 export type MeLiListingPriceResult = {
   categoryId: string
   categoryName?: string
@@ -56,12 +111,19 @@ type MeLiDomainDiscoveryRow = {
   category_name?: string
 }
 
+type MeLiShippingCoverageEntry = {
+  list_cost?: number
+  currency_id?: string
+  discount?: {
+    rate?: number
+    type?: string
+    promoted_amount?: number
+  }
+}
+
 type MeLiShippingOptionsResponse = {
   coverage?: {
-    all_country?: {
-      list_cost?: number
-      currency_id?: string
-    }
+    all_country?: MeLiShippingCoverageEntry
   }
 }
 
@@ -151,6 +213,23 @@ export class MercadoLivreClient {
     if (!res.ok) {
       const text = await res.text()
       throw new Error(`MeLi API ${path} failed (${res.status}): ${text}`)
+    }
+
+    return res.json() as Promise<T>
+  }
+
+  /**
+   * Fetches a public ML endpoint without authentication.
+   * Use for read-only catalog/search endpoints that don't require a seller token.
+   */
+  private async publicFetch<T>(path: string): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`MeLi public API ${path} failed (${res.status}): ${text}`)
     }
 
     return res.json() as Promise<T>
@@ -269,31 +348,62 @@ export class MercadoLivreClient {
    * Looks up a product by EAN/GTIN in the ML catalog and returns its package dimensions
    * in the format expected by getSellerShippingCost: "HxWxL,weight_grams".
    *
-   * This mirrors what ML's own website does when you add a product by EAN —
-   * they already have dimensions stored in the catalog.
+   * Uses public ML endpoints (no auth required). Falls back to parsing item attributes
+   * (HEIGHT, WIDTH, LENGTH/DEPTH, WEIGHT) when shipping.dimensions is not set by the seller.
    *
-   * Returns null if the EAN is not found or the item has no dimension data.
+   * Returns null if the EAN is not found or the item has no usable dimension data.
    */
   async getCatalogDimensions(ean: string): Promise<string | null> {
     try {
       type SearchResult = { id: string; shipping?: { dimensions?: string } }
-      const searchRes = await this.fetch<{ results: SearchResult[] }>(
+      const searchRes = await this.publicFetch<{ results: SearchResult[] }>(
         `/sites/MLB/search?gtin=${encodeURIComponent(ean)}&limit=1`
       )
 
       const item = searchRes.results?.[0]
-      if (!item?.id) return null
+      if (!item?.id) {
+        console.error(`[MeLi] getCatalogDimensions: no results for EAN ${ean}`)
+        return null
+      }
 
-      // Search results sometimes already include shipping.dimensions
-      if (item.shipping?.dimensions) return item.shipping.dimensions
+      // Fetch the full item with attributes (public endpoint, no auth needed)
+      type Attribute = { id: string; value_name?: string | null }
+      const fullItem = await this.publicFetch<{
+        shipping?: { dimensions?: string }
+        attributes?: Attribute[]
+      }>(`/items/${item.id}?include_attributes=true`)
 
-      // Otherwise fetch the full item to get dimensions
-      const fullItem = await this.fetch<{ shipping?: { dimensions?: string } }>(
-        `/items/${item.id}`
+      // Prefer explicit seller-set shipping.dimensions
+      if (fullItem.shipping?.dimensions) return fullItem.shipping.dimensions
+
+      // Fallback: build dimensions string from item attributes
+      const attrs = fullItem.attributes ?? []
+      const getNum = (id: string) => {
+        const attr = attrs.find((a) => a.id === id)
+        if (!attr?.value_name) return null
+        // Strip non-numeric chars (e.g. "10 cm" → 10)
+        const parsed = Number(String(attr.value_name).replace(/[^0-9.]/g, ''))
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+      }
+
+      const h = getNum('HEIGHT')
+      const w = getNum('WIDTH')
+      const l = getNum('LENGTH') ?? getNum('DEPTH')
+      const weight = getNum('WEIGHT')
+
+      if (h && w && l && weight) {
+        const dims = `${h}x${w}x${l},${weight}`
+        console.log(`[MeLi] getCatalogDimensions: built from attributes for EAN ${ean} → ${dims}`)
+        return dims
+      }
+
+      console.error(
+        `[MeLi] getCatalogDimensions: no usable dimensions for EAN ${ean}`,
+        { hasDims: !!fullItem.shipping?.dimensions, attrCount: attrs.length }
       )
-
-      return fullItem.shipping?.dimensions ?? null
-    } catch {
+      return null
+    } catch (error) {
+      console.error(`[MeLi] getCatalogDimensions failed for EAN ${ean}:`, error)
       return null
     }
   }
@@ -313,8 +423,14 @@ export class MercadoLivreClient {
     try {
       if (!this.userId) await this.validateConnection()
 
+      // ML API requires integer dimensions — round up any decimals
+      const roundedDims = params.dimensions.replace(
+        /(\d+(?:\.\d+)?)/g,
+        (_, n) => String(Math.ceil(Number(n)))
+      )
+
       const query = new URLSearchParams({
-        dimensions: params.dimensions,
+        dimensions: roundedDims,
         item_price: String(params.itemPrice),
         listing_type_id: params.listingTypeId ?? 'gold_special',
         mode: 'me2',
@@ -334,6 +450,64 @@ export class MercadoLivreClient {
     }
   }
 
+  /**
+   * Simula o custo de envio de um item no Mercado Livre.
+   *
+   * Suporta duas formas de identificação:
+   * - `itemId`: ID de um item já publicado (não requer dimensões)
+   * - `dimensions`: formato "HxWxL,weight_grams" (ex: "9x17x22,462")
+   *
+   * Com `verbose=true` (padrão), retorna também o desconto aplicado e o custo líquido.
+   */
+  async simulateShippingCost(params: ShippingSimulationParams): Promise<ShippingSimulationResult> {
+    try {
+      if (!this.userId) await this.validateConnection()
+
+      const query = new URLSearchParams()
+
+      if (params.itemId) query.set('item_id', params.itemId)
+      if (params.dimensions) query.set('dimensions', params.dimensions)
+
+      query.set('item_price', String(params.itemPrice))
+      query.set('listing_type_id', params.listingTypeId ?? 'gold_special')
+      query.set('mode', params.mode ?? 'me2')
+      query.set('condition', params.condition ?? 'new')
+      query.set('logistic_type', params.logisticType ?? 'drop_off')
+      query.set('free_shipping', String(params.freeShipping ?? true))
+      query.set('verbose', String(params.verbose ?? true))
+
+      if (params.categoryId) query.set('category_id', params.categoryId)
+      if (params.variationId !== undefined) query.set('variation_id', String(params.variationId))
+      if (params.currencyId) query.set('currency_id', params.currencyId)
+      if (params.sellerStatus) query.set('seller_status', params.sellerStatus)
+      if (params.sellerType) query.set('seller_type', params.sellerType)
+      if (params.reputation) query.set('reputation', params.reputation)
+      if (params.stateId) query.set('state_id', params.stateId)
+      if (params.cityId) query.set('city_id', params.cityId)
+      if (params.zipCode !== undefined) query.set('zip_code', String(params.zipCode))
+      if (params.tags) query.set('tags', params.tags)
+
+      const res = await this.fetch<MeLiShippingOptionsResponse>(
+        `/users/${this.userId}/shipping_options/free?${query}`
+      )
+
+      const entry = res.coverage?.all_country
+      const listCost = entry?.list_cost ?? 0
+      const currencyId = entry?.currency_id ?? 'BRL'
+
+      const discountRate = entry?.discount?.rate
+      const discount = discountRate !== undefined ? listCost * discountRate : undefined
+      const netCost = discount !== undefined ? listCost - discount : undefined
+
+      return { ok: true, listCost, discount, netCost, currencyId }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Falha ao simular frete',
+      }
+    }
+  }
+
   // --- Category helper ---
 
   async suggestCategory(title: string): Promise<string | null> {
@@ -347,12 +521,23 @@ export class MercadoLivreClient {
         `/sites/MLB/domain_discovery/search?q=${encodeURIComponent(title)}&limit=1`
       )
       const first = res[0]
-      if (!first?.category_id) return null
-
-      return {
-        categoryId: first.category_id,
-        categoryName: first.category_name,
+      if (first?.category_id) {
+        return { categoryId: first.category_id, categoryName: first.category_name }
       }
+
+      // Retry with expanded abbreviations (MetalShopping catalog uses abbreviated names)
+      const expanded = expandProductTitle(title)
+      if (expanded !== title) {
+        const retryRes = await this.fetch<MeLiDomainDiscoveryRow[]>(
+          `/sites/MLB/domain_discovery/search?q=${encodeURIComponent(expanded)}&limit=1`
+        )
+        const retryFirst = retryRes[0]
+        if (retryFirst?.category_id) {
+          return { categoryId: retryFirst.category_id, categoryName: retryFirst.category_name }
+        }
+      }
+
+      return null
     } catch {
       return null
     }
@@ -406,6 +591,101 @@ export class MercadoLivreClient {
       sourceRef: `ML listing_prices category=${payload.category_id ?? params.categoryId} listing_type=${payload.listing_type_id ?? listingTypeId}`,
     }
   }
+}
+
+/**
+ * Expands abbreviated product titles used in the MetalShopping catalog
+ * so ML's domain_discovery can match them to categories.
+ *
+ * Example: "MIST.LAV.MON.B.ALTA LOGGICA CR"
+ *       → "Misturador Lavatorio Monocomando Bica Alta LOGGICA Cromado"
+ */
+function expandProductTitle(raw: string): string {
+  let title = raw
+
+  // Multi-char patterns first (order matters — longer matches before shorter)
+  const patterns: [string, string][] = [
+    ['NIQU.ESC', 'Niquel Escovado'],
+    ['NIQU ESC', 'Niquel Escovado'],
+    ['NIQ ESC', 'Niquel Escovado'],
+    ['B.ALTA', 'Bica Alta'],
+    ['B.BAIXA', 'Bica Baixa'],
+    ['B.MOVEL', 'Bica Movel'],
+    ['P.CZ.', 'Pia Cozinha '],
+    ['P.T.', 'Porta Toalha '],
+    ['P/BASE', 'para Base'],
+    ['P/CHUV', 'para Chuveiro'],
+    ['P/VALV', 'para Valvula'],
+    ['P/DUCHA', 'para Ducha'],
+    ['(DE)', 'Deca'],
+    ['DECAYOU', 'Deca You'],
+    ['ACAB.', 'Acabamento '],
+    ['MIST.', 'Misturador '],
+    ['CHUV.', 'Chuveiro '],
+    ['TORN.', 'Torneira '],
+    ['REG.', 'Registro '],
+    ['REV.', 'Revestimento '],
+    ['PAST.', 'Pastilha '],
+    ['LAV.', 'Lavatorio '],
+    ['HIG.', 'Higienica '],
+    ['DESC.', 'Descarga '],
+    ['MONOC.', 'Monocomando '],
+    ['MON.', 'Monocomando '],
+    ['QUAD.', 'Quadrado '],
+    ['FLEX.', 'Flexivel '],
+    ['ESC.', 'Escovado '],
+    ['DC.', 'Docol '],
+    ['MONOC ', 'Monocomando '],
+    ['MON ', 'Monocomando '],
+    ['QUAD ', 'Quadrado '],
+    ['ESC ', 'Escovado '],
+    ['NIQ ', 'Niquel '],
+    ['HIG ', 'Higienica '],
+  ]
+
+  for (const [abbr, expanded] of patterns) {
+    title = title.split(abbr).join(expanded)
+  }
+
+  // End-of-string suffix expansions
+  if (title.endsWith(' CR')) title = title.slice(0, -3) + ' Cromado'
+  if (title.endsWith(' MT')) title = title.slice(0, -3) + ' Matte'
+  if (title.endsWith(' INX')) title = title.slice(0, -4) + ' Inox'
+
+  // "PAPELEIRO/PAPELEIRA" standalone → prefix "Papeleira"
+  if (/\bPAPELEIRO\b/.test(title)) {
+    title = title.replace(/\bPAPELEIRO\b/, 'Papeleira')
+  }
+
+  // "PERFIL" at start → "Perfil de Acabamento Aluminio"
+  if (/^PERFIL\b/.test(title)) {
+    title = title.replace(/^PERFIL\b/, 'Perfil de Acabamento Aluminio')
+  }
+
+  // Strip internal part numbers (e.g. "520 BK-370", "4901 C-29") that confuse ML
+  title = title.replace(/\b\d{3,5}\s+[A-Z]{1,3}-\d{2,4}\b/g, '')
+
+  // Strip dimension specs like "10MMX12MMX3M"
+  title = title.replace(/\b\d+MMX\d+MMX\d+M\b/gi, '')
+
+  // Strip standalone short model numbers (e.g. "509", "4901") that confuse ML
+  title = title.replace(/\b\d{3,4}\b/g, '')
+
+  // "Acabamento para Base" is too generic — add context
+  if (/Acabamento.*para Base/.test(title) && !/Deca/.test(title)) {
+    title = title.replace('para Base', 'para Base Deca')
+  }
+  // "Acabamento Registro" without "para" → add it
+  if (/Acabamento Registro/.test(title) && !/para/.test(title)) {
+    title = title.replace('Acabamento Registro', 'Acabamento para Registro')
+  }
+
+  // "Acabamento" without a finish term → append "Cromado" to help ML match
+  if (/^Acabamento/.test(title) && !/Cromado|Escovado|Niquel|Ouro|Matte|Inox|Polido/.test(title)) {
+    title += ' Cromado'
+  }
+
+  return title.replace(/\s+/g, ' ').trim()
 }
 
 function normalizeNumber(value: unknown): number {

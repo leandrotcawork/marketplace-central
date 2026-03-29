@@ -20,6 +20,13 @@ export type MarketplaceConnectionStatus = 'disconnected' | 'connected' | 'attent
 export type MarketplaceSyncJobType = 'publish' | 'price' | 'stock' | 'order_sync'
 export type MarketplaceSyncStatus = 'draft' | 'queued' | 'syncing' | 'published' | 'failed' | 'partial'
 
+export interface ProductDimensions {
+  heightCm: number | null
+  widthCm: number | null
+  lengthCm: number | null
+  weightG: number | null
+}
+
 export interface Product {
   id: string
   sku: string
@@ -33,6 +40,11 @@ export interface Product {
   basePrice: number
   stock: number
   unit: string
+  /** Dimensões do produto para cálculo de frete — populado manualmente via productDimensionsStore */
+  heightCm?: number | null
+  widthCm?: number | null
+  lengthCm?: number | null
+  weightG?: number | null
 }
 
 export interface MarketplaceCapabilityProfile {
@@ -262,6 +274,17 @@ export interface MarketplaceCommissionImportGroupPreview {
   sourceRef?: string
   notes?: string
   sampleProducts: MarketplaceCommissionImportProductPreview[]
+}
+
+export interface MarketplaceProductImportOverride {
+  channelId: string
+  productId: string
+  status: MarketplaceCommissionImportStatus
+  categoryId?: string
+  commissionPercent?: number
+  fixedFeeAmount?: number
+  freightFixedAmount?: number
+  importedAt: string
 }
 
 export interface MarketplaceCommissionImportResult {

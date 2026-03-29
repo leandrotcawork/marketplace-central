@@ -11,8 +11,10 @@ import type {
   MarketplaceCapabilityProfile,
   MarketplaceCommercialProfile,
   MarketplaceCommissionImportGroupPreview,
+  MarketplaceCommissionImportProductPreview,
   MarketplaceCommissionRule,
   MarketplaceConnection,
+  MarketplaceProductImportOverride,
   MarketplaceScopedGroup,
 } from '@/types'
 
@@ -64,6 +66,8 @@ interface LegacyMarketplaceState {
 interface MarketplaceState {
   marketplaces: Marketplace[]
   commissionRules: MarketplaceCommissionRule[]
+  // productId → override, keyed by channelId
+  productImportOverrides: Record<string, Record<string, MarketplaceProductImportOverride>>
   selectedMarketplaceId: string | null
   setSelectedMarketplace: (id: string | null) => void
   toggleActive: (id: string) => void
@@ -83,6 +87,10 @@ interface MarketplaceState {
     channelId: string,
     groups: MarketplaceCommissionImportGroupPreview[]
   ) => void
+  applyProductCommissionImport: (
+    channelId: string,
+    previews: MarketplaceCommissionImportProductPreview[]
+  ) => void
   addMarketplace: (name: string) => void
   removeMarketplace: (id: string) => void
   resetDefaults: () => void
@@ -93,6 +101,7 @@ export const useMarketplaceStore = create<MarketplaceState>()(
     (set) => ({
       marketplaces: getDefaultMarketplaces(),
       commissionRules: [],
+      productImportOverrides: {},
       selectedMarketplaceId: getDefaultMarketplaces()[0]?.id ?? null,
 
       setSelectedMarketplace: (id) => set({ selectedMarketplaceId: id }),
@@ -273,6 +282,30 @@ export const useMarketplaceStore = create<MarketplaceState>()(
           }
         }),
 
+      applyProductCommissionImport: (channelId, previews) =>
+        set((state) => {
+          const channelOverrides: Record<string, MarketplaceProductImportOverride> = {}
+          const importedAt = new Date().toISOString()
+          for (const preview of previews) {
+            channelOverrides[preview.productId] = {
+              channelId,
+              productId: preview.productId,
+              status: preview.status,
+              categoryId: preview.categoryId,
+              commissionPercent: preview.commissionPercent,
+              fixedFeeAmount: preview.fixedFeeAmount,
+              freightFixedAmount: preview.freightFixedAmount,
+              importedAt,
+            }
+          }
+          return {
+            productImportOverrides: {
+              ...state.productImportOverrides,
+              [channelId]: channelOverrides,
+            },
+          }
+        }),
+
       addMarketplace: (name) =>
         set((state) => {
           const nextMarketplace = buildCustomMarketplace(name)
@@ -296,24 +329,33 @@ export const useMarketplaceStore = create<MarketplaceState>()(
         set({
           marketplaces: getDefaultMarketplaces(),
           commissionRules: [],
+          productImportOverrides: {},
           selectedMarketplaceId: getDefaultMarketplaces()[0]?.id ?? null,
         }),
     }),
     {
       name: 'mc-marketplaces',
       storage: createJSONStorage(() => sqliteStorage),
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version) => {
         if (!persistedState || typeof persistedState !== 'object') {
           return {
             marketplaces: getDefaultMarketplaces(),
             commissionRules: [],
+            productImportOverrides: {},
             selectedMarketplaceId: getDefaultMarketplaces()[0]?.id ?? null,
           }
         }
 
-        if (version >= 2) {
+        if (version >= 3) {
           return persistedState as MarketplaceState
+        }
+
+        if (version >= 2) {
+          return {
+            ...(persistedState as MarketplaceState),
+            productImportOverrides: {},
+          }
         }
 
         const legacy = persistedState as LegacyMarketplaceState
@@ -340,6 +382,7 @@ export const useMarketplaceStore = create<MarketplaceState>()(
         return {
           marketplaces: mergedMarketplaces,
           commissionRules: [],
+          productImportOverrides: {},
           selectedMarketplaceId: mergedMarketplaces[0]?.id ?? null,
         }
       },

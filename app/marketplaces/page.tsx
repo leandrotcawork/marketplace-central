@@ -5,9 +5,10 @@ import { Plus, RefreshCcw } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { MarketplaceBaseForm } from '@/components/marketplaces/MarketplaceBaseForm'
 import { MarketplaceCard } from '@/components/marketplaces/MarketplaceCard'
-import { MarketplaceCommercialMatrix } from '@/components/marketplaces/MarketplaceCommercialMatrix'
+import { MarketplaceProductMatrix } from '@/components/marketplaces/MarketplaceProductMatrix'
 import { MarketplaceCommissionImportPanel } from '@/components/marketplaces/MarketplaceCommissionImportPanel'
 import { MarketplaceConnectionForm } from '@/components/marketplaces/MarketplaceConnectionForm'
+import { MarketplaceProductScopeSelector } from '@/components/marketplaces/MarketplaceProductScopeSelector'
 import { useMarketplaceCommissionScope } from '@/hooks/useMarketplaceCommissionScope'
 import { calculateMarginForMarketplace } from '@/lib/calculations'
 import {
@@ -16,7 +17,7 @@ import {
 } from '@/lib/marketplace-commercial'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useProductStore } from '@/stores/productStore'
-import type { MarketplaceConnection } from '@/types'
+import type { MarketplaceConnection, Product } from '@/types'
 
 export default function MarketplacesPage() {
   const products = useProductStore((state) => state.products)
@@ -35,7 +36,7 @@ export default function MarketplacesPage() {
     syncConnectionStatuses,
   } = useMarketplaceStore()
 
-  const { classifications, scopedGroups, groupsLoading, groupsError } = useMarketplaceCommissionScope()
+  const { classifications, groups, scopedGroups, groupsLoading, groupsError } = useMarketplaceCommissionScope()
 
   const [connections, setConnections] = useState<MarketplaceConnection[]>([])
   const [loadingConnections, setLoadingConnections] = useState(true)
@@ -127,6 +128,9 @@ export default function MarketplacesPage() {
     )
   }, [classifications, products])
 
+  // Products actually sent to the commission import — controlled by the scope selector
+  const [importScopeProducts, setImportScopeProducts] = useState<Product[]>([])
+
   const selectedConnection = selectedMarketplace
     ? connections.find((connection) => connection.channelId === selectedMarketplace.id)
     : undefined
@@ -195,7 +199,7 @@ export default function MarketplacesPage() {
             <button
               type="button"
               onClick={resetDefaults}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:opacity-90 active:scale-95"
               style={{
                 backgroundColor: 'var(--bg-tertiary)',
                 color: 'var(--text-primary)',
@@ -208,7 +212,7 @@ export default function MarketplacesPage() {
             <button
               type="button"
               onClick={handleAddMarketplace}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:opacity-90 active:scale-95"
               style={{
                 backgroundColor: 'var(--accent-primary)',
                 color: '#fff',
@@ -280,7 +284,7 @@ export default function MarketplacesPage() {
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
-                    className="px-4 py-2 text-sm font-medium"
+                    className="px-4 py-2 text-sm font-medium transition-opacity hover:opacity-80"
                     style={{
                       borderBottom: activeTab === tab.key
                         ? '2px solid var(--accent-primary)'
@@ -339,18 +343,25 @@ export default function MarketplacesPage() {
               {activeTab === 'matrix' && (
                 <div className="flex flex-col gap-4">
                   {selectedMarketplace.id === 'mercado-livre' && (
-                    <MarketplaceCommissionImportPanel
-                      products={scopedProducts}
-                      onApply={(groups) =>
-                        applyCommissionImport(selectedMarketplace.id, groups)
-                      }
-                    />
+                    <>
+                      <MarketplaceProductScopeSelector
+                        products={scopedProducts}
+                        classifications={classifications}
+                        groups={groups}
+                        onScopeChange={setImportScopeProducts}
+                      />
+                      <MarketplaceCommissionImportPanel
+                        products={importScopeProducts}
+                        onApply={(groups) =>
+                          applyCommissionImport(selectedMarketplace.id, groups)
+                        }
+                      />
+                    </>
                   )}
-                  <MarketplaceCommercialMatrix
+                  <MarketplaceProductMatrix
+                    products={importScopeProducts}
                     marketplace={selectedMarketplace}
                     rules={selectedRules}
-                    averageMargin={averageMarginByMarketplace.get(selectedMarketplace.id) ?? null}
-                    onRuleChange={updateCommissionRule}
                   />
                 </div>
               )}

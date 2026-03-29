@@ -186,7 +186,7 @@ export function MarketplaceBaseForm({
           <button
             type="button"
             onClick={onToggleActive}
-            className="rounded-lg px-4 py-1.5 text-xs font-medium transition-colors"
+            className="rounded-lg px-4 py-1.5 text-xs font-medium transition-all hover:opacity-90 active:scale-95"
             style={{
               backgroundColor: 'var(--bg-tertiary)',
               color: 'var(--text-primary)',
@@ -344,7 +344,7 @@ export function MarketplaceBaseForm({
                 onClick={() =>
                   onCapabilitiesChange({ [key]: cycleCapability(status) })
                 }
-                className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-all"
+                className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-all hover:opacity-80 active:scale-95"
                 style={{
                   backgroundColor: meta.bg,
                   borderColor: `${meta.dot}30`,

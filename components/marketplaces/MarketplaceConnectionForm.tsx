@@ -79,9 +79,28 @@ function buildDraft(
     displayName: connection?.displayName ?? marketplace.name,
     accountId: connection?.accountId ?? '',
     status: connection?.status ?? marketplace.connectionStatus,
-    lastValidatedAt: connection?.lastValidatedAt?.slice(0, 16) ?? '',
+    lastValidatedAt: connection?.lastValidatedAt ?? '',
     lastError: connection?.lastError ?? '',
     secrets: {},
+  }
+}
+
+const statusStyles: Record<MarketplaceConnectionStatus, { color: string; bg: string; label: string }> = {
+  connected:    { color: 'var(--accent-success)', bg: 'rgba(16,185,129,0.12)', label: 'Conectado' },
+  attention:    { color: 'var(--accent-warning)', bg: 'rgba(245,158,11,0.12)',  label: 'Atencao' },
+  disconnected: { color: 'var(--text-secondary)', bg: 'var(--bg-tertiary)',      label: 'Desconectado' },
+  blocked:      { color: 'var(--accent-danger)',  bg: 'rgba(239,68,68,0.12)',   label: 'Bloqueado' },
+}
+
+function formatValidatedAt(iso: string): string {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
+  } catch {
+    return iso
   }
 }
 
@@ -101,6 +120,7 @@ export function MarketplaceConnectionForm({
   }, [connection, marketplace])
 
   const secretFields = getSecretFields(marketplace.id, marketplace.authStrategy)
+  const statusStyle = statusStyles[draft.status] ?? statusStyles.disconnected
 
   async function handleValidate() {
     if (!connection?.hasStoredSecret) return
@@ -113,12 +133,33 @@ export function MarketplaceConnectionForm({
       )
       const payload = await res.json()
       if (payload?.success) {
-        setValidateResult({ ok: true, message: `Conexão válida — conta: ${payload.data?.accountId ?? ''}` })
+        const accountId = payload.data?.accountId ?? ''
+        const now = new Date().toISOString()
+        setDraft((current) => ({
+          ...current,
+          accountId,
+          status: 'connected',
+          lastValidatedAt: now,
+          lastError: '',
+        }))
+        setValidateResult({ ok: true, message: `Conexão válida — conta: ${accountId}` })
       } else {
-        setValidateResult({ ok: false, message: payload?.error ?? 'Falha na validação' })
+        const error = payload?.error ?? 'Falha na validação'
+        setDraft((current) => ({
+          ...current,
+          status: 'attention',
+          lastError: error,
+        }))
+        setValidateResult({ ok: false, message: error })
       }
     } catch (error) {
-      setValidateResult({ ok: false, message: error instanceof Error ? error.message : 'Erro ao validar' })
+      const message = error instanceof Error ? error.message : 'Erro ao validar'
+      setDraft((current) => ({
+        ...current,
+        status: 'attention',
+        lastError: message,
+      }))
+      setValidateResult({ ok: false, message })
     } finally {
       setValidating(false)
       if (onValidate) await onValidate(marketplace.id)
@@ -187,6 +228,7 @@ export function MarketplaceConnectionForm({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
+        {/* Nome da conexao — editável */}
         <label className="flex flex-col gap-1.5 text-xs">
           <span style={{ color: 'var(--text-secondary)' }}>Nome da conexao</span>
           <input
@@ -199,62 +241,63 @@ export function MarketplaceConnectionForm({
           />
         </label>
 
-        <label className="flex flex-col gap-1.5 text-xs">
+        {/* Conta externa — read-only, preenchida pelo validate */}
+        <div className="flex flex-col gap-1.5 text-xs">
           <span style={{ color: 'var(--text-secondary)' }}>Conta externa</span>
-          <input
-            value={draft.accountId}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, accountId: event.target.value }))
-            }
+          <div
             className="rounded-lg border px-3 py-2 text-sm"
-            style={inputStyle}
-            placeholder="seller id / loja / conta"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5 text-xs">
-          <span style={{ color: 'var(--text-secondary)' }}>Estrategia de auth</span>
-          <input
-            value={marketplace.authStrategy}
-            readOnly
-            className="rounded-lg border px-3 py-2 text-sm"
-            style={{ ...inputStyle, opacity: 0.8 }}
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5 text-xs">
-          <span style={{ color: 'var(--text-secondary)' }}>Status</span>
-          <select
-            value={draft.status}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                status: event.target.value as MarketplaceConnectionStatus,
-              }))
-            }
-            className="rounded-lg border px-3 py-2 text-sm"
-            style={inputStyle}
+            style={{ ...inputStyle, color: draft.accountId ? 'var(--text-primary)' : 'var(--text-secondary)', fontFamily: draft.accountId ? 'var(--font-jetbrains-mono)' : undefined }}
           >
-            <option value="disconnected">Desconectado</option>
-            <option value="attention">Atencao</option>
-            <option value="connected">Conectado</option>
-            <option value="blocked">Bloqueado</option>
-          </select>
-        </label>
+            {draft.accountId || 'Preenchido automaticamente ao validar'}
+          </div>
+        </div>
 
-        <label className="flex flex-col gap-1.5 text-xs md:col-span-2">
+        {/* Estrategia de auth — badge estático */}
+        <div className="flex flex-col gap-1.5 text-xs">
+          <span style={{ color: 'var(--text-secondary)' }}>Estrategia de auth</span>
+          <div className="flex items-center px-1 py-1">
+            <span
+              className="rounded-full px-3 py-1 text-[11px] font-medium"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-color)',
+                fontFamily: 'var(--font-jetbrains-mono)',
+              }}
+            >
+              {marketplace.authStrategy}
+            </span>
+          </div>
+        </div>
+
+        {/* Status — read-only badge, preenchido pelo validate */}
+        <div className="flex flex-col gap-1.5 text-xs">
+          <span style={{ color: 'var(--text-secondary)' }}>Status</span>
+          <div className="flex items-center px-1 py-1">
+            <span
+              className="rounded-full px-3 py-1 text-[11px] font-medium"
+              style={{
+                backgroundColor: statusStyle.bg,
+                color: statusStyle.color,
+              }}
+            >
+              {statusStyle.label}
+            </span>
+          </div>
+        </div>
+
+        {/* Ultima validacao — read-only, preenchida pelo validate */}
+        <div className="flex flex-col gap-1.5 text-xs md:col-span-2">
           <span style={{ color: 'var(--text-secondary)' }}>Ultima validacao</span>
-          <input
-            type="datetime-local"
-            value={draft.lastValidatedAt}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, lastValidatedAt: event.target.value }))
-            }
+          <div
             className="rounded-lg border px-3 py-2 text-sm"
-            style={inputStyle}
-          />
-        </label>
+            style={{ ...inputStyle, color: draft.lastValidatedAt ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+          >
+            {formatValidatedAt(draft.lastValidatedAt)}
+          </div>
+        </div>
 
+        {/* Secret fields (ex: Refresh Token para ML) */}
         {secretFields.map((field) => (
           <label key={field.key} className="flex flex-col gap-1.5 text-xs">
             <span style={{ color: 'var(--text-secondary)' }}>{field.label}</span>
@@ -291,18 +334,22 @@ export function MarketplaceConnectionForm({
           </div>
         )}
 
-        <label className="flex flex-col gap-1.5 text-xs md:col-span-2">
-          <span style={{ color: 'var(--text-secondary)' }}>Ultimo erro</span>
-          <textarea
-            value={draft.lastError}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, lastError: event.target.value }))
-            }
-            className="min-h-24 rounded-lg border px-3 py-2 text-sm"
-            style={inputStyle}
-            placeholder="Use para registrar token expirado, role pendente, homologacao etc."
-          />
-        </label>
+        {/* Ultimo erro — read-only, preenchido pelo validate */}
+        {draft.lastError && (
+          <div className="flex flex-col gap-1.5 text-xs md:col-span-2">
+            <span style={{ color: 'var(--text-secondary)' }}>Ultimo erro</span>
+            <div
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{
+                borderColor: 'rgba(239,68,68,0.3)',
+                backgroundColor: 'rgba(239,68,68,0.06)',
+                color: 'var(--accent-danger)',
+              }}
+            >
+              {draft.lastError}
+            </div>
+          </div>
+        )}
       </div>
 
       {validateResult && (
@@ -340,7 +387,7 @@ export function MarketplaceConnectionForm({
             <button
               type="button"
               onClick={handleValidate}
-              className="rounded-lg px-3 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg px-3 py-2 text-sm font-medium transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
               style={{
                 backgroundColor: 'var(--bg-tertiary)',
                 color: 'var(--text-primary)',
@@ -355,7 +402,7 @@ export function MarketplaceConnectionForm({
         </div>
         <button
           type="submit"
-          className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg px-4 py-2 text-sm font-medium transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           style={{
             backgroundColor: 'var(--accent-primary)',
             color: '#fff',

@@ -148,7 +148,7 @@ export function MarketplaceCard({
       type="button"
       onClick={onSelect}
       className={cn(
-        'rounded-2xl border p-5 text-left transition-all duration-200',
+        'rounded-2xl border p-5 text-left transition-all duration-200 hover:opacity-90 active:scale-[0.99]',
         selected && 'ring-2 ring-offset-0'
       )}
       style={{

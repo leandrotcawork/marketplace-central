@@ -10,16 +10,36 @@ import type {
 } from '@/types'
 
 const CHANNEL_ID = 'mercado-livre'
-const LISTING_TYPE_ID = 'gold_special'
+const ALLOWED_LISTING_TYPES = ['gold_special', 'gold_pro'] as const
+type MeLiListingTypeId = (typeof ALLOWED_LISTING_TYPES)[number]
 
 type ImportRequestBody = {
   products?: Product[]
+  /**
+   * Listing type to use for commission calculation.
+   * gold_special = Clássico Full (~11-14% depending on category)
+   * gold_pro     = Premium (~16-17%)
+   * Defaults to 'gold_special' when omitted.
+   */
+  listingTypeId?: MeLiListingTypeId
   /**
    * Optional default dimensions for shipping cost calculation.
    * Format: "HxWxL,weight_grams" — e.g. "10x60x60,25000" for a 25 kg tile.
    * When provided, ML's /shipping_options/free is called per product to populate freightFixedAmount.
    */
   dimensions?: string
+  /**
+   * Per-product dimensions from the local store (productDimensionsStore).
+   * Map of productId → "HxWxL,weight_grams" string.
+   * Takes precedence over global `dimensions` and ML catalog lookup.
+   */
+  productDimensions?: Record<string, string>
+  /**
+   * Per-product ML category overrides from the local store (productCategoryStore).
+   * Map of productId → { categoryId, categoryName }.
+   * When present, skips domain_discovery entirely for that product.
+   */
+  productCategories?: Record<string, { categoryId: string; categoryName?: string }>
 }
 
 export async function POST(request: NextRequest) {
@@ -28,6 +48,12 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as ImportRequestBody
     const scopedProducts = (body.products ?? []).filter(hasImportableGroup)
     const dimensions = body.dimensions?.trim() || undefined
+    const productDimensions = body.productDimensions ?? {}
+    const productCategories = body.productCategories ?? {}
+    const listingTypeId: MeLiListingTypeId =
+      body.listingTypeId && ALLOWED_LISTING_TYPES.includes(body.listingTypeId)
+        ? body.listingTypeId
+        : 'gold_special'
 
     if (scopedProducts.length === 0) {
       return Response.json(
@@ -64,11 +90,13 @@ export async function POST(request: NextRequest) {
     const productPreviews: MarketplaceCommissionImportProductPreview[] = []
 
     for (const product of scopedProducts) {
-      const preview = await buildProductPreview(client, product, dimensions)
+      const perProductDims = productDimensions[product.id] || undefined
+      const categoryOverride = productCategories[product.id] || undefined
+      const preview = await buildProductPreview(client, product, perProductDims ?? dimensions, listingTypeId, categoryOverride)
       productPreviews.push(preview)
     }
 
-    const result = buildImportResult(productPreviews)
+    const result = buildImportResult(productPreviews, listingTypeId)
 
     return Response.json(
       {
@@ -99,7 +127,9 @@ function hasImportableGroup(product: Product): boolean {
 async function buildProductPreview(
   client: MercadoLivreClient,
   product: Product,
-  dimensions?: string
+  dimensions?: string,
+  listingTypeId: MeLiListingTypeId = 'gold_special',
+  categoryOverride?: { categoryId: string; categoryName?: string }
 ): Promise<MarketplaceCommissionImportProductPreview> {
   const base = {
     productId: product.id,
@@ -118,13 +148,21 @@ async function buildProductPreview(
     }
   }
 
-  // Fetch category suggestion and catalog dimensions (from EAN) in parallel
-  const [suggestion, catalogDimensions] = await Promise.all([
-    client.suggestCategoryDetailed(product.name),
-    !dimensions && product.ean
-      ? client.getCatalogDimensions(product.ean)
-      : Promise.resolve(null),
-  ])
+  // Use stored category override if available, otherwise call domain_discovery
+  let suggestion: { categoryId: string; categoryName?: string } | null = categoryOverride ?? null
+  let catalogDimensions: string | null = null
+  let usedOverride = !!categoryOverride
+
+  if (!suggestion) {
+    const [discovered, catDims] = await Promise.all([
+      client.suggestCategoryDetailed(product.name),
+      !dimensions && product.ean
+        ? client.getCatalogDimensions(product.ean)
+        : Promise.resolve(null),
+    ])
+    suggestion = discovered
+    catalogDimensions = catDims
+  }
 
   if (!suggestion?.categoryId) {
     return {
@@ -143,12 +181,16 @@ async function buildProductPreview(
         price: product.basePrice,
         categoryId: suggestion.categoryId,
         categoryName: suggestion.categoryName,
-        listingTypeId: LISTING_TYPE_ID,
+        listingTypeId,
       }),
       effectiveDimensions
-        ? client.getSellerShippingCost({ dimensions: effectiveDimensions, itemPrice: product.basePrice })
+        ? client.getSellerShippingCost({ dimensions: effectiveDimensions, itemPrice: product.basePrice, listingTypeId })
         : Promise.resolve(null),
     ])
+
+    const freteSource = freightCost !== null
+      ? (catalogDimensions ? ' +frete/catálogo' : ' +frete/manual')
+      : ''
 
     return {
       ...base,
@@ -160,8 +202,7 @@ async function buildProductPreview(
       fixedFeeAmount: listingPrice.fixedFeeAmount,
       saleFeeAmount: listingPrice.saleFeeAmount,
       freightFixedAmount: freightCost ?? undefined,
-      sourceRef: listingPrice.sourceRef +
-        (freightCost !== null && catalogDimensions ? ' +frete/catálogo' : freightCost !== null ? ' +frete/manual' : ''),
+      sourceRef: listingPrice.sourceRef + (usedOverride ? ' (cat/cache)' : '') + freteSource,
     }
   } catch (error) {
     return {
@@ -169,14 +210,15 @@ async function buildProductPreview(
       status: 'error',
       categoryId: suggestion.categoryId,
       categoryName: suggestion.categoryName,
-      listingTypeId: LISTING_TYPE_ID,
+      listingTypeId,
       error: error instanceof Error ? error.message : 'Falha ao consultar listing_prices',
     }
   }
 }
 
 function buildImportResult(
-  productPreviews: MarketplaceCommissionImportProductPreview[]
+  productPreviews: MarketplaceCommissionImportProductPreview[],
+  listingTypeId: MeLiListingTypeId = 'gold_special'
 ): MarketplaceCommissionImportResult {
   const groups = new Map<string, MarketplaceCommissionImportProductPreview[]>()
 
@@ -205,20 +247,11 @@ function buildImportResult(
       sampleProducts,
     }
 
-    if (hasError || resolved.length === 0) {
+    if (resolved.length === 0) {
       const target = hasError ? errorGroups : missingGroups
       target.push({
         ...baseGroup,
         status: hasError ? 'error' : 'missing',
-        notes: buildNotes(previews),
-      })
-      continue
-    }
-
-    if (hasMissing) {
-      missingGroups.push({
-        ...baseGroup,
-        status: 'missing',
         notes: buildNotes(previews),
       })
       continue
@@ -264,7 +297,7 @@ function buildImportResult(
       saleFeeAmount: first.saleFeeAmount,
       freightFixedAmount: avgFreight,
       sourceRef: first.sourceRef,
-      notes: buildImportedGroupNotes(previews, first),
+      notes: buildImportedGroupNotes(previews, first, hasMissing),
     })
   }
 
@@ -279,7 +312,7 @@ function buildImportResult(
     errorGroups: sortGroups(errorGroups),
     productPreviews,
     generatedAt: new Date().toISOString(),
-    listingTypeId: LISTING_TYPE_ID,
+    listingTypeId,
   }
 }
 
@@ -295,13 +328,15 @@ function buildNotes(previews: MarketplaceCommissionImportProductPreview[]): stri
 
 function buildImportedGroupNotes(
   previews: MarketplaceCommissionImportProductPreview[],
-  imported: MarketplaceCommissionImportProductPreview
+  imported: MarketplaceCommissionImportProductPreview,
+  hasMissing: boolean
 ): string {
-  const sampleSkus = previews
-    .filter((preview) => preview.status === 'importable')
-    .slice(0, 5)
-    .map((preview) => preview.sku)
-    .join(', ')
+  const importable = previews.filter((preview) => preview.status === 'importable')
+  const missing = previews.filter((preview) => preview.status === 'missing')
+  const sampleSkus = importable.slice(0, 5).map((preview) => preview.sku).join(', ')
 
-  return `Importado via listing_prices em ${imported.categoryId} com ${previews.length} produto(s). Amostra: ${sampleSkus}`
+  const base = `Importado via listing_prices em ${imported.categoryId} com ${importable.length}/${previews.length} produto(s). Amostra: ${sampleSkus}`
+  return hasMissing
+    ? `${base} | ${missing.length} produto(s) sem categoria (excluídos do cálculo)`
+    : base
 }
