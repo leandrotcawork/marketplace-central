@@ -81,6 +81,7 @@ export interface MarketplaceChannel {
   notes?: string
   capabilities: MarketplaceCapabilityProfile
   commercialProfile: MarketplaceCommercialProfile
+  shippingPolicy?: MarketplaceShippingPolicy
 }
 
 export type Marketplace = MarketplaceChannel
@@ -231,6 +232,37 @@ export interface MarketplaceRemoteListing {
   rawPayload?: unknown
   createdAt: string
   updatedAt: string
+}
+
+export type LogisticsProviderStatus = 'connected' | 'disconnected' | 'attention'
+export type LogisticsProviderType = 'shipping'
+export type LogisticsProviderAuthStrategy = 'oauth2' | 'api_key'
+
+export interface LogisticsProvider {
+  providerId: string
+  displayName: string
+  providerType: LogisticsProviderType
+  authStrategy: LogisticsProviderAuthStrategy
+  status: LogisticsProviderStatus
+  hasStoredSecret: boolean
+  lastValidatedAt?: string
+  lastError?: string
+  updatedAt: string
+}
+
+export type MarketplaceShippingProvider = 'melhor-envio' | 'fixed' | 'marketplace'
+
+export interface FreightRule {
+  groupId: string
+  fixedAmount: number
+  lastQuotedAt?: string
+}
+
+export interface MarketplaceShippingPolicy {
+  provider: MarketplaceShippingProvider
+  fromCep?: string
+  toCep?: string
+  rules: FreightRule[]
 }
 
 export type MarketplaceCommissionImportStatus =

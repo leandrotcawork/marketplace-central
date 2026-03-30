@@ -12,6 +12,7 @@ import {
   Bot,
   BarChart3,
   Rocket,
+  Settings,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -218,9 +219,46 @@ export function Sidebar() {
         </ul>
       </nav>
 
+      {/* Settings link */}
+      <div
+        className="flex-shrink-0 border-t px-2 pt-2"
+        style={{ borderColor: 'var(--border-color)' }}
+      >
+        {(() => {
+          const isActive = pathname === '/configuracoes'
+          return (
+            <Link
+              href="/configuracoes"
+              className={cn(
+                'flex items-center rounded-lg transition-colors duration-150',
+                'text-sm relative group',
+                collapsed ? 'h-11 w-11 justify-center mx-auto' : 'h-10 px-3 gap-3',
+              )}
+              style={{
+                backgroundColor: isActive ? 'var(--accent-primary)' : undefined,
+                color: isActive ? 'white' : 'var(--text-secondary)',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) e.currentTarget.style.backgroundColor = ''
+              }}
+            >
+              <Settings size={18} className="flex-shrink-0" />
+              {!collapsed && (
+                <span className="flex-1 truncate" style={{ fontFamily: 'var(--font-dm-sans)' }}>
+                  Configurações
+                </span>
+              )}
+            </Link>
+          )
+        })()}
+      </div>
+
       {/* Collapse toggle */}
       <div
-        className="flex-shrink-0 border-t p-2"
+        className="flex-shrink-0 p-2"
         style={{ borderColor: 'var(--border-color)' }}
       >
         <button

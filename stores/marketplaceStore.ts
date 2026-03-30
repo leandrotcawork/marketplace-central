@@ -15,6 +15,7 @@ import type {
   MarketplaceCommissionRule,
   MarketplaceConnection,
   MarketplaceProductImportOverride,
+  MarketplaceShippingPolicy,
   MarketplaceScopedGroup,
 } from '@/types'
 
@@ -75,6 +76,10 @@ interface MarketplaceState {
   updateMarketplaceCommercialProfile: (
     id: string,
     partial: Partial<MarketplaceCommercialProfile>
+  ) => void
+  updateShippingPolicy: (
+    channelId: string,
+    policy: MarketplaceShippingPolicy | undefined
   ) => void
   updateMarketplaceCapabilities: (
     id: string,
@@ -161,6 +166,15 @@ export const useMarketplaceStore = create<MarketplaceState>()(
               notes: nextCommercialProfile.notes,
             }
           }),
+        })),
+
+      updateShippingPolicy: (channelId, policy) =>
+        set((state) => ({
+          marketplaces: state.marketplaces.map((marketplace) =>
+            marketplace.id === channelId
+              ? { ...marketplace, shippingPolicy: policy }
+              : marketplace
+          ),
         })),
 
       updateMarketplaceCapabilities: (id, partial) =>

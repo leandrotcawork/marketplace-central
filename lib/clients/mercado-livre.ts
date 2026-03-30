@@ -99,6 +99,20 @@ export type MeLiListingPriceResult = {
   sourceRef: string
 }
 
+export type MeLiPriceSuggestion = {
+  itemId: string
+  status: string
+  suggestedPrice: number | null
+  lowestPrice: number | null
+  internalPrice: number | null
+  currentPrice: number | null
+  percentDifference: number | null
+  applicableSuggestion: boolean
+  lastUpdated: string | null
+  competitorCount: number
+  costs: { sellingFees: number; shippingFees: number } | null
+}
+
 type MeLiTokenResponse = {
   access_token: string
   refresh_token: string
@@ -137,6 +151,29 @@ type MeLiListingPriceRow = {
     meli_percentage_fee?: number
     fixed_fee?: number
   }
+}
+
+type MeLiMoneyAmount = {
+  amount?: number
+}
+
+type MeLiPriceSuggestionResponse = {
+  item_id?: string
+  status?: string
+  suggested_price?: MeLiMoneyAmount | null
+  lowest_price?: MeLiMoneyAmount | null
+  internal_price?: MeLiMoneyAmount | null
+  current_price?: MeLiMoneyAmount | null
+  percent_difference?: number | null
+  applicable_suggestion?: boolean
+  last_updated?: string | null
+  metadata?: {
+    compared_values?: number
+  } | null
+  costs?: {
+    selling_fees?: number
+    shipping_fees?: number
+  } | null
 }
 
 type MeLiValidateResult = { ok: true; accountId: string } | { ok: false; error: string }
@@ -405,6 +442,62 @@ export class MercadoLivreClient {
     } catch (error) {
       console.error(`[MeLi] getCatalogDimensions failed for EAN ${ean}:`, error)
       return null
+    }
+  }
+
+  async getPriceSuggestion(mlItemId: string): Promise<MeLiPriceSuggestion | null> {
+    try {
+      const res = await this.fetch<MeLiPriceSuggestionResponse>(
+        `/suggestions/items/${encodeURIComponent(mlItemId)}/details`
+      )
+
+      return {
+        itemId: res.item_id ?? mlItemId,
+        status: res.status ?? '',
+        suggestedPrice: normalizeNullableNumber(res.suggested_price?.amount),
+        lowestPrice: normalizeNullableNumber(res.lowest_price?.amount),
+        internalPrice: normalizeNullableNumber(res.internal_price?.amount),
+        currentPrice: normalizeNullableNumber(res.current_price?.amount),
+        percentDifference: normalizeNullableNumber(res.percent_difference),
+        applicableSuggestion: Boolean(res.applicable_suggestion),
+        lastUpdated: res.last_updated ?? null,
+        competitorCount: normalizeNumber(res.metadata?.compared_values),
+        costs: res.costs
+          ? {
+              sellingFees: normalizeNumber(res.costs.selling_fees),
+              shippingFees: normalizeNumber(res.costs.shipping_fees),
+            }
+          : null,
+      }
+    } catch (error) {
+      if (isIgnoredSuggestionError(error)) {
+        return null
+      }
+      return null
+    }
+  }
+
+  async searchByEan(
+    ean: string,
+    limit = 5
+  ): Promise<Array<{ title: string; price: number; permalink?: string }>> {
+    try {
+      const params = new URLSearchParams({
+        gtin: ean,
+        limit: String(limit),
+      })
+
+      const res = await this.publicFetch<{
+        results?: Array<{ title?: string; price?: number; permalink?: string }>
+      }>(`/sites/MLB/search?${params.toString()}`)
+
+      return (res.results ?? []).map((result) => ({
+        title: result.title ?? '',
+        price: normalizeNumber(result.price),
+        permalink: typeof result.permalink === 'string' ? result.permalink : undefined,
+      }))
+    } catch {
+      return []
     }
   }
 
@@ -691,4 +784,15 @@ function expandProductTitle(raw: string): string {
 function normalizeNumber(value: unknown): number {
   const parsed = typeof value === 'string' ? Number(value) : Number(value ?? 0)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function normalizeNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = typeof value === 'string' ? Number(value) : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function isIgnoredSuggestionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return /\((401|404)\):/.test(error.message)
 }

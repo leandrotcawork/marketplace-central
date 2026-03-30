@@ -1,10 +1,11 @@
 'use client'
 
 import { type ReactNode, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, DownloadCloud, RefreshCcw, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, DownloadCloud, RefreshCcw, Truck, XCircle } from 'lucide-react'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { useProductDimensionsStore } from '@/stores/productDimensionsStore'
 import { useProductCategoryStore } from '@/stores/productCategoryStore'
+import { useShippingStore } from '@/stores/shippingStore'
 import type {
   MarketplaceCommissionImportGroupPreview,
   MarketplaceCommissionImportProductPreview,
@@ -35,11 +36,14 @@ export function MarketplaceCommissionImportPanel({
 }: MarketplaceCommissionImportPanelProps) {
   const { getDimensions } = useProductDimensionsStore()
   const { categories: storedCategories, setMany: saveCategories } = useProductCategoryStore()
+  const { fromCep, toCep } = useShippingStore()
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [freightLoading, setFreightLoading] = useState(false)
   const [result, setResult] = useState<MarketplaceCommissionImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [freightMessage, setFreightMessage] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState('')
   const [listingTypeId, setListingTypeId] = useState<'gold_special' | 'gold_pro'>('gold_special')
   const [discountTier, setDiscountTier] = useState<'none' | '25' | '50'>('none')
@@ -134,12 +138,104 @@ export function MarketplaceCommissionImportPanel({
     }
   }
 
+  async function handleFreightQuotes() {
+    if (!result || !fromCep || !toCep) return
+    setFreightLoading(true)
+    setFreightMessage(null)
+
+    const updatedImported = [...result.importedGroups]
+    let quotedCount = 0
+    let failedCount = 0
+
+    for (let i = 0; i < updatedImported.length; i++) {
+      const group = updatedImported[i]
+      // Find representative product for this group with dimensions
+      const rep = group.sampleProducts.find((sp) => {
+        const p = products.find((prod) => prod.id === sp.productId)
+        const d = getDimensions(sp.productId)
+        return p && d?.heightCm != null && d?.widthCm != null && d?.lengthCm != null && d?.weightG != null
+      })
+
+      if (!rep) {
+        failedCount++
+        continue
+      }
+
+      const dims = getDimensions(rep.productId)!
+      const product = products.find((p) => p.id === rep.productId)!
+
+      try {
+        const response = await fetch('/api/melhor-envio/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fromPostalCode: fromCep,
+            toPostalCode: toCep,
+            products: [
+              {
+                id: rep.productId,
+                widthCm: dims.widthCm ?? 10,
+                heightCm: dims.heightCm ?? 10,
+                lengthCm: dims.lengthCm ?? 10,
+                weightG: dims.weightG ?? 500,
+                insuranceValue: product.basePrice,
+                quantity: 1,
+              },
+            ],
+          }),
+        })
+        const payload = await response.json()
+
+        if (payload?.success && Array.isArray(payload.data)) {
+          const options = payload.data as Array<{ customPrice: number; error?: string }>
+          const valid = options.filter((o) => !o.error && o.customPrice > 0)
+          if (valid.length > 0) {
+            const cheapest = valid.reduce((a, b) => (a.customPrice < b.customPrice ? a : b))
+            updatedImported[i] = { ...group, freightFixedAmount: cheapest.customPrice }
+            quotedCount++
+          } else {
+            failedCount++
+          }
+        } else {
+          failedCount++
+        }
+      } catch {
+        failedCount++
+      }
+    }
+
+    setResult({ ...result, importedGroups: updatedImported })
+    setFreightMessage(
+      `Frete ME calculado: ${quotedCount} grupo(s) atualizados${failedCount > 0 ? `, ${failedCount} sem dimensoes ou cotacao` : ''}.`
+    )
+    setFreightLoading(false)
+  }
+
   function handleApply() {
     if (!result || result.importedGroups.length === 0) return
     setApplying(true)
     try {
-      onApply(result.importedGroups, result.productPreviews)
-      const productCount = result.productPreviews.filter((p) => p.status === 'importable').length
+      // Propagate freight from group previews down to product previews.
+      // handleFreightQuotes() sets freightFixedAmount on importedGroups but
+      // productPreviews are never updated — this closes that gap.
+      const freightByGroup = new Map<string, number>()
+      for (const group of result.importedGroups) {
+        if (typeof group.freightFixedAmount === 'number' && group.freightFixedAmount > 0) {
+          freightByGroup.set(group.groupId, group.freightFixedAmount)
+        }
+      }
+
+      const enrichedPreviews = freightByGroup.size > 0
+        ? result.productPreviews.map((preview) => {
+            const groupFreight = freightByGroup.get(preview.groupId)
+            return groupFreight !== undefined
+              ? { ...preview, freightFixedAmount: groupFreight }
+              : preview
+          })
+        : result.productPreviews
+
+      onApply(result.importedGroups, enrichedPreviews)
+      const productCount = enrichedPreviews.filter((p) => p.status === 'importable').length
       setMessage(
         `${result.importedGroups.length} grupo(s) e ${productCount} produto(s) atualizados na matriz comercial.`
       )
@@ -275,6 +371,23 @@ export function MarketplaceCommissionImportPanel({
             {loading ? <RefreshCcw size={14} className="animate-spin" /> : <DownloadCloud size={14} />}
             {loading ? `Consultando ${CHANNEL_LABELS[channelId] ?? channelId}...` : 'Gerar preview'}
           </button>
+          {result && result.importedGroups.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleFreightQuotes()}
+              disabled={freightLoading || !fromCep || !toCep}
+              title={!fromCep || !toCep ? 'Configure os CEPs em Configurações para usar o Melhor Envios' : undefined}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              {freightLoading ? <RefreshCcw size={14} className="animate-spin" /> : <Truck size={14} />}
+              {freightLoading ? 'Cotando frete...' : 'Calcular frete ME'}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleApply}
@@ -310,6 +423,19 @@ export function MarketplaceCommissionImportPanel({
             }}
           >
             {message}
+          </div>
+        )}
+
+        {freightMessage && (
+          <div
+            className="rounded-lg px-3 py-2 text-xs"
+            style={{
+              backgroundColor: 'rgba(99,102,241,0.08)',
+              border: '1px solid rgba(99,102,241,0.2)',
+              color: 'var(--accent-primary)',
+            }}
+          >
+            {freightMessage}
           </div>
         )}
 

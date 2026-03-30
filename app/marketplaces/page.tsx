@@ -8,6 +8,7 @@ import { MarketplaceCard } from '@/components/marketplaces/MarketplaceCard'
 import { MarketplaceProductMatrix } from '@/components/marketplaces/MarketplaceProductMatrix'
 import { MarketplaceCommissionImportPanel } from '@/components/marketplaces/MarketplaceCommissionImportPanel'
 import { MarketplaceConnectionForm } from '@/components/marketplaces/MarketplaceConnectionForm'
+import { MarketplaceShippingPolicyPanel } from '@/components/marketplaces/MarketplaceShippingPolicyPanel'
 import { MarketplaceProductScopeSelector } from '@/components/marketplaces/MarketplaceProductScopeSelector'
 import { useMarketplaceCommissionScope } from '@/hooks/useMarketplaceCommissionScope'
 import { calculateMarginForMarketplace } from '@/lib/calculations'
@@ -29,6 +30,7 @@ export default function MarketplacesPage() {
     toggleActive,
     updateMarketplaceCommercialProfile,
     updateMarketplaceCapabilities,
+    updateShippingPolicy,
     updateCommissionRule,
     applyCommissionImport,
     applyProductCommissionImport,
@@ -44,7 +46,7 @@ export default function MarketplacesPage() {
   const [savingChannelId, setSavingChannelId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'config' | 'connection' | 'matrix'>('config')
+  const [activeTab, setActiveTab] = useState<'config' | 'connection' | 'matrix' | 'frete'>('config')
 
   useEffect(() => {
     if (!selectedMarketplaceId && marketplaces[0]) {
@@ -184,10 +186,11 @@ export default function MarketplacesPage() {
     addMarketplace(name.trim())
   }
 
-  const tabs: { key: 'config' | 'connection' | 'matrix'; label: string }[] = [
+  const tabs: { key: 'config' | 'connection' | 'matrix' | 'frete'; label: string }[] = [
     { key: 'config', label: 'Configuração base' },
     { key: 'connection', label: 'Conexão' },
     { key: 'matrix', label: 'Matriz comercial' },
+    { key: 'frete', label: 'Frete' },
   ]
 
   return (
@@ -368,6 +371,15 @@ export default function MarketplacesPage() {
                   />
                 </div>
               )}
+              {activeTab === 'frete' && (
+                <MarketplaceShippingPolicyPanel
+                  marketplace={selectedMarketplace}
+                  scopedGroups={scopedGroups}
+                  onUpdate={(policy) =>
+                    updateShippingPolicy(selectedMarketplace.id, policy)
+                  }
+                />
+              )}
             </div>
 
             {/* Escopo comercial strip */}
@@ -423,3 +435,5 @@ function ScopeMetric({ label, value }: { label: string; value: string }) {
     </div>
   )
 }
+
+

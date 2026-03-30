@@ -433,32 +433,60 @@ export class AmazonClient {
 
   /**
    * Maps internal taxonomy group names to Amazon BR category keys.
-   * Case-insensitive prefix/substring match. Falls back to 'Demais categorias'.
+   *
+   * Resolution order:
+   *   1. Exact lookup in TAXONOMY_GROUP_AMAZON_OVERRIDES (case-insensitive, trimmed)
+   *   2. Keyword regex patterns (covers generic Portuguese words + common abbreviations)
+   *   3. Fallback: 'Demais categorias' (15%)
+   *
+   * To map a new taxonomy group: add an entry to TAXONOMY_GROUP_AMAZON_OVERRIDES below.
    */
   private static resolveAmazonCategory(groupName?: string): string {
     if (!groupName) return 'Demais categorias'
 
+    // 1. Explicit lookup — checked first, always wins
+    const overrideKey = groupName.trim().toUpperCase()
+    const override = TAXONOMY_GROUP_AMAZON_OVERRIDES[overrideKey]
+    if (override) return override
+
     const g = groupName.toLowerCase()
+
+    // --- Construction & Building Materials (primary domain: tiles, plumbing, fixtures) ---
+    // Tiles & flooring — Ferramentas e Construção (11%)
+    if (/porcelanato|ceramica|cerâmica|azulejo|piso|revestimento|piso laminado|piso vinilico|piso madeira|parede/.test(g)) return 'Ferramentas e Construção'
+    // Plumbing & hydraulic — Ferramentas e Construção (11%)
+    // Also matches abbreviated taxonomy codes: MIST = misturador, LAV = lavatório, CROM = cromado, REG = registro
+    if (/metal sanit|metais sanit|torneira|chuveiro|ducha|registro|válvula|valvula|sifao|sifão|tubulação|tubulacao|encanamento|tubo|cano|conexão hidraul|conexao hidraul|\bmist\b|\bmixt\b|\btorn\b|\breg\b.*\bgav\b/.test(g)) return 'Ferramentas e Construção'
+    // Electrical — Ferramentas e Construção (11%)
+    if (/eletrico|elétrico|hidraulico|hidráulico|ferramenta|parafuso|fixação|fixacao|porca|bucha|chumbador|construção|construcao|madeira|perfil|estrutura/.test(g)) return 'Ferramentas e Construção'
+    // Caulks, grouts, adhesives, mortars, paints — Ferramentas e Construção (11%)
+    if (/rejunte|argamassa|cimento|massa|selante|vedação|vedacao|tinta|impermeabilizante|esmalte|verniz|primer|cola|adesivo|fita/.test(g)) return 'Ferramentas e Construção'
+    // Doors, windows, hardware — Ferramentas e Construção (11%)
+    if (/porta|janela|fechadura|dobradiça|dobradica|puxador|trinco|ferragem|rolo|escada|andaime/.test(g)) return 'Ferramentas e Construção'
+
+    // Sanitaryware & bathroom fixtures — Casa (12%)
+    // (toilet seats, toilet bowls, sinks, bathtubs — sold as home products on Amazon)
+    if (/assento|vaso sanitário|vaso sanitario|pia|cuba|banheira|sanitário|sanitario|lavatório|lavatorio|\blav\b|ducha higiênica|ducha higienica/.test(g)) return 'Casa'
 
     // Kitchen & Home
     if (/cozinha|panela|utensílio|utensilios|louça|loucas|talheres|culinária|culinaria/.test(g)) return 'Cozinha'
-    if (/casa|banheiro|hygiene|higiene|decoração|decoracao|organização|organizacao|limpeza|tapete|cortina|almofada|roupa de cama|edredom/.test(g)) return 'Casa'
-    if (/móveis|moveis|sofá|sofa|armário|armario|estante|prateleira|mesa|cadeira|cama|guarda-roupa|guarda roupa/.test(g)) return 'Móveis'
+    if (/banheiro|hygiene|higiene|decoração|decoracao|organização|organizacao|limpeza|tapete|cortina|almofada|roupa de cama|edredom/.test(g)) return 'Casa'
+    if (/casa/.test(g)) return 'Casa'
+    if (/móveis|moveis|sofá|sofa|armário|armario|estante|prateleira|mesa|cadeira|cama|poltrona|pufe|aparador|buffet|criado|cômode|comode|rack|escrivaninha|banco/.test(g)) return 'Móveis'
     if (/jardim|piscina|churrasqueira|varanda/.test(g)) return 'Jardim e Piscina'
 
     // Electronics
-    if (/televisão|televisao|tv|áudio|audio|cinema|home theater/.test(g)) return 'TV, áudio e cinema em casa'
+    if (/televisão|televisao|tv\b|áudio|audio|cinema|home theater/.test(g)) return 'TV, áudio e cinema em casa'
     if (/celular|smartphone|telefone/.test(g)) return 'Celulares'
     if (/câmera|camera|fotografia|foto/.test(g)) return 'Câmera e fotografia'
     if (/videogame|console|playstation|xbox|nintendo/.test(g)) return 'Videogames e consoles'
     if (/notebook|computador|desktop|monitor|impressora|teclado|mouse|acessório pc|acessorio pc/.test(g)) return 'PC'
     if (/acessório eletrônico|acessorio eletronico|cabo|carregador|adaptador|hub|memória|memoria/.test(g)) return 'Acessórios eletrônicos e PC'
     if (/eletrônico portátil|eletronico portatil|fone|headset|headphone|speaker|caixa de som/.test(g)) return 'Eletrônicos portáteis'
-    if (/eletrodoméstico|eletrodomestico|geladeira|fogão|fogao|lavadora|secadora|ar condicionado|microondas|lava/.test(g)) return 'Eletrodomésticos de linha branca'
+    if (/eletrodoméstico|eletrodomestico|geladeira|fogão|fogao|lavadora|secadora|ar condicionado|microondas/.test(g)) return 'Eletrodomésticos de linha branca'
     if (/eletroportátil pessoal|eletroportatil|secador|chapinha|barbeador|escova elétrica|escova eletrica/.test(g)) return 'Eletroportáteis de cuidado pessoal'
 
-    // Tools & Industry
-    if (/ferramenta|construção|construcao|parafuso|madeira|elétrico|eletrico|hidráulico|hidraulico/.test(g)) return 'Ferramentas e Construção'
+    // Industry & Science
     if (/indústria|industria|ciência|ciencia|laboratório|laboratorio|epi|equipamento de proteção/.test(g)) return 'Indústria e Ciência'
 
     // Fashion & Accessories
@@ -560,4 +588,35 @@ const AMAZON_BR_COMMISSION: Record<string, AmazonCommissionEntry> = {
   'Acessórios eletrônicos e PC':          { rate: 0.15, minFee: 2.00, tieredThreshold: 100 },
   'Móveis':                               { rate: 0.15, minFee: 2.00, tieredThreshold: 200 },
   'Demais categorias':                    { rate: 0.15, minFee: 2.00 },
+}
+
+// ---------------------------------------------------------------------------
+// Explicit taxonomy group → Amazon BR category overrides
+// ---------------------------------------------------------------------------
+// Keys are UPPER-CASE exact group names (trimmed). Values are keys in AMAZON_BR_COMMISSION.
+// Checked before keyword patterns — always wins. Add new groups here as the catalog grows.
+// Rates: Ferramentas e Construção=11%, Casa=12%, Cozinha=12%, Demais=15%, Móveis=15%(tiered)
+//
+// Source: venda.amazon.com.br/precos + user-confirmed mappings
+// ---------------------------------------------------------------------------
+const TAXONOMY_GROUP_AMAZON_OVERRIDES: Record<string, string> = {
+  // --- Bathroom accessories & fixtures → Casa (12%) ---
+  'LIGACAO FLEX.40CM ANTRACI':    'Casa',   // flexible supply hose, anthracite finish
+  'FLEX PAPELEIRO':               'Casa',   // flexible toilet paper holder
+  'POLO CABIDE CROMADO':          'Casa',   // chrome towel/robe hook
+  'ACESSORIOS BANHO AVULSO':      'Casa',   // individual bathroom accessories
+  'ASSENTO PLASTICO':             'Casa',   // plastic toilet seat (also caught by keyword, explicit for clarity)
+
+  // --- Construction materials: tiles, profiles, adhesives → Ferramentas e Construção (11%) ---
+  'PAST.30X30 NATUS FUSION FU':       'Ferramentas e Construção',   // ceramic/porcelain 30x30
+  'PERFIL FIRENZE BRILHO ESC 10':     'Ferramentas e Construção',   // decorative tile trim profile
+  'REV. VIA UMIDA 123':               'Ferramentas e Construção',   // wet-area wall cladding (REV = Revestimento)
+  'USO PROFISSIONAL':                 'Ferramentas e Construção',   // professional-use tools/materials
+  'MMX12MMX3M':                       'Ferramentas e Construção',   // profile/trim dimension code (12mm×3m)
+  'ACESSORIO ASSENTAMENTO':           'Ferramentas e Construção',   // tiling/laying accessories
+  'REV. PASTILHAS VASCONCELOS':       'Ferramentas e Construção',   // mosaic/tile cladding (Vasconcelos brand)
+
+  // --- Plumbing fixtures → Ferramentas e Construção (11%) ---
+  // MIST.LAV.* (Misturador Lavatório) — caught by \bmist\b keyword pattern, add explicit if needed:
+  // 'MIST.LAV.B.ALTA POLO CROMADO': 'Ferramentas e Construção',
 }
