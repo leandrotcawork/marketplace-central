@@ -57,13 +57,13 @@ export const DEFAULT_MARKETPLACES: MarketplaceChannel[] = [
       sandbox: 'supported',
     },
     commercialProfile: {
-      commissionPercent: 0.15,
-      fixedFeeAmount: 8,
+      commissionPercent: 0.12,
+      fixedFeeAmount: 0,
       freightFixedAmount: 0,
       sourceType: 'manual_assumption',
-      sourceRef: 'Base legada do simulador',
+      sourceRef: 'Taxa base Casa/Cozinha — venda.amazon.com.br/precos (2026)',
       reviewStatus: 'manual_assumption',
-      notes: MANUAL_REVIEW_NOTE,
+      notes: 'Comissão varia por categoria (10–15%). Use o import route para obter taxa precisa por grupo. Taxa mínima por item: R$1,00–R$2,00 (não incluída no fixedFee).',
     },
   },
   {

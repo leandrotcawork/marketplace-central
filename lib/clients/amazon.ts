@@ -386,4 +386,178 @@ export class AmazonClient {
       return { ok: false, error: error instanceof Error ? error.message : 'Falha ao buscar pedidos' }
     }
   }
+
+  // --- Commission ---
+
+  /**
+   * Amazon Brasil commission table (source: venda.amazon.com.br/precos, effective 2026).
+   *
+   * Tiered categories (Móveis, Acessórios eletrônicos e PC):
+   *   price <= threshold → 15%; price > threshold → 10% (applied on full price, not split).
+   * Minimum fee per item: R$1.00 (food/tires) or R$2.00 (all others).
+   *
+   * Mapping: product's primaryTaxonomyGroupName → Amazon category key → rate.
+   * Groups not matched fall back to 'Demais categorias' (15%, min R$2.00).
+   *
+   * @param price   Product base price (used for tiered category lookup)
+   * @param groupName  Product's primaryTaxonomyGroupName from taxonomy store
+   */
+  static getCommissionForProduct(
+    price: number,
+    groupName?: string
+  ): {
+    commissionPercent: number
+    saleFeeAmount: number
+    fixedFeeAmount: number
+    minFeeAmount: number
+    categoryName: string
+  } {
+    const amazonCategory = AmazonClient.resolveAmazonCategory(groupName)
+    const entry = AMAZON_BR_COMMISSION[amazonCategory] ?? AMAZON_BR_COMMISSION['Demais categorias']
+
+    // Tiered: if price > threshold, use lower rate (10%); otherwise use the category rate
+    const commissionPercent =
+      entry.tieredThreshold !== undefined && price > entry.tieredThreshold ? 0.10 : entry.rate
+
+    const saleFeeRaw = price * commissionPercent
+    const saleFeeAmount = Math.round(Math.max(saleFeeRaw, entry.minFee) * 100) / 100
+
+    return {
+      commissionPercent,
+      saleFeeAmount,
+      fixedFeeAmount: 0,
+      minFeeAmount: entry.minFee,
+      categoryName: amazonCategory,
+    }
+  }
+
+  /**
+   * Maps internal taxonomy group names to Amazon BR category keys.
+   * Case-insensitive prefix/substring match. Falls back to 'Demais categorias'.
+   */
+  private static resolveAmazonCategory(groupName?: string): string {
+    if (!groupName) return 'Demais categorias'
+
+    const g = groupName.toLowerCase()
+
+    // Kitchen & Home
+    if (/cozinha|panela|utensílio|utensilios|louça|loucas|talheres|culinária|culinaria/.test(g)) return 'Cozinha'
+    if (/casa|banheiro|hygiene|higiene|decoração|decoracao|organização|organizacao|limpeza|tapete|cortina|almofada|roupa de cama|edredom/.test(g)) return 'Casa'
+    if (/móveis|moveis|sofá|sofa|armário|armario|estante|prateleira|mesa|cadeira|cama|guarda-roupa|guarda roupa/.test(g)) return 'Móveis'
+    if (/jardim|piscina|churrasqueira|varanda/.test(g)) return 'Jardim e Piscina'
+
+    // Electronics
+    if (/televisão|televisao|tv|áudio|audio|cinema|home theater/.test(g)) return 'TV, áudio e cinema em casa'
+    if (/celular|smartphone|telefone/.test(g)) return 'Celulares'
+    if (/câmera|camera|fotografia|foto/.test(g)) return 'Câmera e fotografia'
+    if (/videogame|console|playstation|xbox|nintendo/.test(g)) return 'Videogames e consoles'
+    if (/notebook|computador|desktop|monitor|impressora|teclado|mouse|acessório pc|acessorio pc/.test(g)) return 'PC'
+    if (/acessório eletrônico|acessorio eletronico|cabo|carregador|adaptador|hub|memória|memoria/.test(g)) return 'Acessórios eletrônicos e PC'
+    if (/eletrônico portátil|eletronico portatil|fone|headset|headphone|speaker|caixa de som/.test(g)) return 'Eletrônicos portáteis'
+    if (/eletrodoméstico|eletrodomestico|geladeira|fogão|fogao|lavadora|secadora|ar condicionado|microondas|lava/.test(g)) return 'Eletrodomésticos de linha branca'
+    if (/eletroportátil pessoal|eletroportatil|secador|chapinha|barbeador|escova elétrica|escova eletrica/.test(g)) return 'Eletroportáteis de cuidado pessoal'
+
+    // Tools & Industry
+    if (/ferramenta|construção|construcao|parafuso|madeira|elétrico|eletrico|hidráulico|hidraulico/.test(g)) return 'Ferramentas e Construção'
+    if (/indústria|industria|ciência|ciencia|laboratório|laboratorio|epi|equipamento de proteção/.test(g)) return 'Indústria e Ciência'
+
+    // Fashion & Accessories
+    if (/roupa|vestuário|vestuario|camiseta|calça|calca|blusa|vestido|moda/.test(g)) return 'Roupas e acessórios'
+    if (/calçado|calcado|sapato|tênis|tenis|sandália|sandalia/.test(g)) return 'Calçados, bolsas e óculos escuros'
+    if (/bolsa|mochila|carteira|óculos|oculos/.test(g)) return 'Calçados, bolsas e óculos escuros'
+    if (/relógio|relogio/.test(g)) return 'Relógios'
+    if (/joia|joias|bijuteria|ouro|prata/.test(g)) return 'Joias'
+
+    // Beauty & Health
+    if (/beleza de luxo|beleza luxo|perfume de luxo/.test(g)) return 'Beleza de luxo'
+    if (/beleza|cosméticos|cosmeticos|maquiagem|skincare|creme|shampoo/.test(g)) return 'Beleza'
+    if (/saúde|saude|medicamento|suplemento|farmácia|farmacia|cuidado pessoal/.test(g)) return 'Saúde e cuidados pessoais'
+
+    // Sports & Leisure
+    if (/esporte|esportes|aventura|lazer|camping|musculação|musculacao|bicicleta/.test(g)) return 'Esportes, aventura e lazer'
+    if (/instrumento musical|violão|violao|guitarra|piano|bateria|teclado musical/.test(g)) return 'Instrumentos musicais e acessórios'
+
+    // Baby & Pets
+    if (/bebê|bebe|infantil|fraldas|fralda/.test(g)) return 'Produtos para bebês'
+    if (/pet|animal|cachorro|gato|pássaro|passaro|ração|racao/.test(g)) return 'Produtos para animais de estimação'
+    if (/brinquedo|jogo|puzzle|lego/.test(g)) return 'Brinquedos e jogos'
+
+    // Automotive
+    if (/pneu|roda|pneus/.test(g)) return 'Pneus e rodas'
+    if (/peça automotiva|acessório automotivo|acessorio automotivo|carro|automóvel|automovel/.test(g)) return 'Peças e acessórios automotivos'
+
+    // Travel & Stationery
+    if (/bagagem|mala|viagem/.test(g)) return 'Bagagem e acessórios de viagem'
+    if (/papelaria|escritório|escritorio|caneta|caderno|papel/.test(g)) return 'Papelaria e Escritório'
+
+    // Food & Beverages
+    if (/alimento|comida|bebida não alcoólica|bebida nao alcoolica|café|cafe|chá|cha/.test(g)) return 'Comidas e bebidas'
+    if (/bebida alcoólica|bebida alcoolica|cerveja|vinho|whisky/.test(g)) return 'Bebidas alcoólicas'
+
+    // Media
+    if (/livro|literatura/.test(g)) return 'Livros'
+    if (/vídeo|video|dvd|blu.ray/.test(g)) return 'Vídeo e DVD'
+    if (/música|musica|cd|lp|vinil/.test(g)) return 'Música (CDs, LPs)'
+
+    return 'Demais categorias'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Amazon Brasil commission table (effective 2026)
+// Source: https://venda.amazon.com.br/precos#comissoes-de-venda
+// ---------------------------------------------------------------------------
+
+type AmazonCommissionEntry = {
+  /** Flat commission rate (applied on full price). For tiered categories, this is the base rate. */
+  rate: number
+  /** Minimum fee per item (R$) */
+  minFee: number
+  /**
+   * Price threshold for tiered categories.
+   * If price > tieredThreshold, rate drops to 10%.
+   * Applied on full price (not split/progressive).
+   */
+  tieredThreshold?: number
+}
+
+const AMAZON_BR_COMMISSION: Record<string, AmazonCommissionEntry> = {
+  'Comidas e bebidas':                    { rate: 0.10, minFee: 1.00 },
+  'Pneus e rodas':                        { rate: 0.10, minFee: 1.00 },
+  'TV, áudio e cinema em casa':           { rate: 0.10, minFee: 2.00 },
+  'Eletrodomésticos de linha branca':     { rate: 0.11, minFee: 1.00 },
+  'Bebidas alcoólicas':                   { rate: 0.11, minFee: 1.00 },
+  'Celulares':                            { rate: 0.11, minFee: 2.00 },
+  'Câmera e fotografia':                  { rate: 0.11, minFee: 2.00 },
+  'Videogames e consoles':                { rate: 0.11, minFee: 2.00 },
+  'Ferramentas e Construção':             { rate: 0.11, minFee: 2.00 },
+  'Saúde e cuidados pessoais':            { rate: 0.12, minFee: 1.00 },
+  'Indústria e Ciência':                  { rate: 0.12, minFee: 2.00 },
+  'Produtos para bebês':                  { rate: 0.12, minFee: 2.00 },
+  'Produtos para animais de estimação':   { rate: 0.12, minFee: 2.00 },
+  'Eletroportáteis de cuidado pessoal':   { rate: 0.12, minFee: 2.00 },
+  'Cozinha':                              { rate: 0.12, minFee: 2.00 },
+  'Jardim e Piscina':                     { rate: 0.12, minFee: 2.00 },
+  'Brinquedos e jogos':                   { rate: 0.12, minFee: 2.00 },
+  'PC':                                   { rate: 0.12, minFee: 2.00 },
+  'Peças e acessórios automotivos':       { rate: 0.12, minFee: 2.00 },
+  'Casa':                                 { rate: 0.12, minFee: 2.00 },
+  'Esportes, aventura e lazer':           { rate: 0.12, minFee: 2.00 },
+  'Instrumentos musicais e acessórios':   { rate: 0.12, minFee: 2.00 },
+  'Eletrônicos portáteis':                { rate: 0.13, minFee: 2.00 },
+  'Beleza':                               { rate: 0.13, minFee: 2.00 },
+  'Papelaria e Escritório':               { rate: 0.13, minFee: 2.00 },
+  'Relógios':                             { rate: 0.13, minFee: 2.00 },
+  'Beleza de luxo':                       { rate: 0.14, minFee: 2.00 },
+  'Bagagem e acessórios de viagem':       { rate: 0.14, minFee: 2.00 },
+  'Roupas e acessórios':                  { rate: 0.14, minFee: 2.00 },
+  'Calçados, bolsas e óculos escuros':    { rate: 0.14, minFee: 2.00 },
+  'Joias':                                { rate: 0.14, minFee: 2.00 },
+  'Livros':                               { rate: 0.15, minFee: 2.00 },
+  'Vídeo e DVD':                          { rate: 0.15, minFee: 2.00 },
+  'Música (CDs, LPs)':                    { rate: 0.15, minFee: 2.00 },
+  // Tiered: price <= threshold → 15%; price > threshold → 10% (on full price)
+  'Acessórios eletrônicos e PC':          { rate: 0.15, minFee: 2.00, tieredThreshold: 100 },
+  'Móveis':                               { rate: 0.15, minFee: 2.00, tieredThreshold: 200 },
+  'Demais categorias':                    { rate: 0.15, minFee: 2.00 },
 }

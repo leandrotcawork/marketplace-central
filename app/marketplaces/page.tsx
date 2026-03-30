@@ -343,7 +343,7 @@ export default function MarketplacesPage() {
               )}
               {activeTab === 'matrix' && (
                 <div className="flex flex-col gap-4">
-                  {(selectedMarketplace.id === 'mercado-livre' || selectedMarketplace.id === 'magalu' || selectedMarketplace.id === 'leroy' || selectedMarketplace.id === 'madeira') && (
+                  {(selectedMarketplace.id === 'mercado-livre' || selectedMarketplace.id === 'magalu' || selectedMarketplace.id === 'leroy' || selectedMarketplace.id === 'madeira' || selectedMarketplace.id === 'amazon') && (
                     <>
                       <MarketplaceProductScopeSelector
                         products={scopedProducts}

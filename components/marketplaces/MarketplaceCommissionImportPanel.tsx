@@ -176,6 +176,8 @@ export function MarketplaceCommissionImportPanel({
               ? 'Comissao fixa 18% via Mirakl Seller API. Sem calculo de frete — depende de configuracao de logistic-class com a Leroy.'
               : channelId === 'madeira'
               ? 'Comissao fixa 15%. Frete disponivel via cotacao direta (/v1/freight/quote). Demais endpoints aguardam sandbox do parceiro.'
+              : channelId === 'amazon'
+              ? 'Comissao por categoria (10–15%) mapeada via nome do grupo taxonomico. Categorias tiered (Moveis, Acessorios Eletronicos): preco <= limiar usa 15%, acima usa 10%.'
               : `Importa comissoes do ${CHANNEL_LABELS[channelId] ?? channelId}.`}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-3">
