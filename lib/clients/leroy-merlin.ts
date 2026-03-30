@@ -188,6 +188,18 @@ export class LeroyMerlinClient {
     }
   }
 
+  /** Leroy Merlin flat 18% commission — no category-specific rates */
+  getCommissionForProduct(basePrice: number): {
+    commissionPercent: number
+    fixedFeeAmount: number
+    saleFeeAmount: number
+  } {
+    const commissionPercent = 0.18
+    const fixedFeeAmount = 0
+    const saleFeeAmount = Math.round(basePrice * commissionPercent * 100) / 100
+    return { commissionPercent, fixedFeeAmount, saleFeeAmount }
+  }
+
   async acceptOrderLines(orderLineIds: string[]): Promise<LeroySimpleResult> {
     try {
       await this.fetch('/api/order-lines/accept', {

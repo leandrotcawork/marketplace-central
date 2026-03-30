@@ -5,6 +5,8 @@
  * Docs: https://developers.magalu.com
  */
 
+import { createHmac, timingSafeEqual } from 'crypto'
+
 const BASE_URL = process.env.MAGALU_USE_SANDBOX === 'true'
   ? 'https://sandbox.magalu.com'
   : 'https://api.magalu.com'
@@ -227,5 +229,184 @@ export class MagaluClient {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Falha ao responder' }
     }
+  }
+
+  // --- Commission ---
+
+  /**
+   * Magalu charges a flat 16% commission regardless of product category.
+   * No API call needed — returns calculated values synchronously.
+   */
+  getCommissionForProduct(price: number): {
+    commissionPercent: number
+    saleFeeAmount: number
+    fixedFeeAmount: number
+  } {
+    const MAGALU_COMMISSION_RATE = 0.16
+    return {
+      commissionPercent: MAGALU_COMMISSION_RATE,
+      saleFeeAmount: Math.round(price * MAGALU_COMMISSION_RATE * 100) / 100,
+      fixedFeeAmount: 0,
+    }
+  }
+
+  // --- Categories ---
+
+  async listCategories(): Promise<
+    { ok: true; categories: { id: string; name: string }[] } | { ok: false; error: string }
+  > {
+    try {
+      const res = await this.fetch<{ data: { id: string; name: string }[] }>('/v1/categories')
+      return { ok: true, categories: res.data ?? [] }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Falha ao listar categorias' }
+    }
+  }
+
+  // --- Freight Simulation (Magalu Entregas) ---
+
+  /**
+   * Simulates Magalu Entregas shipping cost using the published co-participation table.
+   * No API call — purely local lookup based on product weight/dimensions.
+   *
+   * Table effective: 2025-02-01 (source: Magalu seller portal / Preço Certo)
+   * Cubic weight: H(m) x W(m) x L(m) x 167 (light) or x 300 (heavy)
+   * Billable weight = max(actual weight, cubic weight)
+   *
+   * Discount tiers based on on-time dispatch rate (pontualidade de despacho):
+   *   - No discount: < 87% on-time
+   *   - 25% discount: 87-97% on-time
+   *   - 50% discount: > 97% on-time
+   *
+   * @param dimensions "HxWxL,weight_grams" format (same as ML) — e.g. "10x60x60,25000"
+   *                   H/W/L in cm, weight in grams
+   * @param discountTier 'none' | '25' | '50' — seller performance tier
+   */
+  static simulateShippingCost(
+    dimensions: string,
+    discountTier: 'none' | '25' | '50' = 'none'
+  ): number | null {
+    const parsed = MagaluClient.parseDimensions(dimensions)
+    if (!parsed) return null
+
+    const { heightCm, widthCm, lengthCm, weightG } = parsed
+    const actualWeightKg = weightG / 1000
+
+    // Cubic weight: H(m) x W(m) x L(m) x 167
+    const cubicWeightKg = (heightCm / 100) * (widthCm / 100) * (lengthCm / 100) * 167
+
+    // Billable weight = max of actual vs cubic
+    const billableWeightG = Math.max(actualWeightKg, cubicWeightKg) * 1000
+
+    const baseCost = MagaluClient.lookupFreightTable(billableWeightG)
+    if (baseCost === null) return null
+
+    const discountMultiplier =
+      discountTier === '50' ? 0.5 :
+      discountTier === '25' ? 0.75 :
+      1.0
+
+    return Math.round(baseCost * discountMultiplier * 100) / 100
+  }
+
+  /**
+   * Parse "HxWxL,weight_grams" dimension string.
+   * Same format used by ML shipping simulation.
+   */
+  private static parseDimensions(dimensions: string): {
+    heightCm: number; widthCm: number; lengthCm: number; weightG: number
+  } | null {
+    const match = dimensions.match(
+      /^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)$/i
+    )
+    if (!match) return null
+
+    const [, h, w, l, weight] = match
+    const heightCm = Number(h)
+    const widthCm = Number(w)
+    const lengthCm = Number(l)
+    const weightG = Number(weight)
+
+    if ([heightCm, widthCm, lengthCm, weightG].some((v) => !Number.isFinite(v) || v <= 0)) {
+      return null
+    }
+
+    return { heightCm, widthCm, lengthCm, weightG }
+  }
+
+  /**
+   * Magalu Entregas co-participation table (effective 2025-02-01).
+   * Returns base cost (no discount) for a given weight in grams.
+   * Source: Magalu seller portal / Preço Certo documentation.
+   */
+  private static lookupFreightTable(weightG: number): number | null {
+    // Weight ranges in grams → base cost (R$, no discount tier)
+    const table: [number, number][] = [
+      [500,     35.90],
+      [1000,    40.80],
+      [2000,    42.90],
+      [3000,    45.90],
+      [4000,    48.90],
+      [5000,    52.90],
+      [9000,    77.90],
+      [13000,   87.90],
+      [17000,   97.90],
+      [21000,  107.90],
+      [25000,  117.90],
+      [30000,  127.90],
+      [35000,  137.90],
+      [40000,  147.90],
+      [45000,  157.90],
+      [50000,  167.90],
+      [60000,  177.90],
+      [70000,  187.90],
+      [80000,  197.90],
+      [90000,  207.90],
+      [100000, 219.90],
+      [110000, 249.90],
+      [120000, 259.90],
+      [130000, 269.90],
+      [140000, 279.90],
+      [150000, 289.90],
+      [160000, 299.90],
+      [170000, 309.90],
+      [180000, 319.90],
+      [190000, 329.90],
+      [200000, 339.90],
+    ]
+
+    if (weightG <= 0) return null
+
+    // Over 200kg
+    if (weightG > 200000) return 349.90
+
+    for (const [maxG, cost] of table) {
+      if (weightG <= maxG) return cost
+    }
+
+    return 349.90
+  }
+
+  // --- Webhook Signature Verification ---
+
+  /**
+   * Verify Magalu v1 webhook HMAC-SHA256 signature.
+   * Signature is computed over "{timestamp}.{rawBody}" using the webhook secret.
+   * Secret format: whsec_*
+   */
+  static verifyWebhookSignature(
+    rawBody: string,
+    signature: string,
+    timestamp: string,
+    secret: string
+  ): boolean {
+    const signedPayload = `${timestamp}.${rawBody}`
+    const expected = createHmac('sha256', secret).update(signedPayload).digest('hex')
+
+    const sigBuffer = Buffer.from(signature, 'hex')
+    const expectedBuffer = Buffer.from(expected, 'hex')
+
+    if (sigBuffer.length !== expectedBuffer.length) return false
+    return timingSafeEqual(sigBuffer, expectedBuffer)
   }
 }

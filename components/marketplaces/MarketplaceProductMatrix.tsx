@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { calculateMargin, calculateMarginForMarketplace } from '@/lib/calculations'
+import { resolveProductMargin } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import type { Marketplace, MarketplaceCommissionRule, Product } from '@/types'
@@ -24,35 +24,13 @@ export function MarketplaceProductMatrix({
       const channelOverrides = productImportOverrides[marketplace.id] ?? {}
       return products.map((p) => {
         const override = channelOverrides[p.id]
-        if (override) {
-          if (override.status === 'importable') {
-            const base = calculateMargin(
-              p.basePrice,
-              p.cost,
-              override.commissionPercent ?? 0,
-              override.fixedFeeAmount ?? 0,
-              override.freightFixedAmount ?? 0
-            )
-            return {
-              product: p,
-              margin: {
-                ...base,
-                productId: p.id,
-                productGroupId: p.primaryTaxonomyNodeId,
-                marketplaceId: marketplace.id,
-                sellingPrice: p.basePrice,
-                ruleType: 'group_override' as const,
-                reviewStatus: 'validated' as const,
-              },
-              importStatus: 'importable' as const,
-            }
-          }
+        if (override && override.status !== 'importable') {
           return { product: p, margin: null, importStatus: override.status }
         }
         return {
           product: p,
-          margin: calculateMarginForMarketplace(p, marketplace, rules),
-          importStatus: null,
+          margin: resolveProductMargin(p, marketplace, rules, productImportOverrides),
+          importStatus: override?.status ?? null,
         }
       })
     },
@@ -314,47 +292,65 @@ export function MarketplaceProductMatrix({
                       className="px-4 py-3 align-middle"
                       style={{ borderBottom: '1px solid var(--border-color)' }}
                     >
-                      {importStatus === 'missing' ? (
-                        <span
-                          className="rounded-full px-2 py-1 text-[11px] font-medium"
-                          style={{
-                            backgroundColor: 'rgba(156,163,175,0.15)',
-                            color: 'var(--text-secondary)',
-                          }}
-                        >
-                          Não encontrado
-                        </span>
-                      ) : importStatus === 'error' ? (
-                        <span
-                          className="rounded-full px-2 py-1 text-[11px] font-medium"
-                          style={{
-                            backgroundColor: 'rgba(239,68,68,0.12)',
-                            color: 'var(--accent-danger)',
-                          }}
-                        >
-                          Erro ML
-                        </span>
-                      ) : importStatus === 'importable' ? (
-                        <span
-                          className="rounded-full px-2 py-1 text-[11px] font-medium"
-                          style={{
-                            backgroundColor: 'rgba(59,130,246,0.12)',
-                            color: 'var(--accent-primary)',
-                          }}
-                        >
-                          {healthStyle?.label ?? '—'}
-                        </span>
-                      ) : healthStyle ? (
-                        <span
-                          className="rounded-full px-2 py-1 text-[11px] font-medium"
-                          style={{
-                            backgroundColor: healthStyle.background,
-                            color: healthStyle.color,
-                          }}
-                        >
-                          {healthStyle.label}
-                        </span>
-                      ) : null}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {importStatus === 'missing' ? (
+                          <span
+                            className="rounded-full px-2 py-1 text-[11px] font-medium"
+                            style={{
+                              backgroundColor: 'rgba(156,163,175,0.15)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            Não encontrado
+                          </span>
+                        ) : importStatus === 'error' ? (
+                          <span
+                            className="rounded-full px-2 py-1 text-[11px] font-medium"
+                            style={{
+                              backgroundColor: 'rgba(239,68,68,0.12)',
+                              color: 'var(--accent-danger)',
+                            }}
+                          >
+                            Erro
+                          </span>
+                        ) : importStatus === 'importable' ? (
+                          <span
+                            className="rounded-full px-2 py-1 text-[11px] font-medium"
+                            style={{
+                              backgroundColor: 'rgba(59,130,246,0.12)',
+                              color: 'var(--accent-primary)',
+                            }}
+                          >
+                            {healthStyle?.label ?? '—'}
+                          </span>
+                        ) : healthStyle ? (
+                          <span
+                            className="rounded-full px-2 py-1 text-[11px] font-medium"
+                            style={{
+                              backgroundColor: healthStyle.background,
+                              color: healthStyle.color,
+                            }}
+                          >
+                            {healthStyle.label}
+                          </span>
+                        ) : null}
+                        {(() => {
+                          const override = productImportOverrides[marketplace.id]?.[product.id]
+                          const tag = override?.listingTypeId
+                          if (!tag) return null
+                          return (
+                            <span
+                              className="rounded-full px-2 py-0.5 text-[10px]"
+                              style={{
+                                backgroundColor: 'rgba(139,92,246,0.1)',
+                                color: 'rgb(139,92,246)',
+                              }}
+                            >
+                              {tag === 'gold_special' ? 'Classico' : tag === 'gold_pro' ? 'Premium' : tag}
+                            </span>
+                          )
+                        })()}
+                      </div>
                     </td>
                   </tr>
                 )

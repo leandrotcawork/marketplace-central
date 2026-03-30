@@ -95,6 +95,7 @@ export interface MarketplaceCommissionRule {
   commissionPercent: number
   fixedFeeAmount: number
   freightFixedAmount: number
+  listingTypeId?: string
   sourceType: MarketplaceRuleSourceType
   sourceRef?: string
   evidenceDate?: string
@@ -281,6 +282,7 @@ export interface MarketplaceProductImportOverride {
   productId: string
   status: MarketplaceCommissionImportStatus
   categoryId?: string
+  listingTypeId?: string
   commissionPercent?: number
   fixedFeeAmount?: number
   freightFixedAmount?: number

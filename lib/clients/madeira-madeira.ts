@@ -200,6 +200,18 @@ export class MadeiraMadeiraClient {
     }
   }
 
+  /** Madeira Madeira flat 15% commission — no category-specific rates */
+  getCommissionForProduct(basePrice: number): {
+    commissionPercent: number
+    fixedFeeAmount: number
+    saleFeeAmount: number
+  } {
+    const commissionPercent = 0.15
+    const fixedFeeAmount = 0
+    const saleFeeAmount = Math.round(basePrice * commissionPercent * 100) / 100
+    return { commissionPercent, fixedFeeAmount, saleFeeAmount }
+  }
+
   async fetchOrders(since?: string): Promise<MadeiraOrdersResult> {
     try {
       const params = new URLSearchParams({ status: 'pending', page: '1', limit: '50' })

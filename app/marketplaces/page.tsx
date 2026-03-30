@@ -31,6 +31,7 @@ export default function MarketplacesPage() {
     updateMarketplaceCapabilities,
     updateCommissionRule,
     applyCommissionImport,
+    applyProductCommissionImport,
     addMarketplace,
     resetDefaults,
     syncConnectionStatuses,
@@ -342,7 +343,7 @@ export default function MarketplacesPage() {
               )}
               {activeTab === 'matrix' && (
                 <div className="flex flex-col gap-4">
-                  {selectedMarketplace.id === 'mercado-livre' && (
+                  {(selectedMarketplace.id === 'mercado-livre' || selectedMarketplace.id === 'magalu' || selectedMarketplace.id === 'leroy' || selectedMarketplace.id === 'madeira') && (
                     <>
                       <MarketplaceProductScopeSelector
                         products={scopedProducts}
@@ -351,10 +352,12 @@ export default function MarketplacesPage() {
                         onScopeChange={setImportScopeProducts}
                       />
                       <MarketplaceCommissionImportPanel
+                        channelId={selectedMarketplace.id}
                         products={importScopeProducts}
-                        onApply={(groups) =>
+                        onApply={(groups, productPreviews) => {
                           applyCommissionImport(selectedMarketplace.id, groups)
-                        }
+                          applyProductCommissionImport(selectedMarketplace.id, productPreviews)
+                        }}
                       />
                     </>
                   )}

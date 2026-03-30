@@ -7,16 +7,29 @@ import { useProductDimensionsStore } from '@/stores/productDimensionsStore'
 import { useProductCategoryStore } from '@/stores/productCategoryStore'
 import type {
   MarketplaceCommissionImportGroupPreview,
+  MarketplaceCommissionImportProductPreview,
   MarketplaceCommissionImportResult,
   Product,
 } from '@/types'
 
 interface MarketplaceCommissionImportPanelProps {
+  channelId?: string
   products: Product[]
-  onApply: (groups: MarketplaceCommissionImportGroupPreview[]) => void
+  onApply: (
+    groups: MarketplaceCommissionImportGroupPreview[],
+    productPreviews: MarketplaceCommissionImportProductPreview[]
+  ) => void
+}
+
+const CHANNEL_LABELS: Record<string, string> = {
+  'mercado-livre': 'Mercado Livre',
+  'magalu': 'Magalu',
+  'leroy': 'Leroy Merlin',
+  'madeira': 'Madeira Madeira',
 }
 
 export function MarketplaceCommissionImportPanel({
+  channelId = 'mercado-livre',
   products,
   onApply,
 }: MarketplaceCommissionImportPanelProps) {
@@ -28,6 +41,8 @@ export function MarketplaceCommissionImportPanel({
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState('')
+  const [listingTypeId, setListingTypeId] = useState<'gold_special' | 'gold_pro'>('gold_special')
+  const [discountTier, setDiscountTier] = useState<'none' | '25' | '50'>('none')
 
   const totals = useMemo(() => {
     if (!result) {
@@ -67,20 +82,26 @@ export function MarketplaceCommissionImportPanel({
         }
       }
 
-      const response = await fetch('/api/marketplace-commission-import/mercado-livre', {
+      const response = await fetch(`/api/marketplace-commission-import/${channelId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           products,
           dimensions: dimensions.trim() || undefined,
           productDimensions: Object.keys(productDimensions).length > 0 ? productDimensions : undefined,
-          productCategories: Object.keys(productCategories).length > 0 ? productCategories : undefined,
+          ...(channelId === 'mercado-livre'
+            ? {
+                listingTypeId,
+                productCategories: Object.keys(productCategories).length > 0 ? productCategories : undefined,
+              }
+            : {}),
+          ...(channelId === 'magalu' ? { discountTier } : {}),
         }),
       })
       const payload = await response.json()
 
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error ?? 'Falha ao importar comissoes do Mercado Livre')
+        throw new Error(payload?.error ?? `Falha ao importar comissoes do ${CHANNEL_LABELS[channelId] ?? channelId}`)
       }
 
       const importResult = payload.data as MarketplaceCommissionImportResult
@@ -106,7 +127,7 @@ export function MarketplaceCommissionImportPanel({
       setError(
         fetchError instanceof Error
           ? fetchError.message
-          : 'Falha ao importar comissoes do Mercado Livre'
+          : `Falha ao importar comissoes do ${CHANNEL_LABELS[channelId] ?? channelId}`
       )
     } finally {
       setLoading(false)
@@ -117,8 +138,11 @@ export function MarketplaceCommissionImportPanel({
     if (!result || result.importedGroups.length === 0) return
     setApplying(true)
     try {
-      onApply(result.importedGroups)
-      setMessage(`${result.importedGroups.length} grupo(s) atualizados na matriz comercial.`)
+      onApply(result.importedGroups, result.productPreviews)
+      const productCount = result.productPreviews.filter((p) => p.status === 'importable').length
+      setMessage(
+        `${result.importedGroups.length} grupo(s) e ${productCount} produto(s) atualizados na matriz comercial.`
+      )
     } finally {
       setApplying(false)
     }
@@ -141,35 +165,97 @@ export function MarketplaceCommissionImportPanel({
             className="text-sm font-semibold"
             style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-dm-sans)' }}
           >
-            Importar comissao oficial do Mercado Livre
+            Importar comissao oficial do {CHANNEL_LABELS[channelId] ?? channelId}
           </h3>
           <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-            Usa domain_discovery + listing_prices para preencher overrides por grupo com
-            `gold_special`. Frete calculado automaticamente via EAN do catalogo MeLi.
+            {channelId === 'mercado-livre'
+              ? `Usa domain_discovery + listing_prices para preencher overrides por grupo. Frete calculado automaticamente via EAN do catalogo MeLi.`
+              : channelId === 'magalu'
+              ? 'Comissao fixa 16%. Frete calculado via tabela Magalu Entregas (peso real vs cubado). Informe dimensoes para habilitar o calculo de frete.'
+              : channelId === 'leroy'
+              ? 'Comissao fixa 18% via Mirakl Seller API. Sem calculo de frete — depende de configuracao de logistic-class com a Leroy.'
+              : channelId === 'madeira'
+              ? 'Comissao fixa 15%. Frete disponivel via cotacao direta (/v1/freight/quote). Demais endpoints aguardam sandbox do parceiro.'
+              : `Importa comissoes do ${CHANNEL_LABELS[channelId] ?? channelId}.`}
           </p>
-          <div className="mt-2 flex items-center gap-2">
-            <label
-              htmlFor="meli-dimensions"
-              className="text-xs"
-              style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
-            >
-              Dimensoes (opcional):
-            </label>
-            <input
-              id="meli-dimensions"
-              type="text"
-              placeholder="Substitui catalogo — ex: 10x60x60,25000"
-              value={dimensions}
-              onChange={(e) => setDimensions(e.target.value)}
-              className="rounded-md px-2 py-1 text-xs"
-              style={{
-                backgroundColor: 'var(--bg-tertiary)',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text-primary)',
-                width: '260px',
-                fontFamily: 'var(--font-jetbrains-mono)',
-              }}
-            />
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            {channelId === 'mercado-livre' && (
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="meli-listing-type"
+                  className="text-xs"
+                  style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+                >
+                  Tipo de anuncio:
+                </label>
+                <select
+                  id="meli-listing-type"
+                  value={listingTypeId}
+                  onChange={(e) => setListingTypeId(e.target.value as 'gold_special' | 'gold_pro')}
+                  className="rounded-md px-2 py-1 text-xs"
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'var(--font-jetbrains-mono)',
+                  }}
+                >
+                  <option value="gold_special">Classico (gold_special)</option>
+                  <option value="gold_pro">Premium (gold_pro)</option>
+                </select>
+              </div>
+            )}
+            {channelId === 'magalu' && (
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="magalu-discount-tier"
+                  className="text-xs"
+                  style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+                >
+                  Desconto frete:
+                </label>
+                <select
+                  id="magalu-discount-tier"
+                  value={discountTier}
+                  onChange={(e) => setDiscountTier(e.target.value as 'none' | '25' | '50')}
+                  className="rounded-md px-2 py-1 text-xs"
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'var(--font-jetbrains-mono)',
+                  }}
+                >
+                  <option value="none">Sem desconto (&lt;87% pontualidade)</option>
+                  <option value="25">25% desconto (87-97%)</option>
+                  <option value="50">50% desconto (&gt;97%)</option>
+                </select>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="meli-dimensions"
+                className="text-xs"
+                style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+              >
+                Dimensoes (opcional):
+              </label>
+              <input
+                id="meli-dimensions"
+                type="text"
+                placeholder="Substitui catalogo — ex: 10x60x60,25000"
+                value={dimensions}
+                onChange={(e) => setDimensions(e.target.value)}
+                className="rounded-md px-2 py-1 text-xs"
+                style={{
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-primary)',
+                  width: '260px',
+                  fontFamily: 'var(--font-jetbrains-mono)',
+                }}
+              />
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -185,7 +271,7 @@ export function MarketplaceCommissionImportPanel({
             }}
           >
             {loading ? <RefreshCcw size={14} className="animate-spin" /> : <DownloadCloud size={14} />}
-            {loading ? 'Consultando MeLi...' : 'Gerar preview'}
+            {loading ? `Consultando ${CHANNEL_LABELS[channelId] ?? channelId}...` : 'Gerar preview'}
           </button>
           <button
             type="button"
@@ -240,8 +326,8 @@ export function MarketplaceCommissionImportPanel({
 
         {!result && !error && (
           <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Gere um preview para ver quais grupos podem ser sobrescritos com a fee oficial do
-            Mercado Livre.
+            Gere um preview para ver quais grupos podem ser sobrescritos com a fee oficial do{' '}
+            {CHANNEL_LABELS[channelId] ?? channelId}.
           </div>
         )}
 

@@ -102,9 +102,9 @@ export const DEFAULT_MARKETPLACES: MarketplaceChannel[] = [
     name: 'Leroy Merlin',
     active: true,
     rolloutStage: 'wave_2',
-    executionMode: 'planned',
+    executionMode: 'live',
     authStrategy: 'api_key',
-    connectionStatus: 'attention',
+    connectionStatus: 'disconnected',
     notes:
       'Stack Mirakl Seller API. Bom para produto/oferta/pedido; mensageria e webhooks dependem de homologação.',
     capabilities: {
@@ -133,9 +133,9 @@ export const DEFAULT_MARKETPLACES: MarketplaceChannel[] = [
     name: 'Madeira Madeira',
     active: true,
     rolloutStage: 'wave_2',
-    executionMode: 'planned',
+    executionMode: 'live',
     authStrategy: 'token',
-    connectionStatus: 'attention',
+    connectionStatus: 'disconnected',
     notes:
       'Produto, pedido e frete dependem de sandbox e documentação Postman liberada pelo parceiro.',
     capabilities: {

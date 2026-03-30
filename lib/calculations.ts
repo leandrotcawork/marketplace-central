@@ -1,5 +1,11 @@
 import { resolveCommercialTerms } from '@/lib/marketplace-commercial'
-import type { MarginResult, Marketplace, MarketplaceCommissionRule, Product } from '@/types'
+import type {
+  MarginResult,
+  Marketplace,
+  MarketplaceCommissionRule,
+  MarketplaceProductImportOverride,
+  Product,
+} from '@/types'
 
 export function getMarginHealth(marginPercent: number): 'good' | 'warning' | 'critical' {
   if (marginPercent >= 20) return 'good'
@@ -74,6 +80,42 @@ export function calculateMarginForMarketplace(
     reviewStatus: terms.reviewStatus,
     sourceType: terms.sourceType,
   }
+}
+
+/**
+ * Resolves product margin using the full cascade:
+ * 1. Per-product import override (if importable)
+ * 2. Group-level commission rule
+ * 3. Marketplace base commercial profile
+ */
+export function resolveProductMargin(
+  product: Product,
+  marketplace: Marketplace,
+  rules: MarketplaceCommissionRule[],
+  overrides: Record<string, Record<string, MarketplaceProductImportOverride>>,
+  sellingPrice = product.basePrice
+): MarginResult {
+  const override = overrides[marketplace.id]?.[product.id]
+  if (override?.status === 'importable') {
+    const base = calculateMargin(
+      sellingPrice,
+      product.cost,
+      override.commissionPercent ?? 0,
+      override.fixedFeeAmount ?? 0,
+      override.freightFixedAmount ?? 0
+    )
+    return {
+      ...base,
+      productId: product.id,
+      productGroupId: product.primaryTaxonomyNodeId,
+      marketplaceId: marketplace.id,
+      sellingPrice,
+      ruleType: 'group_override',
+      reviewStatus: 'validated',
+      sourceType: 'official_doc',
+    }
+  }
+  return calculateMarginForMarketplace(product, marketplace, rules, sellingPrice)
 }
 
 export function calculateAllMargins(

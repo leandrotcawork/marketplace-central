@@ -5,7 +5,7 @@ import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useGroupStore } from '@/stores/groupStore'
 import { useClassificationStore } from '@/stores/classificationStore'
-import { calculateMargin, calculateMarginForMarketplace } from '@/lib/calculations'
+import { resolveProductMargin } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { MarginIndicator } from './MarginIndicator'
 import type { MarginResult } from '@/types'
@@ -80,29 +80,7 @@ export function MarginTable() {
     marketplace: (typeof marketplaces)[number],
     sellingPrice: number
   ): MarginResult {
-    // Check per-product import overrides first (from "Aplicar importação")
-    const override = productImportOverrides[marketplace.id]?.[product.id]
-    if (override?.status === 'importable') {
-      const base = calculateMargin(
-        sellingPrice,
-        product.cost,
-        override.commissionPercent ?? 0,
-        override.fixedFeeAmount ?? 0,
-        override.freightFixedAmount ?? 0
-      )
-      return {
-        ...base,
-        productId: product.id,
-        productGroupId: product.primaryTaxonomyNodeId,
-        marketplaceId: marketplace.id,
-        sellingPrice,
-        ruleType: 'group_override',
-        reviewStatus: 'validated',
-        sourceType: 'official_doc',
-      }
-    }
-    // Fall back to group-level commission rules
-    return calculateMarginForMarketplace(product, marketplace, commissionRules, sellingPrice)
+    return resolveProductMargin(product, marketplace, commissionRules, productImportOverrides, sellingPrice)
   }
 
   const filteredProducts = useMemo(() => {
@@ -178,7 +156,7 @@ export function MarginTable() {
   }
 
   function exportCSV() {
-    const headers = ['SKU', 'Produto', 'Categoria', ...activeMarketplaces.map((m) => `${m.name} - Preço`), ...activeMarketplaces.map((m) => `${m.name} - Margem%`)]
+    const headers = ['SKU', 'Produto', 'Categoria', 'Custo', ...activeMarketplaces.map((m) => `${m.name} - Preço`), ...activeMarketplaces.map((m) => `${m.name} - Margem%`)]
     const rows = filteredProducts.map((p) => {
       const prices = activeMarketplaces.map((m) => {
         const sp = getSellingPrice(p.id, m.id, p.basePrice)
@@ -189,7 +167,7 @@ export function MarginTable() {
         const { marginPercent } = getMarketplaceResult(p, m, sp)
         return marginPercent.toFixed(2)
       })
-      return [p.sku, p.name, p.category, ...prices, ...margins]
+      return [p.sku, p.name, p.category, p.cost.toFixed(2), ...prices, ...margins]
     })
 
     const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(',')).join('\n')
@@ -504,6 +482,14 @@ export function MarginTable() {
                           )}
                         </div>
 
+                        {/* Cost */}
+                        <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>
+                          Custo:{' '}
+                          <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
+                            {formatBRL(product.cost)}
+                          </span>
+                        </div>
+
                         {/* Commission + Freight breakdown */}
                         <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>
                           Comissão:{' '}
@@ -513,6 +499,22 @@ export function MarginTable() {
                           <span style={{ fontSize: '10px', marginLeft: '2px' }}>
                             ({formatPercent(result.commission * 100, 1)})
                           </span>
+                          {(() => {
+                            const tag = productImportOverrides[marketplace.id]?.[product.id]?.listingTypeId
+                            if (!tag) return null
+                            return (
+                              <span
+                                className="rounded-full px-1.5 py-0.5 ml-1"
+                                style={{
+                                  fontSize: '9px',
+                                  backgroundColor: 'rgba(139,92,246,0.1)',
+                                  color: 'rgb(139,92,246)',
+                                }}
+                              >
+                                {tag === 'gold_special' ? 'Classico' : tag === 'gold_pro' ? 'Premium' : tag}
+                              </span>
+                            )
+                          })()}
                         </div>
                         {result.freightFixedAmount > 0 && (
                           <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>

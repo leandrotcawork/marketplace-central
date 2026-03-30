@@ -259,27 +259,57 @@ export const useMarketplaceStore = create<MarketplaceState>()(
             return state
           }
 
-          return {
-            commissionRules: state.commissionRules.map((rule) => {
-              if (rule.channelId !== channelId) return rule
+          const now = new Date().toISOString()
+          const matchedGroupIds = new Set<string>()
 
-              const imported = importedGroups.get(rule.groupId)
-              if (!imported) return rule
+          // Update existing rules
+          const updatedRules = state.commissionRules.map((rule) => {
+            if (rule.channelId !== channelId) return rule
 
-              return {
-                ...rule,
-                ruleType: 'group_override',
-                commissionPercent: imported.commissionPercent ?? rule.commissionPercent,
-                fixedFeeAmount: imported.fixedFeeAmount ?? rule.fixedFeeAmount,
-                freightFixedAmount: imported.freightFixedAmount ?? rule.freightFixedAmount,
-                sourceType: 'official_doc',
-                sourceRef: imported.sourceRef,
-                evidenceDate: new Date().toISOString(),
-                reviewStatus: 'validated',
-                notes: imported.notes,
-              }
-            }),
+            const imported = importedGroups.get(rule.groupId)
+            if (!imported) return rule
+
+            matchedGroupIds.add(rule.groupId)
+
+            return {
+              ...rule,
+              ruleType: 'group_override' as const,
+              commissionPercent: imported.commissionPercent ?? rule.commissionPercent,
+              fixedFeeAmount: imported.fixedFeeAmount ?? rule.fixedFeeAmount,
+              freightFixedAmount: imported.freightFixedAmount ?? rule.freightFixedAmount,
+              listingTypeId: imported.listingTypeId,
+              sourceType: 'official_doc' as const,
+              sourceRef: imported.sourceRef,
+              evidenceDate: now,
+              reviewStatus: 'validated' as const,
+              notes: imported.notes,
+            }
+          })
+
+          // Upsert: create rules for groups that had no existing rule
+          const newRules: MarketplaceCommissionRule[] = []
+          for (const [groupId, imported] of importedGroups) {
+            if (matchedGroupIds.has(groupId)) continue
+            newRules.push({
+              id: `${channelId}::${groupId}`,
+              channelId,
+              groupId,
+              groupName: imported.groupName,
+              categoryLabel: imported.categoryLabel,
+              ruleType: 'group_override',
+              commissionPercent: imported.commissionPercent ?? 0,
+              fixedFeeAmount: imported.fixedFeeAmount ?? 0,
+              freightFixedAmount: imported.freightFixedAmount ?? 0,
+              listingTypeId: imported.listingTypeId,
+              sourceType: 'official_doc',
+              sourceRef: imported.sourceRef,
+              evidenceDate: now,
+              reviewStatus: 'validated',
+              notes: imported.notes,
+            })
           }
+
+          return { commissionRules: [...updatedRules, ...newRules] }
         }),
 
       applyProductCommissionImport: (channelId, previews) =>
@@ -292,6 +322,7 @@ export const useMarketplaceStore = create<MarketplaceState>()(
               productId: preview.productId,
               status: preview.status,
               categoryId: preview.categoryId,
+              listingTypeId: preview.listingTypeId,
               commissionPercent: preview.commissionPercent,
               fixedFeeAmount: preview.fixedFeeAmount,
               freightFixedAmount: preview.freightFixedAmount,
