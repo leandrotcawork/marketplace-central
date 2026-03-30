@@ -328,18 +328,23 @@ export const useMarketplaceStore = create<MarketplaceState>()(
 
       applyProductCommissionImport: (channelId, previews) =>
         set((state) => {
-          const channelOverrides: Record<string, MarketplaceProductImportOverride> = {}
+          const existingChannel = state.productImportOverrides[channelId] ?? {}
+          const channelOverrides: Record<string, MarketplaceProductImportOverride> = {
+            ...existingChannel,
+          }
           const importedAt = new Date().toISOString()
           for (const preview of previews) {
+            const previous = existingChannel[preview.productId]
             channelOverrides[preview.productId] = {
+              ...previous,
               channelId,
               productId: preview.productId,
               status: preview.status,
-              categoryId: preview.categoryId,
-              listingTypeId: preview.listingTypeId,
-              commissionPercent: preview.commissionPercent,
-              fixedFeeAmount: preview.fixedFeeAmount,
-              freightFixedAmount: preview.freightFixedAmount,
+              categoryId: preview.categoryId ?? previous?.categoryId,
+              listingTypeId: preview.listingTypeId ?? previous?.listingTypeId,
+              commissionPercent: preview.commissionPercent ?? previous?.commissionPercent,
+              fixedFeeAmount: preview.fixedFeeAmount ?? previous?.fixedFeeAmount,
+              freightFixedAmount: preview.freightFixedAmount ?? previous?.freightFixedAmount,
               importedAt,
             }
           }

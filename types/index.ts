@@ -137,6 +137,12 @@ export interface CompetitorPrice {
   scrapedAt: string
 }
 
+export interface MetalshoppingPriceSuggestion {
+  sku: string
+  minPrice: number
+  observedAt?: string
+}
+
 export interface AIAnalysis {
   productId: string
   recommendations: Record<string, number>

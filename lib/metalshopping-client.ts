@@ -1,5 +1,11 @@
 import { query } from './db'
 
+export interface RawPriceSuggestionRow {
+  sku: string
+  min_price: number
+  observed_at?: string
+}
+
 export interface RawProductRow {
   product_id: string
   sku: string
@@ -212,4 +218,33 @@ export async function fetchTaxonomyGroups(tenantId?: string): Promise<RawTaxonom
   `
   const result = await query(sql, [], tenantId)
   return result.rows as RawTaxonomyGroupRow[]
+}
+
+/**
+ * Fetch minimum observed competitor prices for a list of SKUs.
+ * Joins catalog_products (by sku) → shopping_price_latest_snapshot (by product_id)
+ * and returns MIN(observed_price) per SKU.
+ */
+export async function fetchPriceSuggestionsBySKUs(
+  skus: string[],
+  tenantId?: string
+): Promise<RawPriceSuggestionRow[]> {
+  if (skus.length === 0) return []
+
+  const placeholders = skus.map((_, i) => `$${i + 1}`).join(', ')
+
+  const sql = `
+    SELECT
+      cp.sku,
+      MIN(spls.observed_price) AS min_price,
+      MAX(spls.observed_at) AS observed_at
+    FROM catalog_products cp
+    JOIN shopping_price_latest_snapshot spls ON spls.product_id = cp.product_id
+    WHERE cp.sku IN (${placeholders})
+      AND spls.observed_price IS NOT NULL
+      AND spls.observed_price > 0
+    GROUP BY cp.sku
+  `
+  const result = await query(sql, skus, tenantId)
+  return result.rows as RawPriceSuggestionRow[]
 }
