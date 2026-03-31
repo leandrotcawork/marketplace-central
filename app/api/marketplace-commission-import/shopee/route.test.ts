@@ -11,7 +11,7 @@ function mockRequest(body: unknown) {
   })
 }
 
-test('POST returns 400 when products is empty', async () => {
+test('POST returns 400 when no products are provided', async () => {
   const res = await POST(mockRequest({ products: [] }))
 
   expect(res.status).toBe(400)
@@ -36,7 +36,7 @@ test('POST returns importable Shopee previews for valid products', async () => {
           name: 'Produto 2',
           category: 'Pisos',
           basePrice: 149.99,
-          primaryTaxonomyNodeId: 'group-1',
+          primaryTaxonomyNodeId: 'group-2',
           primaryTaxonomyGroupName: 'Pisos',
         },
       ],
@@ -46,13 +46,8 @@ test('POST returns importable Shopee previews for valid products', async () => {
   const payload = await res.json()
 
   expect(res.status).toBe(200)
-  expect(payload).toMatchObject({
-    success: true,
-    data: {
-      channelId: 'shopee',
-      productPreviews: expect.any(Array),
-    },
-  })
+  expect(payload.success).toBe(true)
+  expect(payload.data.channelId).toBe('shopee')
   expect(payload.data.productPreviews).toHaveLength(2)
 })
 
@@ -65,7 +60,7 @@ test('POST groups mixed Shopee commission tiers as conflict', async () => {
           sku: 'SKU-1',
           name: 'Produto 1',
           category: 'Pisos',
-          basePrice: 99.99,
+          basePrice: 79.99,
           primaryTaxonomyNodeId: 'group-1',
           primaryTaxonomyGroupName: 'Pisos',
         },
@@ -87,5 +82,5 @@ test('POST groups mixed Shopee commission tiers as conflict', async () => {
   expect(res.status).toBe(200)
   expect(payload.data.conflictGroups).toHaveLength(1)
   expect(payload.data.importedGroups).toHaveLength(0)
-  expect(payload.data.conflictGroups[0].notes).toContain('14% + R$16')
+  expect(payload.data.conflictGroups[0].notes).toContain('20% + R$4')
 })

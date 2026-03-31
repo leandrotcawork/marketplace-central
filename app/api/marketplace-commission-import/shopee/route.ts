@@ -8,9 +8,10 @@ import type {
 } from '@/types'
 
 const CHANNEL_ID = 'shopee'
-const SHOPEE_STANDARD_LISTING_TYPE_ID = 'shopee_standard' as const
+const LISTING_TYPE_ID = 'shopee_standard'
 const INVALID_GROUP_ERROR = 'Nenhum produto com grupo taxonomico valido foi enviado para importacao'
 const DEFAULT_ERROR_MESSAGE = 'Falha ao importar comissoes da Shopee'
+const SOURCE_REF = 'Contrato Shopee CNPJ - tabela por faixa de preco'
 
 type ImportRequestBody = {
   products?: Product[]
@@ -22,19 +23,20 @@ export async function POST(request: NextRequest) {
     const scopedProducts = (body.products ?? []).filter(hasImportableGroup)
 
     if (scopedProducts.length === 0) {
-      return Response.json({ success: false, error: INVALID_GROUP_ERROR }, { status: 400 })
+      return Response.json(
+        { success: false, error: INVALID_GROUP_ERROR },
+        { status: 400 }
+      )
     }
 
-    const productPreviews: MarketplaceCommissionImportProductPreview[] = []
-    for (const product of scopedProducts) {
-      productPreviews.push(buildProductPreview(product))
-    }
+    const productPreviews = scopedProducts.map(buildProductPreview)
+    const result = buildImportResult(productPreviews)
 
-    return Response.json({ success: true, data: buildImportResult(productPreviews) }, { status: 200 })
+    return Response.json({ success: true, data: result }, { status: 200 })
   } catch (error) {
     console.error('Error importing Shopee commissions:', error)
     return Response.json(
-      { success: false, error: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE },
+      { success: false, error: DEFAULT_ERROR_MESSAGE },
       { status: 500 }
     )
   }
@@ -55,7 +57,11 @@ function buildProductPreview(product: Product): MarketplaceCommissionImportProdu
   }
 
   if (!Number.isFinite(product.basePrice) || product.basePrice <= 0) {
-    return { ...base, status: 'missing', error: 'Preco base invalido para calculo de comissao' }
+    return {
+      ...base,
+      status: 'missing',
+      error: 'Preco base invalido para calculo de comissao',
+    }
   }
 
   const commission = getShopeeCommissionForPrice(product.basePrice)
@@ -63,13 +69,13 @@ function buildProductPreview(product: Product): MarketplaceCommissionImportProdu
   return {
     ...base,
     status: 'importable',
-    categoryId: commission.tierLabel,
-    categoryName: commission.tierLabel,
-    listingTypeId: SHOPEE_STANDARD_LISTING_TYPE_ID,
+    categoryId: product.primaryTaxonomyNodeId,
+    categoryName: product.primaryTaxonomyGroupName ?? product.category,
+    listingTypeId: LISTING_TYPE_ID,
     commissionPercent: commission.commissionPercent,
     fixedFeeAmount: commission.fixedFeeAmount,
     saleFeeAmount: commission.saleFeeAmount,
-    sourceRef: `Contrato Shopee CNPJ ? tabela por faixa de pre?o (${commission.tierLabel})`,
+    sourceRef: `${SOURCE_REF} (${commission.tierLabel})`,
   }
 }
 
@@ -90,9 +96,9 @@ function buildImportResult(
   const errorGroups: MarketplaceCommissionImportGroupPreview[] = []
 
   for (const [groupId, previews] of groups) {
-    const resolved = previews.filter((preview) => preview.status === 'importable')
-    const hasError = previews.some((preview) => preview.status === 'error')
-    const hasMissing = previews.some((preview) => preview.status === 'missing')
+    const resolved = previews.filter((p) => p.status === 'importable')
+    const hasError = previews.some((p) => p.status === 'error')
+    const hasMissing = previews.some((p) => p.status === 'missing')
     const sampleProducts = previews.slice(0, 5)
     const baseGroup = {
       groupId,
@@ -104,7 +110,8 @@ function buildImportResult(
     }
 
     if (resolved.length === 0) {
-      ;(hasError ? errorGroups : missingGroups).push({
+      const target = hasError ? errorGroups : missingGroups
+      target.push({
         ...baseGroup,
         status: hasError ? 'error' : 'missing',
         notes: buildNotes(previews),
@@ -115,11 +122,12 @@ function buildImportResult(
     const uniqueTiers = new Set(
       resolved.map((p) => `${p.commissionPercent ?? 0}:${p.fixedFeeAmount ?? 0}`)
     )
+
     if (uniqueTiers.size > 1) {
       conflictGroups.push({
         ...baseGroup,
         status: 'conflict',
-        listingTypeId: SHOPEE_STANDARD_LISTING_TYPE_ID,
+        listingTypeId: LISTING_TYPE_ID,
         notes: buildConflictNotes(resolved),
       })
       continue
@@ -151,12 +159,14 @@ function buildImportResult(
     errorGroups: sortGroups(errorGroups),
     productPreviews,
     generatedAt: new Date().toISOString(),
-    listingTypeId: SHOPEE_STANDARD_LISTING_TYPE_ID,
+    listingTypeId: LISTING_TYPE_ID,
   }
 }
 
 function buildNotes(previews: MarketplaceCommissionImportProductPreview[]): string {
-  return previews.map((preview) => `${preview.sku}: ${preview.error ?? preview.status}`).join(' | ')
+  return previews
+    .map((preview) => `${preview.sku}: ${preview.error ?? preview.status}`)
+    .join(' | ')
 }
 
 function buildConflictNotes(resolved: MarketplaceCommissionImportProductPreview[]): string {
@@ -188,10 +198,10 @@ function buildImportedGroupNotes(
 ): string {
   const first = importable[0]
   const rate = first?.commissionPercent ?? 0
-  const tier = first?.categoryName ?? 'Faixa Shopee'
   const sampleSkus = importable.slice(0, 5).map((p) => p.sku).join(', ')
-  const base = `Importado via Shopee ? ${tier} ${(rate * 100).toFixed(0)}% com ${importable.length}/${previews.length} produto(s). Amostra: ${sampleSkus}`
+  const base = `Importado via Shopee - ${(rate * 100).toFixed(0)}% com ${importable.length}/${previews.length} produto(s). Amostra: ${sampleSkus}`
   const missing = previews.filter((p) => p.status === 'missing')
+
   return hasMissing
     ? `${base} | ${missing.length} produto(s) sem preco valido (excluidos do calculo)`
     : base
