@@ -25,8 +25,6 @@ export function getShopeeCommissionForPrice(basePrice: number): ShopeeCommission
   return buildShopeeCommissionResult(basePrice, 0.14, 26, '>= 500')
 }
 
-export const resolveShopeeCommission = getShopeeCommissionForPrice
-
 function buildShopeeCommissionResult(
   basePrice: number,
   commissionPercent: number,
