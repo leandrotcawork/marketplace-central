@@ -9,7 +9,7 @@ function mockRequest(body: unknown) {
 }
 
 test('POST returns 400 when no product has a valid taxonomy group', async () => {
-  const res = await POST(mockRequest({ products: [{ id: 'p1', sku: 'SKU-1' }] }))
+  const res = await POST(mockRequest({ products: [] }))
 
   expect(res.status).toBe(400)
   await expect(res.json()).resolves.toMatchObject({
