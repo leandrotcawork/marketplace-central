@@ -269,7 +269,7 @@ export class MagaluClient {
   // --- Commission ---
 
   /**
-   * Magalu charges a flat 16% commission regardless of product category.
+   * Magalu charges a flat 14.8% commission + R$5 fixed fee per item.
    * No API call needed — returns calculated values synchronously.
    */
   getCommissionForProduct(price: number): {
@@ -277,11 +277,12 @@ export class MagaluClient {
     saleFeeAmount: number
     fixedFeeAmount: number
   } {
-    const MAGALU_COMMISSION_RATE = 0.16
+    const MAGALU_COMMISSION_RATE = 0.148
+    const MAGALU_FIXED_FEE = 5
     return {
       commissionPercent: MAGALU_COMMISSION_RATE,
       saleFeeAmount: Math.round(price * MAGALU_COMMISSION_RATE * 100) / 100,
-      fixedFeeAmount: 0,
+      fixedFeeAmount: MAGALU_FIXED_FEE,
     }
   }
 
