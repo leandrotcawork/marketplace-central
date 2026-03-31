@@ -1,4 +1,4 @@
-'use client'
+Ôªø'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useProductStore } from '@/stores/productStore'
@@ -194,7 +194,7 @@ export function MarginTable() {
   }
 
   function exportCSV() {
-    const headers = ['SKU', 'Produto', 'Categoria', 'Custo', ...activeMarketplaces.map((m) => `${m.name} - PreÁo`), ...activeMarketplaces.map((m) => `${m.name} - Margem%`)]
+    const headers = ['SKU', 'Produto', 'Categoria', 'Custo', ...activeMarketplaces.map((m) => `${m.name} - Pre√ßo`), ...activeMarketplaces.map((m) => `${m.name} - Margem%`)]
     const rows = filteredProducts.map((p) => {
       const prices = activeMarketplaces.map((m) => {
         const sp = getSellingPrice(p.id, m.id, p.basePrice)
@@ -224,9 +224,9 @@ export function MarginTable() {
         className="flex flex-col items-center justify-center h-64 gap-3"
         style={{ color: 'var(--text-secondary)' }}
       >
-        <span className="text-4xl">??</span>
+        <span className="text-4xl">üì¶</span>
         <p className="text-base">Nenhum produto cadastrado.</p>
-        <p className="text-sm">Adicione produtos no Cat·logo para simular margens.</p>
+        <p className="text-sm">Adicione produtos no Cat√°logo para simular margens.</p>
       </div>
     )
   }
@@ -237,9 +237,9 @@ export function MarginTable() {
         className="flex flex-col items-center justify-center h-64 gap-3"
         style={{ color: 'var(--text-secondary)' }}
       >
-        <span className="text-4xl">??</span>
+        <span className="text-4xl">üè™</span>
         <p className="text-base">Nenhum marketplace ativo.</p>
-        <p className="text-sm">Ative pelo menos um marketplace nas configuraÁıes.</p>
+        <p className="text-sm">Ative pelo menos um marketplace nas configura√ß√µes.</p>
       </div>
     )
   }
@@ -268,7 +268,7 @@ export function MarginTable() {
           style={{ backgroundColor: 'var(--border-color)' }}
         />
         <div className="flex items-center gap-2">
-          <span style={{ color: 'var(--text-secondary)' }}>Margem mÈdia:</span>
+          <span style={{ color: 'var(--text-secondary)' }}>Margem m√©dia:</span>
           <span
             className="font-semibold"
             style={{
@@ -289,7 +289,7 @@ export function MarginTable() {
           style={{ backgroundColor: 'var(--border-color)' }}
         />
         <div className="flex items-center gap-2">
-          <span style={{ color: 'var(--text-secondary)' }}>CrÌticos:</span>
+          <span style={{ color: 'var(--text-secondary)' }}>Cr√≠ticos:</span>
           <span
             className="font-semibold"
             style={{
@@ -306,7 +306,7 @@ export function MarginTable() {
       <div className="flex flex-wrap items-center gap-3">
         <input
           type="text"
-          placeholder="Buscar por nome, SKU, referÍncia ou EAN..."
+          placeholder="Buscar por nome, SKU, refer√™ncia ou EAN..."
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); setPage(0) }}
           className="rounded-md border px-3 py-1.5 text-sm flex-1 min-w-[200px]"
@@ -317,7 +317,7 @@ export function MarginTable() {
           }}
         />
         <MultiSelectDropdown
-          label="ClassificaÁ„o"
+          label="Classifica√ß√£o"
           items={classifications.map((c) => ({ id: c.id, name: `${c.name} (${c.productIds.length})` }))}
           selected={selectedClassifications}
           onToggle={(id) => toggleFilter(selectedClassifications, id, setSelectedClassifications)}
@@ -340,9 +340,9 @@ export function MarginTable() {
           }}
         >
           <option value="all">Todos os status</option>
-          <option value="good">Saud·vel (&gt;20%)</option>
-          <option value="warning">AtenÁ„o (10-20%)</option>
-          <option value="critical">CrÌtico (&lt;10%)</option>
+          <option value="good">Saud√°vel (&gt;20%)</option>
+          <option value="warning">Aten√ß√£o (10-20%)</option>
+          <option value="critical">Cr√≠tico (&lt;10%)</option>
         </select>
 
         <div className="ml-auto flex items-center gap-2">
@@ -357,7 +357,7 @@ export function MarginTable() {
                   color: 'var(--text-primary)',
                 }}
               >
-                Usar sugest„o MS
+                Usar sugest√£o MS
               </button>
               {Object.keys(sellingPrices).length > 0 && (
                 <button
@@ -369,7 +369,7 @@ export function MarginTable() {
                     color: 'var(--text-secondary)',
                   }}
                 >
-                  Restaurar preÁos base
+                  Restaurar pre√ßos base
                 </button>
               )}
             </>
@@ -494,7 +494,7 @@ export function MarginTable() {
                     {product.msPriceSuggestion && (
                       <button
                         onClick={() => applyMsSuggestion(product)}
-                        title={`Usar sugest„o MS: ${formatBRL(product.msPriceSuggestion)}`}
+                        title={`Usar sugest√£o MS: ${formatBRL(product.msPriceSuggestion)}`}
                         className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium mt-1 transition-opacity hover:opacity-80"
                         style={{
                           backgroundColor: isMsActive(product) ? 'rgba(16,185,129,0.15)' : 'var(--bg-tertiary)',
@@ -556,7 +556,7 @@ export function MarginTable() {
                                 backgroundColor: 'rgba(59,130,246,0.08)',
                                 border: '1px solid rgba(59,130,246,0.2)',
                               }}
-                              title="Clique para editar o preÁo de venda"
+                              title="Clique para editar o pre√ßo de venda"
                             >
                               {formatBRL(sp)}
                             </button>
@@ -573,7 +573,7 @@ export function MarginTable() {
 
                         {/* Commission + Freight breakdown */}
                         <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>
-                          Comiss„o:{' '}
+                          Comiss√£o:{' '}
                           <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
                             {formatBRL(result.commissionAmount)}
                           </span>
@@ -655,7 +655,7 @@ export function MarginTable() {
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
         >
           <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-jetbrains-mono)' }}>
-            {page * PAGE_SIZE + 1}ñ{Math.min((page + 1) * PAGE_SIZE, filteredProducts.length)} de {filteredProducts.length}
+            {page * PAGE_SIZE + 1}‚Äì{Math.min((page + 1) * PAGE_SIZE, filteredProducts.length)} de {filteredProducts.length}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -675,7 +675,7 @@ export function MarginTable() {
               className="rounded-md border px-3 py-1 text-sm disabled:opacity-40"
               style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', backgroundColor: 'var(--bg-tertiary)' }}
             >
-              PrÛximo
+              Pr√≥ximo
             </button>
           </div>
         </div>
