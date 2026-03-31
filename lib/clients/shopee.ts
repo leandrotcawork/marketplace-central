@@ -1,4 +1,4 @@
-export type ShopeeCommissionResult = {
+type ShopeeCommissionResult = {
   commissionPercent: number
   fixedFeeAmount: number
   saleFeeAmount: number
