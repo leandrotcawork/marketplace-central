@@ -63,7 +63,7 @@ function normalizeLevels(path: string): string[] {
   return path.split('/').map((p) => p.trim()).filter(Boolean)
 }
 
-export async function upsertTaxonomyNode(node: TaxonomyNode): Promise<void> {
+export function upsertTaxonomyNode(node: TaxonomyNode): void {
   ensureSchema()
   const db = getDb()
   db.prepare(
@@ -85,11 +85,20 @@ export async function upsertTaxonomyNode(node: TaxonomyNode): Promise<void> {
   )
 }
 
-export async function upsertProductTaxonomy(input: ProductTaxonomy): Promise<void> {
+export function upsertProductTaxonomy(input: ProductTaxonomy): void {
   ensureSchema()
   const db = getDb()
-  const levels = input.levels.length ? input.levels : normalizeLevels(input.path)
-  const padded = [...levels, '', '', '', '', '', ''].slice(0, 6)
+  const normalizedInputLevels = input.levels.map((level) => level.trim()).filter(Boolean)
+  const levels = normalizedInputLevels.length
+    ? normalizedInputLevels
+    : normalizeLevels(input.path)
+  if (levels.length > 6) {
+    throw new Error(
+      `Cannot store taxonomy path for ${input.marketplaceId}/${input.sku}: expected at most 6 levels, got ${levels.length}`
+    )
+  }
+
+  const padded = [...levels, null, null, null, null, null, null].slice(0, 6)
 
   db.prepare(
     `INSERT INTO marketplace_product_taxonomy (
@@ -120,7 +129,7 @@ export async function upsertProductTaxonomy(input: ProductTaxonomy): Promise<voi
   )
 }
 
-export async function getProductTaxonomy(marketplaceId: string, sku: string) {
+export function getProductTaxonomy(marketplaceId: string, sku: string) {
   ensureSchema()
   const db = getDb()
   return db
