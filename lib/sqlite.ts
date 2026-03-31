@@ -6,7 +6,7 @@ const DB_PATH = path.join(process.cwd(), 'data', 'app.db')
 
 let db: Database.Database | null = null
 
-function getDb(): Database.Database {
+export function getDb(): Database.Database {
   if (!db) {
     const dir = path.dirname(DB_PATH)
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
