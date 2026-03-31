@@ -9,6 +9,7 @@ import { useProductSuggestedPriceStore } from '@/stores/productSuggestedPriceSto
 import { resolveProductMargin } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { MarginIndicator } from './MarginIndicator'
+import { ProductDimensionsPanel } from '@/components/catalogo/ProductDimensionsPanel'
 import type { MarginResult } from '@/types'
 
 type HealthFilter = 'all' | 'good' | 'warning' | 'critical'
@@ -31,6 +32,7 @@ export function MarginTable() {
   const [sellingPrices, setSellingPrices] = useState<Record<string, number>>({})
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState<string>('')
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedClassifications, setSelectedClassifications] = useState<Set<string>>(new Set())
@@ -119,6 +121,11 @@ export function MarginTable() {
   const paginatedProducts = useMemo(
     () => filteredProducts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
     [filteredProducts, page]
+  )
+
+  const selectedProduct = useMemo(
+    () => (selectedProductId ? allProducts.find((p) => p.id === selectedProductId) ?? null : null),
+    [allProducts, selectedProductId]
   )
 
   // Summary stats
@@ -246,6 +253,12 @@ export function MarginTable() {
 
   return (
     <div className="flex flex-col gap-4">
+      {selectedProduct && (
+        <ProductDimensionsPanel
+          product={selectedProduct}
+          onClose={() => setSelectedProductId(null)}
+        />
+      )}
       {/* Summary bar */}
       <div
         className="flex flex-wrap items-center gap-4 px-4 py-3 rounded-lg border text-sm"
@@ -471,7 +484,9 @@ export function MarginTable() {
                     style={{
                       borderColor: 'var(--border-color)',
                       backgroundColor: rowIdx % 2 === 0 ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+                      cursor: 'pointer',
                     }}
+                    onClick={() => setSelectedProductId(product.id)}
                   >
                     <div
                       className="font-medium text-sm leading-tight"
@@ -515,7 +530,10 @@ export function MarginTable() {
                     </div>
                     {product.msPriceSuggestion && (
                       <button
-                        onClick={() => applyMsSuggestion(product)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          applyMsSuggestion(product)
+                        }}
                         title={`Usar sugestão MS: ${formatBRL(product.msPriceSuggestion)}`}
                         className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium mt-1 transition-opacity hover:opacity-80"
                         style={{
