@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { X, Ruler, Save, Trash2 } from 'lucide-react'
 import { useProductDimensionsStore } from '@/stores/productDimensionsStore'
+import { useProductSuggestedPriceStore } from '@/stores/productSuggestedPriceStore'
+import { formatBRL } from '@/lib/formatters'
 import type { Product, ProductDimensions } from '@/types'
 
 interface Props {
@@ -12,12 +14,16 @@ interface Props {
 
 export function ProductDimensionsPanel({ product, onClose }: Props) {
   const { getDimensions, setDimensions, deleteDimensions } = useProductDimensionsStore()
+  const { getSuggestedPrice, setSuggestedPrice, deleteSuggestedPrice } = useProductSuggestedPriceStore()
 
   const [heightCm, setHeightCm] = useState('')
   const [widthCm, setWidthCm] = useState('')
   const [lengthCm, setLengthCm] = useState('')
   const [weightG, setWeightG] = useState('')
   const [saved, setSaved] = useState(false)
+  const [liveSuggestion, setLiveSuggestion] = useState<number | null>(null)
+  const [suggestionError, setSuggestionError] = useState<string | null>(null)
+  const [manualSuggestion, setManualSuggestion] = useState('')
 
   useEffect(() => {
     const s = getDimensions(product.id)
@@ -27,6 +33,39 @@ export function ProductDimensionsPanel({ product, onClose }: Props) {
     setWeightG(s?.weightG != null ? String(s.weightG) : '')
     setSaved(false)
   }, [product.id])
+
+  useEffect(() => {
+    const stored = getSuggestedPrice(product.id)
+    setManualSuggestion(stored != null ? String(stored.toFixed(2)) : '')
+  }, [product.id, getSuggestedPrice])
+
+  useEffect(() => {
+    let alive = true
+    setLiveSuggestion(null)
+    setSuggestionError(null)
+
+    if (!product.sku) return
+
+    fetch(`/api/metalshopping/price-suggestion/${encodeURIComponent(product.sku)}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('fetch_failed')
+        const payload = await res.json()
+        if (!alive) return
+        if (payload?.success && payload?.data?.minPrice) {
+          setLiveSuggestion(Number(payload.data.minPrice))
+        } else {
+          setLiveSuggestion(null)
+        }
+      })
+      .catch(() => {
+        if (!alive) return
+        setSuggestionError('Preço Sugerido indisponível')
+      })
+
+    return () => {
+      alive = false
+    }
+  }, [product.sku])
 
   const storedDims = getDimensions(product.id)
   const hasDimensions = storedDims != null && Object.values(storedDims).some((v) => v != null)
@@ -58,6 +97,13 @@ export function ProductDimensionsPanel({ product, onClose }: Props) {
     setWidthCm('')
     setLengthCm('')
     setWeightG('')
+  }
+
+  function saveManualSuggestion(value: string) {
+    setManualSuggestion(value)
+    const num = Number(value.replace(',', '.'))
+    if (Number.isFinite(num) && num > 0) setSuggestedPrice(product.id, num)
+    else deleteSuggestedPrice(product.id)
   }
 
   const inputStyle = {
@@ -150,6 +196,39 @@ export function ProductDimensionsPanel({ product, onClose }: Props) {
               />
             </div>
           ))}
+
+          <div className="space-y-2">
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              Preço Sugerido
+            </p>
+            {suggestionError ? (
+              <p className="text-xs" style={{ color: 'var(--accent-danger)' }}>
+                {suggestionError}
+              </p>
+            ) : liveSuggestion != null ? (
+              <p
+                className="text-xs font-mono"
+                style={{
+                  color: 'var(--accent-primary)',
+                  fontFamily: 'var(--font-jetbrains-mono)',
+                }}
+              >
+                MS {formatBRL(liveSuggestion)}
+              </p>
+            ) : null}
+            <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              Preço sugerido manual (R$)
+            </label>
+            <input
+              aria-label="Preço sugerido manual (R$)"
+              type="text"
+              value={manualSuggestion}
+              onChange={(e) => saveManualSuggestion(e.target.value)}
+              className="w-full rounded-md px-3 py-2 text-sm outline-none"
+              style={inputStyle}
+              placeholder="—"
+            />
+          </div>
 
           {mlString && (
             <div
