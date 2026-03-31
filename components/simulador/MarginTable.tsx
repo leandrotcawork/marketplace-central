@@ -5,6 +5,7 @@ import { useProductStore } from '@/stores/productStore'
 import { useMarketplaceStore } from '@/stores/marketplaceStore'
 import { useGroupStore } from '@/stores/groupStore'
 import { useClassificationStore } from '@/stores/classificationStore'
+import { useProductSuggestedPriceStore } from '@/stores/productSuggestedPriceStore'
 import { resolveProductMargin } from '@/lib/calculations'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { MarginIndicator } from './MarginIndicator'
@@ -19,6 +20,7 @@ export function MarginTable() {
   const productImportOverrides = useMarketplaceStore((s) => s.productImportOverrides)
   const groups = useGroupStore((s) => s.groups)
   const classifications = useClassificationStore((s) => s.classifications)
+  const manualSuggestedPrices = useProductSuggestedPriceStore((s) => s.suggestedPrices)
 
   const activeMarketplaces = useMemo(
     () => marketplaces.filter((m) => m.active),
@@ -81,6 +83,12 @@ export function MarginTable() {
     sellingPrice: number
   ): MarginResult {
     return resolveProductMargin(product, marketplace, commissionRules, productImportOverrides, sellingPrice)
+  }
+
+  function getPreferredSuggestion(product: (typeof allProducts)[number]) {
+    const manual = manualSuggestedPrices[product.id]
+    if (manual != null && manual > 0) return manual
+    return product.msPriceSuggestion ?? null
   }
 
   const filteredProducts = useMemo(() => {
@@ -146,27 +154,30 @@ export function MarginTable() {
   function applyAllMsSuggestions() {
     const updates: Record<string, number> = {}
     for (const product of filteredProducts) {
-      if (!product.msPriceSuggestion) continue
+      const suggestion = getPreferredSuggestion(product)
+      if (!suggestion) continue
       for (const m of activeMarketplaces) {
-        updates[cellKey(product.id, m.id)] = product.msPriceSuggestion
+        updates[cellKey(product.id, m.id)] = suggestion
       }
     }
     setSellingPrices((prev) => ({ ...prev, ...updates }))
   }
 
   function applyMsSuggestion(product: (typeof allProducts)[number]) {
-    if (!product.msPriceSuggestion) return
+    const suggestion = getPreferredSuggestion(product)
+    if (!suggestion) return
     const updates: Record<string, number> = {}
     for (const m of activeMarketplaces) {
-      updates[cellKey(product.id, m.id)] = product.msPriceSuggestion
+      updates[cellKey(product.id, m.id)] = suggestion
     }
     setSellingPrices((prev) => ({ ...prev, ...updates }))
   }
 
   function isMsActive(product: (typeof allProducts)[number]): boolean {
-    if (!product.msPriceSuggestion) return false
+    const suggestion = getPreferredSuggestion(product)
+    if (!suggestion) return false
     return activeMarketplaces.every(
-      (m) => (sellingPrices[cellKey(product.id, m.id)] ?? product.basePrice) === product.msPriceSuggestion
+      (m) => (sellingPrices[cellKey(product.id, m.id)] ?? product.basePrice) === suggestion
     )
   }
 
