@@ -62,18 +62,40 @@ export const useProductStore = create<ProductState>()(
           if (!data.success || !Array.isArray(data.data)) {
             throw new Error('Invalid response format from API')
           }
-          set({
-            products: data.data,
-            isLoaded: true,
-            isLoading: false,
-            error: null,
-          })
+          const products: Product[] = data.data
+
+          // Step 2: enrich with MetalShopping price suggestions (non-blocking)
+          try {
+            const skus = products.map((p) => p.sku).filter(Boolean)
+            if (skus.length > 0) {
+              const priceRes = await fetch('/api/metalshopping/price-suggestion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ skus }),
+              })
+              if (priceRes.ok) {
+                const priceData = await priceRes.json()
+                if (priceData.success && Array.isArray(priceData.data)) {
+                  const priceMap = new Map<string, number>(
+                    priceData.data.map((item: { sku: string; minPrice: number }) => [item.sku, item.minPrice])
+                  )
+                  for (const product of products) {
+                    const suggestion = priceMap.get(product.sku)
+                    if (suggestion !== undefined && suggestion > 0) {
+                      product.msPriceSuggestion = suggestion
+                    }
+                  }
+                }
+              }
+            }
+          } catch {
+            // Price suggestion enrichment failure is non-blocking — products load normally
+          }
+
+          set({ products, isLoaded: true, isLoading: false, error: null })
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
-          set({
-            isLoading: false,
-            error: errorMessage,
-          })
+          set({ isLoading: false, error: errorMessage })
           console.error('Error fetching products from MetalShopping:', err)
         }
       },

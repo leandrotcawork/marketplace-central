@@ -10,11 +10,14 @@ import { createHmac, timingSafeEqual } from 'crypto'
 const BASE_URL = process.env.MAGALU_USE_SANDBOX === 'true'
   ? 'https://sandbox.magalu.com'
   : 'https://api.magalu.com'
+const ID_BASE_URL = 'https://id.magalu.com'
 
 export type MagaluSecrets = {
   clientId: string
   clientSecret: string
   sellerId?: string
+  accessToken?: string
+  refreshToken?: string
 }
 
 export type ProductPublishInput = {
@@ -56,15 +59,47 @@ export class MagaluClient {
   private secrets: MagaluSecrets
   private accessToken: string = ''
   private tokenExpiresAt: number = 0
+  private refreshToken: string = ''
 
   constructor(secrets: MagaluSecrets) {
     this.secrets = secrets
+    this.accessToken = secrets.accessToken ?? ''
+    this.refreshToken = secrets.refreshToken ?? ''
+    this.tokenExpiresAt = this.accessToken ? parseJwtExp(this.accessToken) : 0
   }
 
   // --- Auth ---
 
   private async ensureToken(): Promise<void> {
     if (this.accessToken && Date.now() < this.tokenExpiresAt - 30_000) return
+    if (this.accessToken && this.tokenExpiresAt === 0 && !this.refreshToken) return
+
+    if (this.refreshToken) {
+      const res = await fetch(`${ID_BASE_URL}/oauth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: this.secrets.clientId,
+          client_secret: this.secrets.clientSecret,
+          refresh_token: this.refreshToken,
+        }).toString(),
+      })
+
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Magalu refresh token failed (${res.status}): ${text}`)
+      }
+
+      const data = (await res.json()) as MagaluTokenResponse & { refresh_token?: string }
+      this.accessToken = data.access_token
+      this.tokenExpiresAt = Date.now() + data.expires_in * 1000
+      if (data.refresh_token) this.refreshToken = data.refresh_token
+      return
+    }
 
     const credentials = Buffer.from(
       `${this.secrets.clientId}:${this.secrets.clientSecret}`
@@ -408,5 +443,19 @@ export class MagaluClient {
 
     if (sigBuffer.length !== expectedBuffer.length) return false
     return timingSafeEqual(sigBuffer, expectedBuffer)
+  }
+}
+
+function parseJwtExp(token: string): number {
+  const parts = token.split('.')
+  if (parts.length < 2) return 0
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    ) as { exp?: number }
+    if (!payload.exp) return 0
+    return payload.exp * 1000
+  } catch {
+    return 0
   }
 }

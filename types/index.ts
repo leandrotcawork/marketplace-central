@@ -45,6 +45,7 @@ export interface Product {
   widthCm?: number | null
   lengthCm?: number | null
   weightG?: number | null
+  msPriceSuggestion?: number
 }
 
 export interface MarketplaceCapabilityProfile {

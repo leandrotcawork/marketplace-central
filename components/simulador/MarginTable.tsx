@@ -143,6 +143,33 @@ export function MarginTable() {
     setEditValue(String(currentPrice.toFixed(2)))
   }
 
+  function applyAllMsSuggestions() {
+    const updates: Record<string, number> = {}
+    for (const product of filteredProducts) {
+      if (!product.msPriceSuggestion) continue
+      for (const m of activeMarketplaces) {
+        updates[cellKey(product.id, m.id)] = product.msPriceSuggestion
+      }
+    }
+    setSellingPrices((prev) => ({ ...prev, ...updates }))
+  }
+
+  function applyMsSuggestion(product: (typeof allProducts)[number]) {
+    if (!product.msPriceSuggestion) return
+    const updates: Record<string, number> = {}
+    for (const m of activeMarketplaces) {
+      updates[cellKey(product.id, m.id)] = product.msPriceSuggestion
+    }
+    setSellingPrices((prev) => ({ ...prev, ...updates }))
+  }
+
+  function isMsActive(product: (typeof allProducts)[number]): boolean {
+    if (!product.msPriceSuggestion) return false
+    return activeMarketplaces.every(
+      (m) => (sellingPrices[cellKey(product.id, m.id)] ?? product.basePrice) === product.msPriceSuggestion
+    )
+  }
+
   function commitEdit(productId: string, marketplaceId: string) {
     const parsed = parseFloat(editValue.replace(',', '.'))
     if (!isNaN(parsed) && parsed > 0) {
@@ -307,7 +334,35 @@ export function MarginTable() {
           <option value="critical">Crítico (&lt;10%)</option>
         </select>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {filteredProducts.some((p) => p.msPriceSuggestion) && (
+            <>
+              <button
+                onClick={applyAllMsSuggestions}
+                className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-80"
+                style={{
+                  backgroundColor: 'var(--bg-tertiary)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                Usar sugestão MS
+              </button>
+              {Object.keys(sellingPrices).length > 0 && (
+                <button
+                  onClick={() => setSellingPrices({})}
+                  className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-80"
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  Restaurar preços base
+                </button>
+              )}
+            </>
+          )}
           <button
             onClick={exportCSV}
             className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-80"
@@ -425,6 +480,21 @@ export function MarginTable() {
                     <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                       Custo: <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>{formatBRL(product.cost)}</span>
                     </div>
+                    {product.msPriceSuggestion && (
+                      <button
+                        onClick={() => applyMsSuggestion(product)}
+                        title={`Usar sugestão MS: ${formatBRL(product.msPriceSuggestion)}`}
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium mt-1 transition-opacity hover:opacity-80"
+                        style={{
+                          backgroundColor: isMsActive(product) ? 'rgba(16,185,129,0.15)' : 'var(--bg-tertiary)',
+                          border: `1px solid ${isMsActive(product) ? 'rgba(16,185,129,0.4)' : 'var(--border-color)'}`,
+                          color: isMsActive(product) ? 'var(--accent-success)' : 'var(--text-secondary)',
+                          fontFamily: 'var(--font-jetbrains-mono)',
+                        }}
+                      >
+                        MS {formatBRL(product.msPriceSuggestion)}
+                      </button>
+                    )}
                   </td>
 
                   {/* Marketplace cells */}

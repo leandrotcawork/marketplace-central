@@ -115,6 +115,8 @@ export function createMarketplaceClient(
         clientId: fromSecretOrEnv(secrets, 'clientId', 'MAGALU_CLIENT_ID'),
         clientSecret: fromSecretOrEnv(secrets, 'clientSecret', 'MAGALU_CLIENT_SECRET'),
         sellerId: str(secrets, 'sellerId') || process.env.MAGALU_SELLER_ID || undefined,
+        accessToken: str(secrets, 'accessToken') || undefined,
+        refreshToken: str(secrets, 'refreshToken') || undefined,
       }
       return new MagaluClient(s)
     }

@@ -1,5 +1,9 @@
 import { type NextRequest } from 'next/server'
-import { getConnectionByChannelId, getDecryptedConnectionSecrets } from '@/lib/marketplace-db'
+import {
+  getConnectionByChannelId,
+  getDecryptedConnectionSecrets,
+  upsertMarketplaceConnection,
+} from '@/lib/marketplace-db'
 import { createMarketplaceClient } from '@/lib/marketplace-client-factory'
 
 export async function POST(
@@ -35,11 +39,36 @@ export async function POST(
     const result = await client.validateConnection()
 
     if (!result.ok) {
+      await upsertMarketplaceConnection(
+        {
+          channelId,
+          displayName: connection.displayName,
+          accountId: connection.accountId,
+          authStrategy: connection.authStrategy,
+          status: 'attention',
+          lastValidatedAt: new Date().toISOString(),
+          lastError: result.error ?? 'Falha na validação',
+        },
+        tenantId
+      )
       return Response.json(
         { success: false, error: result.error },
         { status: 400 }
       )
     }
+
+    await upsertMarketplaceConnection(
+      {
+        channelId,
+        displayName: connection.displayName,
+        accountId: result.accountId ?? connection.accountId,
+        authStrategy: connection.authStrategy,
+        status: 'connected',
+        lastValidatedAt: new Date().toISOString(),
+        lastError: '',
+      },
+      tenantId
+    )
 
     return Response.json({
       success: true,

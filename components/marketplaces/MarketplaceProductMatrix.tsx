@@ -275,18 +275,20 @@ export function MarketplaceProductMatrix({
                         </>
                       ) : '—'}
                     </td>
-                    {/* Preço Sugerido (empty for now) */}
+                    {/* Preço Sugerido (MetalShopping min competitor price) */}
                     <td
                       className="px-4 py-3 text-right align-middle"
                       style={{
-                        color: 'var(--text-secondary)',
+                        color: product.msPriceSuggestion != null ? 'var(--text-primary)' : 'var(--text-secondary)',
                         fontFamily: 'var(--font-jetbrains-mono)',
                         fontSize: '12px',
                         borderBottom: '1px solid var(--border-color)',
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      —
+                      {product.msPriceSuggestion != null
+                        ? formatBRL(product.msPriceSuggestion)
+                        : '—'}
                     </td>
                     <td
                       className="px-4 py-3 align-middle"

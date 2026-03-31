@@ -49,7 +49,10 @@ function getSecretFields(marketplaceId: string, authStrategy: MarketplaceAuthStr
         { key: 'refreshToken', label: 'Refresh Token', placeholder: 'Refresh token SP-API' },
       ]
     case 'magalu':
-      return []
+      return [
+        { key: 'accessToken', label: 'Access Token', placeholder: 'Bearer token Magalu' },
+        { key: 'refreshToken', label: 'Refresh Token', placeholder: 'Token de renovacao' },
+      ]
     case 'leroy':
       return []
     case 'madeira':
@@ -114,9 +117,18 @@ export function MarketplaceConnectionForm({
   const [draft, setDraft] = useState<ConnectionDraft>(() => buildDraft(marketplace, connection))
   const [validating, setValidating] = useState(false)
   const [validateResult, setValidateResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [magaluTest, setMagaluTest] = useState<{ ok: boolean; message: string; detail?: string } | null>(null)
+  const [testingMagalu, setTestingMagalu] = useState(false)
+  const [magaluMapping, setMagaluMapping] = useState<{
+    status: 'idle' | 'running' | 'success' | 'error'
+    message?: string
+    outputs?: { csvUrl: string; xlsxUrl: string; mdPath?: string }
+  }>({ status: 'idle' })
 
   useEffect(() => {
     setDraft(buildDraft(marketplace, connection))
+    setMagaluTest(null)
+    setMagaluMapping({ status: 'idle' })
   }, [connection, marketplace])
 
   const secretFields = getSecretFields(marketplace.id, marketplace.authStrategy)
@@ -163,6 +175,83 @@ export function MarketplaceConnectionForm({
     } finally {
       setValidating(false)
       if (onValidate) await onValidate(marketplace.id)
+    }
+  }
+
+  async function handleMagaluTest() {
+    setTestingMagalu(true)
+    setMagaluTest(null)
+    try {
+      const res = await fetch('/api/magalu/test-categories')
+      const payload = await res.json()
+      if (!res.ok || !payload?.success) {
+        const message = payload?.error ?? 'Falha ao testar categorias'
+        const detail = payload?.data ? JSON.stringify(payload.data, null, 2) : undefined
+        setMagaluTest({ ok: false, message, detail })
+        return
+      }
+
+      const count = typeof payload?.count === 'number' ? payload.count : 0
+      const sample = Array.isArray(payload?.sample) ? payload.sample : []
+      const sampleText = sample
+        .map((item: any) => `${item.id ?? 'sem-id'} - ${item.name ?? 'sem-nome'}`)
+        .join('\n')
+
+      setMagaluTest({
+        ok: true,
+        message: `API respondeu OK. Categorias: ${count}`,
+        detail: sampleText || undefined,
+      })
+    } catch (error) {
+      setMagaluTest({
+        ok: false,
+        message: error instanceof Error ? error.message : 'Erro ao testar Magalu',
+      })
+    } finally {
+      setTestingMagalu(false)
+    }
+  }
+
+  async function handleMagaluMappingRun() {
+    setMagaluMapping({ status: 'running', message: 'Buscando categorias e mapeando produtos...' })
+    try {
+      const res = await fetch('/api/magalu/category-mapping/run', { method: 'POST' })
+      const payload = await res.json()
+      if (!res.ok || !payload?.success) {
+        setMagaluMapping({
+          status: 'error',
+          message: payload?.error ?? 'Falha ao rodar mapeamento',
+        })
+        return
+      }
+
+      const stats = payload?.stats
+      const outputs = payload?.outputs
+      const msgParts: string[] = []
+      if (stats) {
+        msgParts.push(`Produtos alvo: ${stats.totalTarget ?? '?'}`)
+        msgParts.push(`Novos: ${stats.newlyMapped ?? 0}`)
+        msgParts.push(`Ja existentes: ${stats.existing ?? 0}`)
+        msgParts.push(`Low confidence: ${stats.lowConfidence ?? 0}`)
+        if (typeof stats.elapsedMs === 'number') {
+          msgParts.push(`Tempo: ${Math.round((stats.elapsedMs / 1000) * 10) / 10}s`)
+        }
+      }
+
+      setMagaluMapping({
+        status: 'success',
+        message: msgParts.join(' | ') || 'Mapeamento concluido.',
+        outputs: {
+          csvUrl: '/api/magalu/category-mapping/export?format=csv',
+          xlsxUrl: '/api/magalu/category-mapping/export?format=xlsx',
+          mdPath: typeof outputs?.mdPath === 'string' ? outputs.mdPath : undefined,
+        },
+      })
+    } catch (error) {
+      setMagaluMapping({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Erro ao rodar mapeamento',
+      })
     }
   }
 
@@ -365,6 +454,87 @@ export function MarketplaceConnectionForm({
         </div>
       )}
 
+      {magaluTest && (
+        <div
+          className="mt-3 rounded-lg px-3 py-2 text-xs"
+          style={{
+            backgroundColor: magaluTest.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+            color: magaluTest.ok ? 'var(--accent-success)' : 'var(--accent-danger)',
+            border: `1px solid ${magaluTest.ok ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            whiteSpace: 'pre-line',
+          }}
+        >
+          {magaluTest.message}
+          {magaluTest.detail && (
+            <div className="mt-2" style={{ color: 'var(--text-secondary)' }}>
+              {magaluTest.detail}
+            </div>
+          )}
+        </div>
+      )}
+
+      {magaluMapping.status !== 'idle' && (
+        <div
+          className="mt-3 rounded-lg px-3 py-2 text-xs"
+          style={{
+            backgroundColor:
+              magaluMapping.status === 'success'
+                ? 'rgba(16,185,129,0.1)'
+                : magaluMapping.status === 'running'
+                ? 'rgba(245,158,11,0.10)'
+                : 'rgba(239,68,68,0.1)',
+            color:
+              magaluMapping.status === 'success'
+                ? 'var(--accent-success)'
+                : magaluMapping.status === 'running'
+                ? 'var(--accent-warning)'
+                : 'var(--accent-danger)',
+            border: `1px solid ${
+              magaluMapping.status === 'success'
+                ? 'rgba(16,185,129,0.3)'
+                : magaluMapping.status === 'running'
+                ? 'rgba(245,158,11,0.3)'
+                : 'rgba(239,68,68,0.3)'
+            }`,
+          }}
+        >
+          {magaluMapping.message ?? ''}
+          {magaluMapping.outputs && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <a
+                href={magaluMapping.outputs.csvUrl}
+                className="rounded-md px-2 py-1 text-[11px] font-medium hover:opacity-90"
+                style={{
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  textDecoration: 'none',
+                }}
+              >
+                Baixar CSV
+              </a>
+              <a
+                href={magaluMapping.outputs.xlsxUrl}
+                className="rounded-md px-2 py-1 text-[11px] font-medium hover:opacity-90"
+                style={{
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  textDecoration: 'none',
+                }}
+              >
+                Baixar XLSX
+              </a>
+              {magaluMapping.outputs.mdPath && (
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  Resumo: <code>{magaluMapping.outputs.mdPath}</code>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {marketplace.id === 'mercado-livre' && (
@@ -382,6 +552,56 @@ export function MarketplaceConnectionForm({
             >
               Autorizar no Mercado Livre
             </a>
+          )}
+          {marketplace.id === 'magalu' && (
+            <a
+              href="/api/auth/magalu/start"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg px-3 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+              style={{
+                backgroundColor: 'rgba(0,103,179,0.15)',
+                color: 'var(--text-primary)',
+                border: '1px solid rgba(0,103,179,0.3)',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+            >
+              Autorizar no Magalu
+            </a>
+          )}
+          {marketplace.id === 'magalu' && (
+            <button
+              type="button"
+              onClick={handleMagaluTest}
+              className="rounded-lg px-3 py-2 text-sm font-medium transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+              disabled={testingMagalu || saving}
+            >
+              {testingMagalu ? 'Testando API...' : 'Testar API Magalu'}
+            </button>
+          )}
+          {marketplace.id === 'magalu' && (
+            <button
+              type="button"
+              onClick={handleMagaluMappingRun}
+              className="rounded-lg px-3 py-2 text-sm font-medium transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+              style={{
+                backgroundColor: 'rgba(0,103,179,0.10)',
+                color: 'var(--text-primary)',
+                border: '1px solid rgba(0,103,179,0.25)',
+                fontFamily: 'var(--font-dm-sans)',
+              }}
+              disabled={magaluMapping.status === 'running' || saving}
+            >
+              {magaluMapping.status === 'running'
+                ? 'Mapeando...'
+                : 'Mapear categorias (69 produtos)'}
+            </button>
           )}
           {connection?.hasStoredSecret && (
             <button

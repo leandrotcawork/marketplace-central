@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CheckCircle2, DownloadCloud, RefreshCcw, Tag, Truck } from 'lucide-react'
+import { CheckCircle2, DownloadCloud, RefreshCcw, Truck } from 'lucide-react'
 import { formatBRL, formatPercent } from '@/lib/formatters'
 import { useProductDimensionsStore } from '@/stores/productDimensionsStore'
 import { useProductCategoryStore } from '@/stores/productCategoryStore'
@@ -48,9 +48,14 @@ export function MarketplaceCommissionImportPanel({
   const [listingTypeId, setListingTypeId] = useState<'gold_special' | 'gold_pro'>('gold_special')
   const [discountTier, setDiscountTier] = useState<'none' | '25' | '50'>('none')
   const [minimized, setMinimized] = useState(false)
-  const [msPrices, setMsPrices] = useState<Record<string, number>>({})
-  const [msLoading, setMsLoading] = useState(false)
-  const [msMessage, setMsMessage] = useState<string | null>(null)
+
+  const msSuggestionBySku = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const p of products) {
+      if (typeof p.msPriceSuggestion === 'number') map[p.sku] = p.msPriceSuggestion
+    }
+    return map
+  }, [products])
 
   const conflictGroupIds = useMemo(
     () => new Set(result?.conflictGroups.map((group) => group.groupId) ?? []),
@@ -262,44 +267,6 @@ export function MarketplaceCommissionImportPanel({
     setFreightLoading(false)
   }
 
-  async function handleMsPriceSuggestions() {
-    if (!result) return
-    setMsLoading(true)
-    setMsMessage(null)
-
-    const skus = result.productPreviews
-      .filter((p) => p.status === 'importable' && p.sku)
-      .map((p) => p.sku)
-
-    if (skus.length === 0) {
-      setMsMessage('Nenhum produto importável com SKU disponível.')
-      setMsLoading(false)
-      return
-    }
-
-    try {
-      const response = await fetch('/api/metalshopping/price-suggestion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skus }),
-      })
-      const payload = await response.json()
-      if (!payload?.success) throw new Error(payload?.error ?? 'Falha ao buscar sugestões MS')
-
-      const map: Record<string, number> = {}
-      for (const item of payload.data as Array<{ sku: string; minPrice: number }>) {
-        map[item.sku] = item.minPrice
-      }
-      setMsPrices(map)
-      const found = Object.keys(map).length
-      setMsMessage(`Sugestão MS carregada: ${found} de ${skus.length} produto(s) com preço mínimo.`)
-    } catch (err) {
-      setMsMessage(err instanceof Error ? err.message : 'Erro ao buscar sugestão MS')
-    } finally {
-      setMsLoading(false)
-    }
-  }
-
   function handleApply() {
     if (!result || result.importedGroups.length === 0) return
     setApplying(true)
@@ -459,22 +426,6 @@ export function MarketplaceCommissionImportPanel({
               {freightLoading ? 'Cotando frete...' : 'Calcular frete Melhor Envios'}
             </button>
           )}
-          {result && result.importedGroups.length > 0 && (
-            <button
-              type="button"
-              onClick={() => void handleMsPriceSuggestions()}
-              disabled={msLoading}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
-              style={{
-                backgroundColor: 'var(--bg-tertiary)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-color)',
-              }}
-            >
-              {msLoading ? <RefreshCcw size={14} className="animate-spin" /> : <Tag size={14} />}
-              {msLoading ? 'Buscando sugestão MS...' : 'Buscar sugestão MS'}
-            </button>
-          )}
           <button
             type="button"
             onClick={handleApply}
@@ -524,19 +475,6 @@ export function MarketplaceCommissionImportPanel({
             }}
           >
             {freightMessage}
-          </div>
-        )}
-
-        {msMessage && (
-          <div
-            className="rounded-lg px-3 py-2 text-xs"
-            style={{
-              backgroundColor: 'rgba(245,158,11,0.08)',
-              border: '1px solid rgba(245,158,11,0.2)',
-              color: 'var(--accent-warning)',
-            }}
-          >
-            {msMessage}
           </div>
         )}
 
@@ -680,8 +618,8 @@ export function MarketplaceCommissionImportPanel({
                                   : '—'}
                               </td>
                               <td className="px-3 py-2 text-right" style={tableCellMono}>
-                                {typeof msPrices[preview.sku] === 'number'
-                                  ? formatBRL(msPrices[preview.sku]!)
+                                {typeof msSuggestionBySku[preview.sku] === 'number'
+                                  ? formatBRL(msSuggestionBySku[preview.sku]!)
                                   : '—'}
                               </td>
                               <td className="px-3 py-2" style={tableCell}>
