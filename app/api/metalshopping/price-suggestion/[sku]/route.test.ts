@@ -1,7 +1,8 @@
+import { NextRequest } from 'next/server'
 import { GET } from './route'
 
 function mockRequest(url: string) {
-  return new Request(url)
+  return new NextRequest(url)
 }
 
 test('GET returns 400 for missing sku', async () => {

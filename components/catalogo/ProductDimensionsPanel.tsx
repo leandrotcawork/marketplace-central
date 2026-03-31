@@ -51,7 +51,7 @@ export function ProductDimensionsPanel({ product, onClose }: Props) {
         if (!res.ok) throw new Error('fetch_failed')
         const payload = await res.json()
         if (!alive) return
-        if (payload?.success && payload?.data?.minPrice) {
+        if (payload?.success && payload?.data?.minPrice != null) {
           setLiveSuggestion(Number(payload.data.minPrice))
         } else {
           setLiveSuggestion(null)
