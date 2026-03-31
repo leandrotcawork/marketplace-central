@@ -43,6 +43,7 @@ next-env.d.ts
 # local dev / AI session data
 .claude/
 .brain/
+.worktrees/
 
 # local sqlite database
 /data/
