@@ -488,6 +488,28 @@ export function MarginTable() {
                     >
                       {product.sku}
                     </div>
+                    {product.ean && (
+                      <div
+                        className="text-xs mt-0.5"
+                        style={{
+                          color: 'var(--text-secondary)',
+                          fontFamily: 'var(--font-jetbrains-mono)',
+                        }}
+                      >
+                        EAN: {product.ean}
+                      </div>
+                    )}
+                    {product.referencia && (
+                      <div
+                        className="text-xs mt-0.5"
+                        style={{
+                          color: 'var(--text-secondary)',
+                          fontFamily: 'var(--font-jetbrains-mono)',
+                        }}
+                      >
+                        Ref: {product.referencia}
+                      </div>
+                    )}
                     <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                       Custo: <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>{formatBRL(product.cost)}</span>
                     </div>

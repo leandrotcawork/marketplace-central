@@ -22,6 +22,8 @@ const product = {
   basePrice: 20,
   stock: 1,
   unit: 'un',
+  ean: '7891234567890',
+  referencia: 'REF-001',
   msPriceSuggestion: 99,
 }
 
@@ -41,4 +43,15 @@ test('uses manual suggestion over MS when applying suggestions', async () => {
   // Expect price cell to reflect 120 instead of 99
   const matches = await screen.findAllByText(/R\$\s*120,00/)
   expect(matches.length).toBeGreaterThan(0)
+})
+
+test('renders EAN and Ref lines under SKU when present', async () => {
+  await useProductStore.persist.rehydrate()
+
+  useProductStore.getState().importFromXLSX([product])
+
+  render(<MarginTable />)
+
+  expect(screen.getByText('EAN: 7891234567890')).toBeInTheDocument()
+  expect(screen.getByText('Ref: REF-001')).toBeInTheDocument()
 })
