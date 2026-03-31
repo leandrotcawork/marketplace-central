@@ -65,7 +65,7 @@ test('POST groups mixed Shopee commission tiers as conflict', async () => {
           sku: 'SKU-1',
           name: 'Produto 1',
           category: 'Pisos',
-          basePrice: 79.99,
+          basePrice: 99.99,
           primaryTaxonomyNodeId: 'group-1',
           primaryTaxonomyGroupName: 'Pisos',
         },
@@ -74,7 +74,7 @@ test('POST groups mixed Shopee commission tiers as conflict', async () => {
           sku: 'SKU-2',
           name: 'Produto 2',
           category: 'Pisos',
-          basePrice: 99.99,
+          basePrice: 149.99,
           primaryTaxonomyNodeId: 'group-1',
           primaryTaxonomyGroupName: 'Pisos',
         },
@@ -87,5 +87,5 @@ test('POST groups mixed Shopee commission tiers as conflict', async () => {
   expect(res.status).toBe(200)
   expect(payload.data.conflictGroups).toHaveLength(1)
   expect(payload.data.importedGroups).toHaveLength(0)
-  expect(payload.data.conflictGroups[0].notes).toContain('%')
+  expect(payload.data.conflictGroups[0].notes).toContain('14% + R$16')
 })

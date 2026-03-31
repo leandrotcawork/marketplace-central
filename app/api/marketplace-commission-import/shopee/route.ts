@@ -112,8 +112,10 @@ function buildImportResult(
       continue
     }
 
-    const uniqueRates = new Set(resolved.map((p) => p.commissionPercent))
-    if (uniqueRates.size > 1) {
+    const uniqueTiers = new Set(
+      resolved.map((p) => `${p.commissionPercent ?? 0}:${p.fixedFeeAmount ?? 0}`)
+    )
+    if (uniqueTiers.size > 1) {
       conflictGroups.push({
         ...baseGroup,
         status: 'conflict',
@@ -158,19 +160,24 @@ function buildNotes(previews: MarketplaceCommissionImportProductPreview[]): stri
 }
 
 function buildConflictNotes(resolved: MarketplaceCommissionImportProductPreview[]): string {
-  const byRate = new Map<number, string[]>()
+  const byTier = new Map<string, string[]>()
   for (const p of resolved) {
     const rate = p.commissionPercent ?? 0
-    const skus = byRate.get(rate) ?? []
+    const fixedFee = p.fixedFeeAmount ?? 0
+    const tierKey = `${rate}:${fixedFee}`
+    const skus = byTier.get(tierKey) ?? []
     skus.push(p.sku)
-    byRate.set(rate, skus)
+    byTier.set(tierKey, skus)
   }
 
-  return [...byRate.entries()]
-    .map(
-      ([rate, skus]) =>
-        `${(rate * 100).toFixed(0)}%: ${skus.slice(0, 3).join(', ')}${skus.length > 3 ? ` +${skus.length - 3}` : ''}`
-    )
+  return [...byTier.entries()]
+    .map(([tierKey, skus]) => {
+      const [rate, fixedFee] = tierKey.split(':').map(Number)
+      const feeLabel = `R$${fixedFee.toFixed(0)}`
+      return `${(rate * 100).toFixed(0)}% + ${feeLabel}: ${skus.slice(0, 3).join(', ')}${
+        skus.length > 3 ? ` +${skus.length - 3}` : ''
+      }`
+    })
     .join(' | ')
 }
 
