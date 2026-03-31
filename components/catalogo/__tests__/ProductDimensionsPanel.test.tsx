@@ -20,7 +20,9 @@ test('renders live suggestion and saves manual price', async () => {
 
   render(<ProductDimensionsPanel product={product as any} onClose={() => {}} />)
 
-  await waitFor(() => expect(screen.getByText('MS 99,90')).toBeInTheDocument())
+  await waitFor(() =>
+    expect(screen.getByText(/MS\s+R\$\s*99,90/)).toBeInTheDocument()
+  )
 
   const input = screen.getByLabelText('Preço sugerido manual (R$)')
   fireEvent.change(input, { target: { value: '120.00' } })
