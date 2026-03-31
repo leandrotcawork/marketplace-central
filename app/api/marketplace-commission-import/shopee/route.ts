@@ -9,6 +9,9 @@ import type {
 
 const CHANNEL_ID = 'shopee'
 const LISTING_TYPE_ID = 'shopee_standard'
+const INVALID_GROUP_ERROR = 'Nenhum produto com grupo taxonomico valido foi enviado para importacao'
+const DEFAULT_ERROR_MESSAGE = 'Falha ao importar comissoes da Shopee'
+const SOURCE_REF = 'Contrato Shopee CNPJ - tabela por faixa de preco'
 
 type ImportRequestBody = {
   products?: Product[]
@@ -21,10 +24,7 @@ export async function POST(request: NextRequest) {
 
     if (scopedProducts.length === 0) {
       return Response.json(
-        {
-          success: false,
-          error: 'Nenhum produto com grupo taxonomico valido foi enviado para importacao',
-        },
+        { success: false, error: INVALID_GROUP_ERROR },
         { status: 400 }
       )
     }
@@ -32,20 +32,11 @@ export async function POST(request: NextRequest) {
     const productPreviews = scopedProducts.map(buildProductPreview)
     const result = buildImportResult(productPreviews)
 
-    return Response.json(
-      {
-        success: true,
-        data: result,
-      },
-      { status: 200 }
-    )
+    return Response.json({ success: true, data: result }, { status: 200 })
   } catch (error) {
     console.error('Error importing Shopee commissions:', error)
     return Response.json(
-      {
-        success: false,
-        error: 'Falha ao importar comissoes da Shopee',
-      },
+      { success: false, error: DEFAULT_ERROR_MESSAGE },
       { status: 500 }
     )
   }
@@ -84,7 +75,7 @@ function buildProductPreview(product: Product): MarketplaceCommissionImportProdu
     commissionPercent: commission.commissionPercent,
     fixedFeeAmount: commission.fixedFeeAmount,
     saleFeeAmount: commission.saleFeeAmount,
-    sourceRef: `Contrato Shopee CNPJ — tabela por faixa de preço (${commission.tierLabel})`,
+    sourceRef: `${SOURCE_REF} (${commission.tierLabel})`,
   }
 }
 
@@ -107,6 +98,7 @@ function buildImportResult(
   for (const [groupId, previews] of groups) {
     const resolved = previews.filter((p) => p.status === 'importable')
     const hasError = previews.some((p) => p.status === 'error')
+    const hasMissing = previews.some((p) => p.status === 'missing')
     const sampleProducts = previews.slice(0, 5)
     const baseGroup = {
       groupId,
@@ -127,14 +119,14 @@ function buildImportResult(
       continue
     }
 
-    const uniqueRates = new Set(resolved.map((p) => p.commissionPercent))
+    const uniqueTiers = new Set(
+      resolved.map((p) => `${p.commissionPercent ?? 0}:${p.fixedFeeAmount ?? 0}`)
+    )
 
-    if (uniqueRates.size > 1) {
+    if (uniqueTiers.size > 1) {
       conflictGroups.push({
         ...baseGroup,
         status: 'conflict',
-        categoryId: LISTING_TYPE_ID,
-        categoryName: LISTING_TYPE_ID,
         listingTypeId: LISTING_TYPE_ID,
         notes: buildConflictNotes(resolved),
       })
@@ -152,7 +144,7 @@ function buildImportResult(
       fixedFeeAmount: first.fixedFeeAmount,
       saleFeeAmount: first.saleFeeAmount,
       sourceRef: first.sourceRef,
-      notes: buildImportedGroupNotes(previews, resolved, previews.some((p) => p.status === 'missing')),
+      notes: buildImportedGroupNotes(previews, resolved, hasMissing),
     })
   }
 
@@ -173,27 +165,29 @@ function buildImportResult(
 
 function buildNotes(previews: MarketplaceCommissionImportProductPreview[]): string {
   return previews
-    .map((preview) => {
-      const statusDetail = preview.error ?? preview.status
-      return `${preview.sku}: ${statusDetail}`
-    })
+    .map((preview) => `${preview.sku}: ${preview.error ?? preview.status}`)
     .join(' | ')
 }
 
 function buildConflictNotes(resolved: MarketplaceCommissionImportProductPreview[]): string {
-  const byRate = new Map<number, string[]>()
-  for (const preview of resolved) {
-    const rate = preview.commissionPercent ?? 0
-    const skus = byRate.get(rate) ?? []
-    skus.push(preview.sku)
-    byRate.set(rate, skus)
+  const byTier = new Map<string, string[]>()
+  for (const p of resolved) {
+    const rate = p.commissionPercent ?? 0
+    const fixedFee = p.fixedFeeAmount ?? 0
+    const tierKey = `${rate}:${fixedFee}`
+    const skus = byTier.get(tierKey) ?? []
+    skus.push(p.sku)
+    byTier.set(tierKey, skus)
   }
 
-  return [...byRate.entries()]
-    .map(
-      ([rate, skus]) =>
-        `${(rate * 100).toFixed(0)}%: ${skus.slice(0, 3).join(', ')}${skus.length > 3 ? ` +${skus.length - 3}` : ''}`
-    )
+  return [...byTier.entries()]
+    .map(([tierKey, skus]) => {
+      const [rate, fixedFee] = tierKey.split(':').map(Number)
+      const feeLabel = `R$${fixedFee.toFixed(0)}`
+      return `${(rate * 100).toFixed(0)}% + ${feeLabel}: ${skus.slice(0, 3).join(', ')}${
+        skus.length > 3 ? ` +${skus.length - 3}` : ''
+      }`
+    })
     .join(' | ')
 }
 
@@ -205,7 +199,7 @@ function buildImportedGroupNotes(
   const first = importable[0]
   const rate = first?.commissionPercent ?? 0
   const sampleSkus = importable.slice(0, 5).map((p) => p.sku).join(', ')
-  const base = `Importado via Shopee — ${(rate * 100).toFixed(0)}% com ${importable.length}/${previews.length} produto(s). Amostra: ${sampleSkus}`
+  const base = `Importado via Shopee - ${(rate * 100).toFixed(0)}% com ${importable.length}/${previews.length} produto(s). Amostra: ${sampleSkus}`
   const missing = previews.filter((p) => p.status === 'missing')
 
   return hasMissing
