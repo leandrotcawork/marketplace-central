@@ -307,7 +307,15 @@ use (
 }
 ```
 
-- [ ] **Step 3: Write each workspace package manifest**
+- [ ] **Step 3: Create a minimal Go module for the workspace**
+
+```go
+module marketplace-central/apps/server_core
+
+go 1.25.1
+```
+
+- [ ] **Step 4: Write each workspace package manifest**
 
 ```json
 {
@@ -363,7 +371,7 @@ use (
 }
 ```
 
-- [ ] **Step 4: Write the `apps/web` manifest**
+- [ ] **Step 5: Write the `apps/web` manifest**
 
 ```json
 {
@@ -395,7 +403,7 @@ use (
 }
 ```
 
-- [ ] **Step 5: Install workspace dependencies and sync the Go workspace**
+- [ ] **Step 6: Install workspace dependencies and sync the Go workspace**
 
 Run:
 
@@ -409,19 +417,20 @@ Expected:
 - `package-lock.json` is updated
 - `go.work.sum` is created or refreshed if Go module dependencies are present; do not create it manually
 
-- [ ] **Step 6: Commit the monorepo skeleton**
+- [ ] **Step 7: Commit the monorepo skeleton**
 
 Run:
 
 ```bash
-git add package.json package-lock.json tsconfig.base.json go.work go.work.sum apps/web/package.json packages/sdk-runtime/package.json packages/ui/package.json packages/feature-marketplaces/package.json packages/feature-simulator/package.json
+git add package.json package-lock.json tsconfig.base.json go.work apps/server_core/go.mod apps/web/package.json packages/sdk-runtime/package.json packages/ui/package.json packages/feature-marketplaces/package.json packages/feature-simulator/package.json
+if (Test-Path go.work.sum) { git add go.work.sum }
 git commit -m "chore(repo): scaffold marketplace central monorepo"
 ```
 
 ## Task 3: Bootstrap `server_core` with Config, Router, and Health
 
 **Files:**
-- Create: `apps/server_core/go.mod`
+- Modify: `apps/server_core/go.mod`
 - Create: `apps/server_core/cmd/server/main.go`
 - Create: `apps/server_core/internal/platform/config/config.go`
 - Create: `apps/server_core/internal/platform/httpx/router.go`
@@ -472,7 +481,7 @@ go test ./tests/unit -run TestHealthRouteReturnsCanonicalPayload -v
 
 Expected: FAIL because the module and router do not exist yet
 
-- [ ] **Step 3: Create the Go module and the minimal platform code**
+- [ ] **Step 3: Update the Go module and add the minimal platform code**
 
 ```go
 module marketplace-central/apps/server_core
