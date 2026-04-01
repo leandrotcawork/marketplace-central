@@ -74,3 +74,11 @@ func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (dom
 	}
 	return policy, s.repo.SavePolicy(ctx, policy)
 }
+
+func (s Service) ListAccounts(ctx context.Context) ([]domain.Account, error) {
+	return s.repo.ListAccounts(ctx)
+}
+
+func (s Service) ListPolicies(ctx context.Context) ([]domain.Policy, error) {
+	return s.repo.ListPolicies(ctx)
+}
