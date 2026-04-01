@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "Bash(git -C \"c:/Users/leandro.theodoro.MN-NTB-LEANDROT/Documents/marketplace-central/.worktrees/phase1-wiring-plan\" diff f30128b..5cc4058 --stat)",
+      "Bash(git -C \"c:/Users/leandro.theodoro.MN-NTB-LEANDROT/Documents/marketplace-central/.worktrees/phase1-wiring-plan\" show 5cc4058 -- apps/server_core/internal/platform/httpx/error.go apps/server_core/tests/unit/httpx_error_test.go)",
+      "Bash(git -C \"c:/Users/leandro.theodoro.MN-NTB-LEANDROT/Documents/marketplace-central/.worktrees/phase1-wiring-plan\" show 5cc4058:docs/superpowers/plans/2026-04-01-phase1-wiring.md)",
+      "Bash(go build:*)",
+      "Bash(cd:*)",
+      "mcp__claudewatch__get_task_history",
+      "mcp__claudewatch__extract_current_session_memory",
+      "Bash(grep -E '^\\\\s*\\(operationId:|summary:|'\\\\''$ref'\\\\'':|type: object\\)' contracts/api/marketplace-central.openapi.yaml)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Edit(~/.claude/skills/implementation-audit/**)",
+      "Bash(npm --prefix packages/sdk-runtime test)",
+      "Bash(npm --prefix packages/sdk-runtime run)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\leandro.theodoro.MN-NTB-LEANDROT\\.claude\\skills"
+    ]
+  }
+}
