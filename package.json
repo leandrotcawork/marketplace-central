@@ -1,16 +1,58 @@
 {
   "name": "marketplace-central",
+  "version": "0.1.0",
   "private": true,
   "workspaces": [
     "apps/web",
     "packages/*"
   ],
   "scripts": {
+    "dev": "next dev",
+    "dev:https": "next dev --experimental-https --hostname localhost",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest",
+    "test:run": "vitest run",
     "web:dev": "npm run dev --workspace @marketplace-central/web",
     "web:test": "npm run test --workspace @marketplace-central/web",
     "web:build": "npm run build --workspace @marketplace-central/web"
   },
+  "dependencies": {
+    "@base-ui/react": "^1.3.0",
+    "@tanstack/react-table": "^8.21.3",
+    "@types/pg": "^8.20.0",
+    "better-sqlite3": "^12.8.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.7.0",
+    "next": "16.2.1",
+    "openai": "^6.33.0",
+    "pg": "^8.20.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1",
+    "shadcn": "^4.1.0",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0",
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.12"
+  },
   "devDependencies": {
-    "typescript": "^5.8.3"
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "debug": "^4.4.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.1",
+    "jsdom": "^27.0.0",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }
