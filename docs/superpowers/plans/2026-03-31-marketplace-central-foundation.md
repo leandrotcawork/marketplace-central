@@ -213,6 +213,7 @@ Expected: commit succeeds and only these files are included
 - Create: `go.work`
 - Create: `package.json`
 - Create: `tsconfig.base.json`
+- Create: `apps/server_core/go.mod`
 - Create: `apps/web/package.json`
 - Create: `packages/sdk-runtime/package.json`
 - Create: `packages/ui/package.json`
@@ -364,7 +365,7 @@ go work sync
 Expected:
 
 - `package-lock.json` is updated
-- `go.work.sum` is created or refreshed
+- `go.work.sum` is created or refreshed if Go module dependencies are present; do not create it manually
 
 - [ ] **Step 6: Commit the monorepo skeleton**
 
