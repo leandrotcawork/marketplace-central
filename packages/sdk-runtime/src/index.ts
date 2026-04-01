@@ -94,7 +94,11 @@ export function createMarketplaceCentralClient(options: {
 
   async function getJson<T>(path: string): Promise<T> {
     const response = await fetchImpl(`${options.baseUrl}${path}`, { method: "GET" });
-    return (await response.json()) as T;
+    const data = await response.json();
+    if (!response.ok) {
+      throw { status: response.status, error: (data as ErrorResponse).error } satisfies MarketplaceCentralClientError;
+    }
+    return data as T;
   }
 
   async function postJson<T>(path: string, body: unknown): Promise<T> {

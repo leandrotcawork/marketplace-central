@@ -120,4 +120,22 @@ describe("sdk runtime", () => {
       error: { code: "invalid_request", message: "invalid account" },
     });
   });
+
+  it("throws parsed error payload on non-ok GET response", async () => {
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "not_found", message: "no products found" },
+          }),
+          { status: 404, headers: { "Content-Type": "application/json" } },
+        ),
+    });
+
+    await expect(client.listCatalogProducts()).rejects.toMatchObject({
+      status: 404,
+      error: { code: "not_found", message: "no products found" },
+    });
+  });
 });
