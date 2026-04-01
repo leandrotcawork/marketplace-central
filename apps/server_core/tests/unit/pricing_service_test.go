@@ -29,10 +29,10 @@ func TestRunSimulationCalculatesMarginAndStatus(t *testing.T) {
 		AccountID:         "mercado-livre-main",
 		BasePriceAmount:   250,
 		CostAmount:        100,
-		CommissionPercent: 16,
+		CommissionPercent: 0.16,
 		FixedFeeAmount:    0,
 		ShippingAmount:    20,
-		MinMarginPercent:  12,
+		MinMarginPercent:  0.12,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
