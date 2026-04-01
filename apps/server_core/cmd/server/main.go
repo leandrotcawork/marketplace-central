@@ -4,9 +4,14 @@ import (
 	"log"
 	"net/http"
 
+	"marketplace-central/apps/server_core/internal/platform/config"
 	"marketplace-central/apps/server_core/internal/platform/httpx"
+	"marketplace-central/apps/server_core/internal/platform/logging"
 )
 
 func main() {
-	log.Fatal(http.ListenAndServe(":8080", httpx.NewRouter()))
+	cfg := config.Load()
+	logger := logging.New()
+	logger.Printf("server starting on %s", cfg.Addr)
+	log.Fatal(http.ListenAndServe(cfg.Addr, httpx.NewRouter()))
 }
