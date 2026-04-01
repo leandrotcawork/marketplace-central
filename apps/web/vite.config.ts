@@ -8,6 +8,9 @@ export default defineConfig({
   esbuild: {
     jsx: "automatic",
   },
+  preview: {
+    port: 3002,
+  },
   test: {
     environment: "jsdom",
     globals: true,
