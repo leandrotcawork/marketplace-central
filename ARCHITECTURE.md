@@ -4,7 +4,7 @@
 
 This repository mirrors the structural rules of MetalShopping Final:
 
-- GitHub: https://github.com/leandrotcawork/MetalShopping_Final
+- GitHub: https://github.com/leandrotcawork/MetalShopping_Final (baseline commit: 847f7aebe32ea10e9a94dfde71ce42cc834aac2e)
 
 ## Frozen Decisions
 

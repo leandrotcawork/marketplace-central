@@ -5,3 +5,11 @@ coverage/
 apps/web/node_modules/
 packages/*/node_modules/
 apps/server_core/bin/
+.env*
+.next/
+next-env.d.ts
+*.tsbuildinfo
+.brain/
+.worktrees/
+data/
+certificates/
