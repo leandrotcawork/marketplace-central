@@ -13,14 +13,30 @@ type Handler struct {
 
 func (h Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/catalog/products", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": []any{}})
-			return
+		switch r.Method {
+		case http.MethodGet:
+			products, err := h.Service.ListProducts(r.Context())
+			if err != nil {
+				httpx.WriteJSON(w, http.StatusInternalServerError, map[string]any{
+					"error": map[string]any{
+						"code":    "internal_error",
+						"message": err.Error(),
+						"details": map[string]any{},
+					},
+				})
+				return
+			}
+			httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": products})
+
+		default:
+			w.Header().Set("Allow", "GET")
+			httpx.WriteJSON(w, http.StatusMethodNotAllowed, map[string]any{
+				"error": map[string]any{
+					"code":    "invalid_request",
+					"message": "method not allowed",
+					"details": map[string]any{},
+				},
+			})
 		}
-		if r.Method == http.MethodPost {
-			httpx.WriteJSON(w, http.StatusCreated, map[string]string{"status": "created"})
-			return
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 }

@@ -37,3 +37,7 @@ func (s Service) CreateProduct(ctx context.Context, input CreateProductInput) (d
 	}
 	return product, s.repo.SaveProduct(ctx, product)
 }
+
+func (s Service) ListProducts(ctx context.Context) ([]domain.Product, error) {
+	return s.repo.ListProducts(ctx)
+}

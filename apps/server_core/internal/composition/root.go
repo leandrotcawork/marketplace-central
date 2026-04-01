@@ -3,6 +3,8 @@ package composition
 import (
 	"net/http"
 
+	catalogpostgres "marketplace-central/apps/server_core/internal/modules/catalog/adapters/postgres"
+	catalogapp "marketplace-central/apps/server_core/internal/modules/catalog/application"
 	catalogtransport "marketplace-central/apps/server_core/internal/modules/catalog/transport"
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
@@ -22,13 +24,15 @@ func NewRootRouter(pool *pgxpool.Pool, cfg pgdb.Config) http.Handler {
 	base := httpx.NewRouter()
 	mux.Handle("/healthz", base)
 
-	catalogtransport.Handler{}.Register(mux)
+	catalogRepo := catalogpostgres.NewRepository(pool, cfg.DefaultTenantID)
+	catalogSvc := catalogapp.NewService(catalogRepo, cfg.DefaultTenantID)
+	catalogtransport.Handler{Service: catalogSvc}.Register(mux)
 
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
 	marketSvc := marketplacesapp.NewService(marketRepo, cfg.DefaultTenantID)
 	marketplacestransport.NewHandler(marketSvc).Register(mux)
 
-	pricingRepo := pricingpostgres.NewRepository()
+	pricingRepo := pricingpostgres.NewRepository(pool, cfg.DefaultTenantID)
 	pricingSvc := pricingapp.NewService(pricingRepo, cfg.DefaultTenantID)
 	pricingtransport.NewHandler(pricingSvc).Register(mux)
 

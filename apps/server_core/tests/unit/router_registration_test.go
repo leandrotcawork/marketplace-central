@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	catalogapp "marketplace-central/apps/server_core/internal/modules/catalog/application"
+	catalogdomain "marketplace-central/apps/server_core/internal/modules/catalog/domain"
 	catalogtransport "marketplace-central/apps/server_core/internal/modules/catalog/transport"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
 	marketplacesdomain "marketplace-central/apps/server_core/internal/modules/marketplaces/domain"
@@ -15,6 +17,16 @@ import (
 	pricingtransport "marketplace-central/apps/server_core/internal/modules/pricing/transport"
 	"marketplace-central/apps/server_core/internal/platform/httpx"
 )
+
+// stubCatalogRepo satisfies catalog ports.Repository with in-memory no-ops.
+type stubCatalogRepo struct{}
+
+func (r stubCatalogRepo) SaveProduct(_ context.Context, _ catalogdomain.Product) error {
+	return nil
+}
+func (r stubCatalogRepo) ListProducts(_ context.Context) ([]catalogdomain.Product, error) {
+	return nil, nil
+}
 
 // stubMarketplacesRepo satisfies marketplaces ports.Repository with in-memory no-ops.
 type stubMarketplacesRepo struct{}
@@ -53,7 +65,8 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 	mux.Handle("/healthz", base)
 
 	// /catalog/products
-	catalogtransport.Handler{}.Register(mux)
+	catalogSvc := catalogapp.NewService(stubCatalogRepo{}, "tenant_default")
+	catalogtransport.Handler{Service: catalogSvc}.Register(mux)
 
 	// /marketplaces/accounts, /marketplaces/policies
 	marketSvc := marketplacesapp.NewService(stubMarketplacesRepo{}, "tenant_default")

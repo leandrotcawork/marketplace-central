@@ -18,8 +18,9 @@ func NewHandler(svc application.Service) Handler {
 }
 
 type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string         `json:"code"`
+	Message string         `json:"message"`
+	Details map[string]any `json:"details"`
 }
 
 type apiErrorResponse struct {
@@ -27,7 +28,7 @@ type apiErrorResponse struct {
 }
 
 func writePricingError(w http.ResponseWriter, status int, code, message string) {
-	httpx.WriteJSON(w, status, apiErrorResponse{Error: apiError{Code: code, Message: message}})
+	httpx.WriteJSON(w, status, apiErrorResponse{Error: apiError{Code: code, Message: message, Details: map[string]any{}}})
 }
 
 func mapPricingError(msg string) (int, string) {
@@ -41,7 +42,12 @@ func (h Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/pricing/simulations", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": []any{}})
+			sims, err := h.svc.ListSimulations(r.Context())
+			if err != nil {
+				writePricingError(w, http.StatusInternalServerError, "internal_error", err.Error())
+				return
+			}
+			httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": sims})
 
 		case http.MethodPost:
 			var req struct {
@@ -79,7 +85,7 @@ func (h Handler) Register(mux *http.ServeMux) {
 
 		default:
 			w.Header().Set("Allow", "GET, POST")
-			w.WriteHeader(http.StatusMethodNotAllowed)
+			writePricingError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
 		}
 	})
 }

@@ -13,12 +13,7 @@ import (
 )
 
 // TestPhase1SmokeFlow exercises the full Phase 1 application service layer:
-// create account → create policy → run simulation → list accounts → list policies.
-//
-// NOTE: The pricing postgres adapter is currently a stub (returns ErrNotImplemented).
-// RunSimulation will fail at the repo.SaveSimulation call when a real DB is present.
-// This test documents the intended flow; the pricing adapter must be implemented
-// before this test can pass end-to-end with a real database.
+// create account → create policy → run simulation → list accounts → list policies → list simulations.
 func TestPhase1SmokeFlow(t *testing.T) {
 	if os.Getenv("MC_DATABASE_URL") == "" {
 		t.Skip("MC_DATABASE_URL not set")
@@ -37,8 +32,7 @@ func TestPhase1SmokeFlow(t *testing.T) {
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
 	marketSvc := marketplacesapp.NewService(marketRepo, cfg.DefaultTenantID)
 
-	// pricingpostgres.NewRepository takes no arguments — it is a stub adapter.
-	pricingRepo := pricingpostgres.NewRepository()
+	pricingRepo := pricingpostgres.NewRepository(pool, cfg.DefaultTenantID)
 	pricingSvc := pricingapp.NewService(pricingRepo, cfg.DefaultTenantID)
 
 	// Create account
@@ -73,8 +67,7 @@ func TestPhase1SmokeFlow(t *testing.T) {
 		t.Fatal("expected non-empty policy ID")
 	}
 
-	// Run pricing simulation — currently fails at SaveSimulation (stub repo).
-	// The domain calculation (margin, status) is exercised before the repo call.
+	// Run pricing simulation
 	sim, err := pricingSvc.RunSimulation(context.Background(), pricingapp.RunSimulationInput{
 		SimulationID:      "smoke-sim-1",
 		ProductID:         "smoke-prod-1",
@@ -87,15 +80,13 @@ func TestPhase1SmokeFlow(t *testing.T) {
 		MinMarginPercent:  policy.MinMarginPercent,
 	})
 	if err != nil {
-		t.Logf("WARN: run simulation error (pricing repo is a stub): %v", err)
-	} else {
-		if sim.Status == "" {
-			t.Fatal("expected non-empty simulation status")
-		}
-		t.Logf("simulation: id=%s status=%s margin=%.2f%%", sim.SimulationID, sim.Status, sim.MarginPercent)
+		t.Fatalf("run simulation error: %v", err)
+	}
+	if sim.Status == "" {
+		t.Fatal("expected non-empty simulation status")
 	}
 
-	// List accounts and assert not empty
+	// List accounts
 	accounts, err := marketSvc.ListAccounts(context.Background())
 	if err != nil {
 		t.Fatalf("list accounts error: %v", err)
@@ -104,7 +95,7 @@ func TestPhase1SmokeFlow(t *testing.T) {
 		t.Fatal("expected at least one account")
 	}
 
-	// List policies and assert not empty
+	// List policies
 	policies, err := marketSvc.ListPolicies(context.Background())
 	if err != nil {
 		t.Fatalf("list policies error: %v", err)
@@ -113,6 +104,16 @@ func TestPhase1SmokeFlow(t *testing.T) {
 		t.Fatal("expected at least one policy")
 	}
 
-	t.Logf("smoke flow OK: account=%s policy=%s accounts=%d policies=%d",
-		account.AccountID, policy.PolicyID, len(accounts), len(policies))
+	// List simulations
+	sims, err := pricingSvc.ListSimulations(context.Background())
+	if err != nil {
+		t.Fatalf("list simulations error: %v", err)
+	}
+	if len(sims) == 0 {
+		t.Fatal("expected at least one simulation")
+	}
+
+	t.Logf("smoke flow OK: account=%s policy=%s sim=%s status=%s accounts=%d policies=%d sims=%d",
+		account.AccountID, policy.PolicyID, sim.SimulationID, sim.Status,
+		len(accounts), len(policies), len(sims))
 }

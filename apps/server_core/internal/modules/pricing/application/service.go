@@ -49,3 +49,7 @@ func (s Service) RunSimulation(ctx context.Context, input RunSimulationInput) (d
 
 	return simulation, s.repo.SaveSimulation(ctx, simulation)
 }
+
+func (s Service) ListSimulations(ctx context.Context) ([]domain.Simulation, error) {
+	return s.repo.ListSimulations(ctx)
+}
