@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/domain"
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/ports"
@@ -35,6 +36,9 @@ func NewService(repo ports.Repository, tenantID string) Service {
 }
 
 func (s Service) CreateAccount(ctx context.Context, input CreateAccountInput) (domain.Account, error) {
+	if input.AccountID == "" || input.ChannelCode == "" || input.DisplayName == "" || input.ConnectionMode == "" {
+		return domain.Account{}, errors.New("MARKETPLACES_ACCOUNT_INVALID")
+	}
 	account := domain.Account{
 		AccountID:      input.AccountID,
 		TenantID:       s.tenantID,
@@ -47,6 +51,15 @@ func (s Service) CreateAccount(ctx context.Context, input CreateAccountInput) (d
 }
 
 func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (domain.Policy, error) {
+	if input.PolicyID == "" || input.AccountID == "" {
+		return domain.Policy{}, errors.New("MARKETPLACES_POLICY_INVALID")
+	}
+	if input.CommissionPercent < 0 || input.FixedFeeAmount < 0 || input.DefaultShipping < 0 || input.MinMarginPercent < 0 {
+		return domain.Policy{}, errors.New("MARKETPLACES_POLICY_INVALID")
+	}
+	if input.SLAQuestionMinutes <= 0 || input.SLADispatchHours <= 0 {
+		return domain.Policy{}, errors.New("MARKETPLACES_POLICY_INVALID")
+	}
 	policy := domain.Policy{
 		PolicyID:           input.PolicyID,
 		TenantID:           s.tenantID,

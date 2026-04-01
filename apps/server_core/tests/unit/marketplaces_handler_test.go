@@ -51,6 +51,10 @@ func TestMarketplacesAccountsHandlerRejectsOtherMethods(t *testing.T) {
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status 405, got %d", rec.Code)
 	}
+
+	if allow := rec.Header().Get("Allow"); allow != "GET, POST" {
+		t.Fatalf("expected Allow header, got %q", allow)
+	}
 }
 
 func TestMarketplacesPoliciesHandlerAcceptsGet(t *testing.T) {
@@ -95,5 +99,9 @@ func TestMarketplacesPoliciesHandlerRejectsOtherMethods(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status 405, got %d", rec.Code)
+	}
+
+	if allow := rec.Header().Get("Allow"); allow != "GET, POST" {
+		t.Fatalf("expected Allow header, got %q", allow)
 	}
 }

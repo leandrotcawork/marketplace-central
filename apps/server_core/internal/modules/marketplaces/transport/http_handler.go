@@ -16,6 +16,7 @@ func (h Handler) Register(mux *http.ServeMux) {
 		case http.MethodPost:
 			httpx.WriteJSON(w, http.StatusCreated, map[string]string{"status": "created"})
 		default:
+			w.Header().Set("Allow", "GET, POST")
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
@@ -26,6 +27,7 @@ func (h Handler) Register(mux *http.ServeMux) {
 		case http.MethodPost:
 			httpx.WriteJSON(w, http.StatusCreated, map[string]string{"status": "created"})
 		default:
+			w.Header().Set("Allow", "GET, POST")
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
