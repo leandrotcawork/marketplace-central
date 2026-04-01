@@ -35,10 +35,10 @@ What was delivered:
 
 What needs cleanup before Phase 1:
 
-- [ ] Remove legacy files: `scripts/` (old Next.js scripts), `docs/superpowers/` (old monolith plans), `public/` (Next.js default SVGs), `templates/`
+- [x] Remove legacy files: `scripts/` (old Next.js scripts), `docs/superpowers/` (old monolith plans), `public/` (Next.js default SVGs), `templates/`
 - [ ] Fix migration 0002b (merge fix into 0002, remove 0002b)
-- [ ] Remove root `vitest.config.ts` (tests run via workspace)
 - [ ] Update `.gitignore` for new structure
+- [ ] Confirm root `vitest.config.ts` is kept (tests run via workspace root)
 
 ---
 
@@ -191,7 +191,7 @@ Goal: Extend connectors to Mercado Livre, Magalu, Amazon. Unified experience.
 
 | Item | When | Description |
 |---|---|---|
-| Legacy cleanup | Before Phase 1 | Remove old scripts, docs/superpowers, public SVGs, templates |
+| Legacy cleanup | Before Phase 1 | Remove old scripts, docs/superpowers, public SVGs, templates (done) |
 | Migration 0002b | Before Phase 1 | Merge fix into 0002, remove 0002b |
 | Handler DI | Phase 1 | Inject services into handlers (currently empty structs) |
 | Error middleware | Phase 1 | Structured error responses with codes |
