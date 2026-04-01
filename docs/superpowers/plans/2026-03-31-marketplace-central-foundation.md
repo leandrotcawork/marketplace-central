@@ -436,6 +436,7 @@ git commit -m "chore(repo): scaffold marketplace central monorepo"
 - Create: `apps/server_core/internal/platform/httpx/router.go`
 - Create: `apps/server_core/internal/platform/httpx/json.go`
 - Create: `apps/server_core/internal/platform/logging/logger.go`
+- Add if generated: `go.work.sum`
 - Test: `apps/server_core/tests/unit/health_handler_test.go`
 
 - [ ] **Step 1: Write the failing health handler test**
@@ -550,6 +551,7 @@ Run:
 
 ```bash
 git add apps/server_core/go.mod apps/server_core/cmd/server/main.go apps/server_core/internal/platform/config/config.go apps/server_core/internal/platform/httpx/router.go apps/server_core/internal/platform/httpx/json.go apps/server_core/internal/platform/logging/logger.go apps/server_core/tests/unit/health_handler_test.go
+if (Test-Path go.work.sum) { git add go.work.sum }
 git commit -m "feat(server_core): bootstrap health route and platform basics"
 ```
 
