@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
-	"time"
+	"fmt"
 
 	domain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
 	"marketplace-central/apps/server_core/internal/modules/connectors/ports"
@@ -36,7 +36,7 @@ func (r *Repository) SaveBatch(ctx context.Context, batch domain.PublicationBatc
 	return err
 }
 
-func (r *Repository) GetBatch(ctx context.Context, tenantID, batchID string) (domain.PublicationBatch, error) {
+func (r *Repository) GetBatch(ctx context.Context, batchID string) (domain.PublicationBatch, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT batch_id, tenant_id, vtex_account, status, total_products,
 		        succeeded_count, failed_count, created_at, completed_at
@@ -51,22 +51,18 @@ func (r *Repository) GetBatch(ctx context.Context, tenantID, batchID string) (do
 		&b.CreatedAt, &b.CompletedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.PublicationBatch{}, errors.New("CONNECTORS_BATCH_NOT_FOUND")
+		return domain.PublicationBatch{}, fmt.Errorf("CONNECTORS_BATCH_NOT_FOUND: %w", domain.ErrBatchNotFound)
 	}
 	return b, err
 }
 
-func (r *Repository) UpdateBatchStatus(ctx context.Context, tenantID, batchID, status string, succeededCount, failedCount int) error {
-	now := time.Now()
-	var completedAt *time.Time
-	if status == domain.BatchStatusCompleted || status == domain.BatchStatusFailed {
-		completedAt = &now
-	}
+func (r *Repository) UpdateBatchStatus(ctx context.Context, batchID, status string, succeededCount, failedCount int) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE publication_batches
-		 SET status = $3, succeeded_count = $4, failed_count = $5, completed_at = $6
-		 WHERE tenant_id = $1 AND batch_id = $2`,
-		r.tenantID, batchID, status, succeededCount, failedCount, completedAt,
+		 SET status = $2, succeeded_count = $3, failed_count = $4,
+		     completed_at = CASE WHEN $2 IN ('completed', 'failed') THEN now() ELSE completed_at END
+		 WHERE tenant_id = $5 AND batch_id = $1`,
+		batchID, status, succeededCount, failedCount, r.tenantID,
 	)
 	return err
 }
@@ -84,7 +80,7 @@ func (r *Repository) SaveOperation(ctx context.Context, op domain.PublicationOpe
 	return err
 }
 
-func (r *Repository) ListOperationsByBatch(ctx context.Context, tenantID, batchID string) ([]domain.PublicationOperation, error) {
+func (r *Repository) ListOperationsByBatch(ctx context.Context, batchID string) ([]domain.PublicationOperation, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT operation_id, batch_id, tenant_id, vtex_account, product_id,
 		        current_step, status, error_code, error_message, created_at, updated_at
@@ -113,7 +109,7 @@ func (r *Repository) ListOperationsByBatch(ctx context.Context, tenantID, batchI
 	return ops, rows.Err()
 }
 
-func (r *Repository) UpdateOperationStatus(ctx context.Context, tenantID, operationID, status, currentStep, errorCode, errorMessage string) error {
+func (r *Repository) UpdateOperationStatus(ctx context.Context, operationID, status, currentStep, errorCode, errorMessage string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE publication_operations
 		 SET status = $3, current_step = $4, error_code = $5, error_message = $6, updated_at = now()
@@ -123,7 +119,7 @@ func (r *Repository) UpdateOperationStatus(ctx context.Context, tenantID, operat
 	return err
 }
 
-func (r *Repository) HasActiveOperation(ctx context.Context, tenantID, vtexAccount, productID string) (bool, error) {
+func (r *Repository) HasActiveOperation(ctx context.Context, vtexAccount, productID string) (bool, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT EXISTS(
 		   SELECT 1 FROM publication_operations
@@ -152,7 +148,7 @@ func (r *Repository) SaveStepResult(ctx context.Context, result domain.PipelineS
 	return err
 }
 
-func (r *Repository) UpdateStepResult(ctx context.Context, tenantID, stepResultID, status string, vtexEntityID *string, errorCode, errorMessage string) error {
+func (r *Repository) UpdateStepResult(ctx context.Context, stepResultID, status string, vtexEntityID *string, errorCode, errorMessage string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE pipeline_step_results
 		 SET status = $3, vtex_entity_id = $4, error_code = $5, error_message = $6,
@@ -163,7 +159,7 @@ func (r *Repository) UpdateStepResult(ctx context.Context, tenantID, stepResultI
 	return err
 }
 
-func (r *Repository) ListStepResultsByOperation(ctx context.Context, tenantID, operationID string) ([]domain.PipelineStepResult, error) {
+func (r *Repository) ListStepResultsByOperation(ctx context.Context, operationID string) ([]domain.PipelineStepResult, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT step_result_id, operation_id, tenant_id, step_name, status,
 		        vtex_entity_id, attempt_count, error_code, error_message, started_at, completed_at
@@ -192,7 +188,7 @@ func (r *Repository) ListStepResultsByOperation(ctx context.Context, tenantID, o
 	return results, rows.Err()
 }
 
-func (r *Repository) FindMapping(ctx context.Context, tenantID, vtexAccount, entityType, localID string) (*domain.VTEXEntityMapping, error) {
+func (r *Repository) FindMapping(ctx context.Context, vtexAccount, entityType, localID string) (*domain.VTEXEntityMapping, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT mapping_id, tenant_id, vtex_account, entity_type, local_id, vtex_id, created_at, updated_at
 		 FROM vtex_entity_mappings

@@ -58,3 +58,11 @@ CREATE TABLE IF NOT EXISTS vtex_entity_mappings (
   updated_at   timestamptz NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, vtex_account, entity_type, local_id)
 );
+
+-- Index for ListStepResultsByOperation query
+CREATE INDEX IF NOT EXISTS idx_pipeline_step_results_operation
+  ON pipeline_step_results (tenant_id, operation_id);
+
+-- Index for ListOperationsByBatch query
+CREATE INDEX IF NOT EXISTS idx_publication_operations_batch
+  ON publication_operations (tenant_id, batch_id);

@@ -7,4 +7,5 @@ var (
 	ErrVTEXNotFound   = errors.New("VTEX resource not found")
 	ErrVTEXTransient  = errors.New("VTEX transient error")
 	ErrVTEXAuth       = errors.New("VTEX authentication failed")
+	ErrBatchNotFound  = errors.New("publication batch not found")
 )
