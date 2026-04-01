@@ -29,9 +29,9 @@ func NewService(repo ports.Repository, tenantID string) Service {
 }
 
 func (s Service) RunSimulation(ctx context.Context, input RunSimulationInput) (domain.Simulation, error) {
-	commissionAmount := input.BasePriceAmount * (input.CommissionPercent / 100)
+	commissionAmount := input.BasePriceAmount * input.CommissionPercent
 	marginAmount := input.BasePriceAmount - input.CostAmount - commissionAmount - input.FixedFeeAmount - input.ShippingAmount
-	marginPercent := (marginAmount / input.BasePriceAmount) * 100
+	marginPercent := marginAmount / input.BasePriceAmount
 	status := "healthy"
 	if marginPercent < input.MinMarginPercent {
 		status = "warning"

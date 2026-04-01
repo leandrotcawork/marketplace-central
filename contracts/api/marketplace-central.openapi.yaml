@@ -5,45 +5,405 @@ info:
 paths:
   /catalog/products:
     get:
+      summary: List catalog products
       operationId: listCatalogProducts
       responses:
         "200":
-          description: ok
-    post:
-      operationId: createCatalogProduct
-      responses:
-        "201":
-          description: created
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListCatalogProductsResponse'
   /marketplaces/accounts:
     get:
+      summary: List marketplace accounts
       operationId: listMarketplaceAccounts
       responses:
         "200":
-          description: ok
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMarketplaceAccountsResponse'
     post:
+      summary: Create marketplace account
       operationId: createMarketplaceAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMarketplaceAccountRequest'
       responses:
         "201":
-          description: created
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketplaceAccount'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /marketplaces/policies:
     get:
+      summary: List marketplace policies
       operationId: listMarketplacePolicies
       responses:
         "200":
-          description: ok
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMarketplacePoliciesResponse'
     post:
+      summary: Create marketplace policy
       operationId: createMarketplacePolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMarketplacePolicyRequest'
       responses:
         "201":
-          description: created
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketplacePolicy'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /pricing/simulations:
     get:
+      summary: List pricing simulations
       operationId: listPricingSimulations
       responses:
         "200":
-          description: ok
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListPricingSimulationsResponse'
     post:
+      summary: Run pricing simulation
       operationId: createPricingSimulation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunPricingSimulationRequest'
       responses:
         "201":
-          description: created
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingSimulation'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    CatalogProduct:
+      type: object
+      required:
+        - product_id
+        - tenant_id
+        - sku
+        - name
+        - status
+        - cost
+      properties:
+        product_id:
+          type: string
+        tenant_id:
+          type: string
+        sku:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        cost:
+          type: number
+          format: double
+    MarketplaceAccount:
+      type: object
+      required:
+        - account_id
+        - tenant_id
+        - channel_code
+        - display_name
+        - status
+        - connection_mode
+      properties:
+        account_id:
+          type: string
+        tenant_id:
+          type: string
+        channel_code:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+        connection_mode:
+          type: string
+    CreateMarketplaceAccountRequest:
+      type: object
+      required:
+        - account_id
+        - channel_code
+        - display_name
+        - connection_mode
+      properties:
+        account_id:
+          type: string
+        channel_code:
+          type: string
+        display_name:
+          type: string
+        connection_mode:
+          type: string
+    MarketplacePolicy:
+      type: object
+      required:
+        - policy_id
+        - tenant_id
+        - account_id
+        - commission_percent
+        - fixed_fee_amount
+        - default_shipping
+        - tax_percent
+        - min_margin_percent
+        - sla_question_minutes
+        - sla_dispatch_hours
+      properties:
+        policy_id:
+          type: string
+        tenant_id:
+          type: string
+        account_id:
+          type: string
+        commission_percent:
+          type: number
+          format: double
+        fixed_fee_amount:
+          type: number
+          format: double
+        default_shipping:
+          type: number
+          format: double
+        tax_percent:
+          type: number
+          format: double
+          description: "Server-derived. Currently always 0."
+        min_margin_percent:
+          type: number
+          format: double
+        sla_question_minutes:
+          type: integer
+        sla_dispatch_hours:
+          type: integer
+    CreateMarketplacePolicyRequest:
+      type: object
+      required:
+        - policy_id
+        - account_id
+        - commission_percent
+        - fixed_fee_amount
+        - default_shipping
+        - min_margin_percent
+        - sla_question_minutes
+        - sla_dispatch_hours
+      properties:
+        policy_id:
+          type: string
+        account_id:
+          type: string
+        commission_percent:
+          type: number
+          format: double
+        fixed_fee_amount:
+          type: number
+          format: double
+        default_shipping:
+          type: number
+          format: double
+        min_margin_percent:
+          type: number
+          format: double
+        sla_question_minutes:
+          type: integer
+        sla_dispatch_hours:
+          type: integer
+    PricingSimulation:
+      type: object
+      required:
+        - simulation_id
+        - tenant_id
+        - product_id
+        - account_id
+        - margin_amount
+        - margin_percent
+        - status
+      properties:
+        simulation_id:
+          type: string
+        tenant_id:
+          type: string
+        product_id:
+          type: string
+        account_id:
+          type: string
+        margin_amount:
+          type: number
+          format: double
+        margin_percent:
+          type: number
+          format: double
+        status:
+          type: string
+    RunPricingSimulationRequest:
+      type: object
+      required:
+        - simulation_id
+        - product_id
+        - account_id
+        - base_price_amount
+        - cost_amount
+        - commission_percent
+        - fixed_fee_amount
+        - shipping_amount
+        - min_margin_percent
+      properties:
+        simulation_id:
+          type: string
+        product_id:
+          type: string
+        account_id:
+          type: string
+        base_price_amount:
+          type: number
+          format: double
+        cost_amount:
+          type: number
+          format: double
+        commission_percent:
+          type: number
+          format: double
+        fixed_fee_amount:
+          type: number
+          format: double
+        shipping_amount:
+          type: number
+          format: double
+        min_margin_percent:
+          type: number
+          format: double
+    ListCatalogProductsResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogProduct'
+    ListMarketplaceAccountsResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketplaceAccount'
+    ListMarketplacePoliciesResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketplacePolicy'
+    ListPricingSimulationsResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingSimulation'
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              enum:
+                - invalid_request
+                - not_found
+                - conflict
+                - internal_error
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
