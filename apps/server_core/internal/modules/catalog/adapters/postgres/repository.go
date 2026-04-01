@@ -19,21 +19,6 @@ func NewRepository(pool *pgxpool.Pool, tenantID string) *Repository {
 	return &Repository{pool: pool, tenantID: tenantID}
 }
 
-func (r *Repository) SaveProduct(ctx context.Context, product domain.Product) error {
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO catalog_products (
-			tenant_id, product_id, sku, name, status, cost_amount
-		) VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (tenant_id, product_id) DO UPDATE SET
-			sku = EXCLUDED.sku,
-			name = EXCLUDED.name,
-			status = EXCLUDED.status,
-			cost_amount = EXCLUDED.cost_amount,
-			updated_at = now()
-	`, product.TenantID, product.ProductID, product.SKU, product.Name, product.Status, product.Cost)
-	return err
-}
-
 func (r *Repository) ListProducts(ctx context.Context) ([]domain.Product, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT tenant_id, product_id, sku, name, status, cost_amount

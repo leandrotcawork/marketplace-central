@@ -21,9 +21,6 @@ import (
 // stubCatalogRepo satisfies catalog ports.Repository with in-memory no-ops.
 type stubCatalogRepo struct{}
 
-func (r stubCatalogRepo) SaveProduct(_ context.Context, _ catalogdomain.Product) error {
-	return nil
-}
 func (r stubCatalogRepo) ListProducts(_ context.Context) ([]catalogdomain.Product, error) {
 	return nil, nil
 }

@@ -9,36 +9,29 @@ import (
 )
 
 type catalogRepoStub struct {
-	saved domain.Product
-}
-
-func (s *catalogRepoStub) SaveProduct(_ context.Context, product domain.Product) error {
-	s.saved = product
-	return nil
+	products []domain.Product
 }
 
 func (s *catalogRepoStub) ListProducts(context.Context) ([]domain.Product, error) {
-	return nil, nil
+	return s.products, nil
 }
 
-func TestCreateProductPersistsTenantReadyEntity(t *testing.T) {
-	repo := &catalogRepoStub{}
+func TestListProductsReturnsTenantProducts(t *testing.T) {
+	repo := &catalogRepoStub{
+		products: []domain.Product{
+			{ProductID: "p-1", TenantID: "tenant_default", SKU: "SKU-001", Name: "Cuba Inox", Status: "active", Cost: 123.45},
+		},
+	}
 	service := application.NewService(repo, "tenant_default")
 
-	product, err := service.CreateProduct(context.Background(), application.CreateProductInput{
-		SKU:  "SKU-001",
-		Name: "Cuba Inox",
-		Cost: 123.45,
-	})
+	products, err := service.ListProducts(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if product.TenantID != "tenant_default" {
-		t.Fatalf("expected tenant_default, got %q", product.TenantID)
+	if len(products) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(products))
 	}
-
-	if repo.saved.SKU != "SKU-001" {
-		t.Fatalf("expected saved sku SKU-001, got %q", repo.saved.SKU)
+	if products[0].SKU != "SKU-001" {
+		t.Fatalf("expected SKU-001, got %q", products[0].SKU)
 	}
 }

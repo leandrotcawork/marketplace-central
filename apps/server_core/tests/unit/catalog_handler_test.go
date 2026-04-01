@@ -16,10 +16,6 @@ type catalogHandlerRepoStub struct {
 	products []catalogdomain.Product
 }
 
-func (r *catalogHandlerRepoStub) SaveProduct(_ context.Context, p catalogdomain.Product) error {
-	r.products = append(r.products, p)
-	return nil
-}
 func (r *catalogHandlerRepoStub) ListProducts(_ context.Context) ([]catalogdomain.Product, error) {
 	return r.products, nil
 }
