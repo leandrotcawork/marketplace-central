@@ -208,18 +208,39 @@ func TestStep09_ActivateProduct(t *testing.T) {
 	t.Log("SUCCESS - product activated")
 }
 
-func TestStep10_GetProduct(t *testing.T) {
+func TestStep10_VerifyAll(t *testing.T) {
 	adapter := newTestAdapter(t)
 
+	account := os.Getenv("VTEX_ACCOUNT")
 	productID := os.Getenv("TEST_VTEX_PRODUCT_ID")
-	if productID == "" {
-		t.Skip("Set TEST_VTEX_PRODUCT_ID from TestStep03")
+	skuID := os.Getenv("TEST_VTEX_SKU_ID")
+	categoryID := os.Getenv("TEST_VTEX_CATEGORY_ID")
+	brandID := os.Getenv("TEST_VTEX_BRAND_ID")
+	if productID == "" || skuID == "" || categoryID == "" || brandID == "" {
+		t.Skip("Set TEST_VTEX_PRODUCT_ID, TEST_VTEX_SKU_ID, TEST_VTEX_CATEGORY_ID, TEST_VTEX_BRAND_ID from previous steps")
 	}
 
-	data, err := adapter.GetProduct(context.Background(), os.Getenv("VTEX_ACCOUNT"), productID)
+	product, err := adapter.GetProduct(context.Background(), account, productID)
 	if err != nil {
 		t.Fatalf("GetProduct failed: %v", err)
 	}
+	t.Logf("Product: ID=%s Name=%s Active=%v", product.VTEXID, product.Name, product.Active)
 
-	t.Logf("SUCCESS - product: ID=%s Name=%s Active=%v", data.VTEXID, data.Name, data.Active)
+	sku, err := adapter.GetSKU(context.Background(), account, skuID)
+	if err != nil {
+		t.Fatalf("GetSKU failed: %v", err)
+	}
+	t.Logf("SKU: ID=%s Name=%s Active=%v", sku.VTEXID, sku.Name, sku.Active)
+
+	category, err := adapter.GetCategory(context.Background(), account, categoryID)
+	if err != nil {
+		t.Fatalf("GetCategory failed: %v", err)
+	}
+	t.Logf("Category: ID=%s Name=%s", category.VTEXID, category.Name)
+
+	brand, err := adapter.GetBrand(context.Background(), account, brandID)
+	if err != nil {
+		t.Fatalf("GetBrand failed: %v", err)
+	}
+	t.Logf("Brand: ID=%s Name=%s", brand.VTEXID, brand.Name)
 }
