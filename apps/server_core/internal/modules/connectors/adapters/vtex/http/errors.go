@@ -9,7 +9,7 @@ import (
 
 func classifyError(method string, path string, statusCode int, body []byte, networkErr error) error {
 	if networkErr != nil {
-		return fmt.Errorf("VTEX network error on %s %s: %s: %w", method, path, networkErr.Error(), domain.ErrVTEXTransient)
+		return fmt.Errorf("VTEX network error on %s %s: %w: %w", method, path, networkErr, domain.ErrVTEXTransient)
 	}
 	vtexMsg := extractVTEXMessage(body)
 	switch {
@@ -40,6 +40,10 @@ func isRetryableStatus(statusCode int) bool {
 }
 
 func extractVTEXMessage(body []byte) string {
+	if len(body) == 0 {
+		return "(empty response body)"
+	}
+
 	var resp vtexErrorResponse
 	if err := json.Unmarshal(body, &resp); err == nil {
 		if resp.Message != "" {

@@ -12,6 +12,7 @@ type vtexBrandRequest struct {
 
 type vtexProductRequest struct {
 	Name        string `json:"Name"`
+	RefId       string `json:"RefId"`
 	CategoryId  int    `json:"CategoryId"`
 	BrandId     int    `json:"BrandId"`
 	Description string `json:"Description"`
@@ -47,8 +48,9 @@ type vtexFixedPrice struct {
 }
 
 type vtexStockRequest struct {
-	UnlimitedQuantity bool `json:"unlimitedQuantity"`
-	Quantity          int  `json:"quantity"`
+	UnlimitedQuantity      bool    `json:"unlimitedQuantity"`
+	Quantity               int     `json:"quantity"`
+	DateUtcOnBalanceSystem *string `json:"dateUtcOnBalanceSystem"`
 }
 
 type vtexProductUpdateRequest struct {
