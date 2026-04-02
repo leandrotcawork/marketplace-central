@@ -149,6 +149,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /connectors/vtex/publish:
+    post:
+      operationId: publishToVTEX
+      summary: Trigger batch publication to VTEX
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishToVTEXRequest'
+      responses:
+        '201':
+          description: Batch created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishToVTEXResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /connectors/vtex/publish/batch/{batch_id}:
+    get:
+      operationId: getVTEXBatchStatus
+      summary: Get batch publication status
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Batch status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStatusResponse'
+        '404':
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /connectors/vtex/publish/batch/{batch_id}/retry:
+    post:
+      operationId: retryVTEXBatch
+      summary: Retry failed operations in a batch
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishToVTEXRequest'
+      responses:
+        '200':
+          description: Retry initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishToVTEXResponse'
+        '404':
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     CatalogProduct:
@@ -384,6 +462,119 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PricingSimulation'
+    PublishToVTEXRequest:
+      type: object
+      required:
+        - vtex_account
+        - products
+      properties:
+        vtex_account:
+          type: string
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductForPublish'
+
+    ProductForPublish:
+      type: object
+      required:
+        - product_id
+        - name
+        - sku_name
+        - ean
+        - category
+        - brand
+        - base_price
+      properties:
+        product_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        sku_name:
+          type: string
+        ean:
+          type: string
+        category:
+          type: string
+        brand:
+          type: string
+        cost:
+          type: number
+          format: double
+        base_price:
+          type: number
+          format: double
+        image_urls:
+          type: array
+          items:
+            type: string
+        specs:
+          type: object
+          additionalProperties:
+            type: string
+        stock_qty:
+          type: integer
+        warehouse_id:
+          type: string
+        trade_policy_id:
+          type: string
+
+    PublishToVTEXResponse:
+      type: object
+      properties:
+        batch_id:
+          type: string
+        total_products:
+          type: integer
+        validated:
+          type: integer
+        rejected:
+          type: integer
+        rejections:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: string
+              error_code:
+                type: string
+
+    BatchStatusResponse:
+      type: object
+      properties:
+        batch_id:
+          type: string
+        vtex_account:
+          type: string
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed]
+        total:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        in_progress:
+          type: integer
+        operations:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: string
+              status:
+                type: string
+              current_step:
+                type: string
+              error_code:
+                type: string
+                nullable: true
+
     ErrorResponse:
       type: object
       required:
