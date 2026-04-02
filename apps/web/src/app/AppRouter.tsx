@@ -18,6 +18,8 @@ export function AppRouter() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<DashboardPage />} />
+          <Route path="/connectors/vtex" element={<div className="p-4 text-slate-400 text-sm">VTEX Publisher — coming in next task</div>} />
+          <Route path="/connectors/vtex/batch/:batchId" element={<div className="p-4 text-slate-400 text-sm">Batch Detail — coming in next task</div>} />
           <Route path="/marketplaces" element={<MarketplaceSettingsPageWrapper />} />
           <Route path="/simulator" element={<PricingSimulatorPageWrapper />} />
         </Route>
