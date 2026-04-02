@@ -1,8 +1,20 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { MarketplaceSettingsPage } from "@marketplace-central/feature-marketplaces";
 import { PricingSimulatorPage } from "@marketplace-central/feature-simulator";
+import { VTEXPublishPage, BatchDetailPage } from "@marketplace-central/feature-connectors";
 import { Layout } from "./Layout";
 import { DashboardPage } from "../pages/DashboardPage";
+import { useClient } from "./ClientContext";
+
+function VTEXPublishPageWrapper() {
+  const client = useClient();
+  return <VTEXPublishPage client={client} />;
+}
+
+function BatchDetailPageWrapper() {
+  const client = useClient();
+  return <BatchDetailPage client={client} />;
+}
 
 function MarketplaceSettingsPageWrapper() {
   return <MarketplaceSettingsPage />;
@@ -18,8 +30,8 @@ export function AppRouter() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<DashboardPage />} />
-          <Route path="/connectors/vtex" element={<div className="p-4 text-slate-400 text-sm">VTEX Publisher — coming in next task</div>} />
-          <Route path="/connectors/vtex/batch/:batchId" element={<div className="p-4 text-slate-400 text-sm">Batch Detail — coming in next task</div>} />
+          <Route path="/connectors/vtex" element={<VTEXPublishPageWrapper />} />
+          <Route path="/connectors/vtex/batch/:batchId" element={<BatchDetailPageWrapper />} />
           <Route path="/marketplaces" element={<MarketplaceSettingsPageWrapper />} />
           <Route path="/simulator" element={<PricingSimulatorPageWrapper />} />
         </Route>
