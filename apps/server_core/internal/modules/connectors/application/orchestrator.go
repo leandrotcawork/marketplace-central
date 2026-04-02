@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -508,11 +509,14 @@ func (o *BatchOrchestrator) GetBatchStatus(
 func (o *BatchOrchestrator) RetryBatch(
 	ctx context.Context,
 	batchID string,
-	vtexAccount string,
-	products []ProductForPublish,
+	supplementalProducts []ProductForPublish,
 ) (BatchCreateResult, error) {
-	if _, err := o.repo.GetBatch(ctx, batchID); err != nil {
-		return BatchCreateResult{}, fmt.Errorf("CONNECTORS_BATCH_NOT_FOUND: %w", domain.ErrBatchNotFound)
+	batch, err := o.repo.GetBatch(ctx, batchID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBatchNotFound) {
+			return BatchCreateResult{}, domain.ErrBatchNotFound
+		}
+		return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
 	}
 
 	ops, err := o.repo.ListOperationsByBatch(ctx, batchID)
@@ -522,7 +526,7 @@ func (o *BatchOrchestrator) RetryBatch(
 
 	// Build a product lookup by ID.
 	productByID := make(map[string]ProductForPublish)
-	for _, p := range products {
+	for _, p := range supplementalProducts {
 		productByID[p.ProductID] = p
 	}
 
@@ -533,12 +537,10 @@ func (o *BatchOrchestrator) RetryBatch(
 		}
 		p, ok := productByID[op.ProductID]
 		if !ok {
-			// No product data supplied for this failed op - skip it, don't reset.
-			continue
-		}
-		if err := o.repo.UpdateOperationStatus(ctx, op.OperationID,
-			domain.OperationStatusPending, "", "", ""); err != nil {
-			return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
+			return BatchCreateResult{}, fmt.Errorf(
+				"CONNECTORS_RETRY_MISSING_PRODUCT: product %s not in supplemental list",
+				op.ProductID,
+			)
 		}
 		failedProducts = append(failedProducts, p)
 	}
@@ -550,7 +552,17 @@ func (o *BatchOrchestrator) RetryBatch(
 		}, nil
 	}
 
-	if err := o.ExecuteBatch(ctx, batchID, vtexAccount, failedProducts); err != nil {
+	for _, op := range ops {
+		if op.Status != domain.OperationStatusFailed {
+			continue
+		}
+		if err := o.repo.UpdateOperationStatus(ctx, op.OperationID,
+			domain.OperationStatusPending, "", "", ""); err != nil {
+			return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
+		}
+	}
+
+	if err := o.ExecuteBatch(ctx, batchID, batch.VTEXAccount, failedProducts); err != nil {
 		return BatchCreateResult{}, err
 	}
 

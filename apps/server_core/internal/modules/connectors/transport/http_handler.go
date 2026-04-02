@@ -37,6 +37,12 @@ type publishRequest struct {
 	Products    []productRequest `json:"products"`
 }
 
+type retryRequest struct {
+	// Kept optional for backward compatibility. Retry now uses persisted batch account.
+	VTEXAccount string           `json:"vtex_account,omitempty"`
+	Products    []productRequest `json:"products"`
+}
+
 type productRequest struct {
 	ProductID     string            `json:"product_id"`
 	Name          string            `json:"name"`
@@ -243,7 +249,7 @@ func (h *Handler) handleRetry(w http.ResponseWriter, r *http.Request, batchID st
 		return
 	}
 
-	var req publishRequest
+	var req retryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeConnectorsError(w, http.StatusBadRequest, "CONNECTORS_PUBLISH_INVALID_BODY", "malformed request body")
 		slog.Info("connectors.retry", "action", "decode_body", "result", "400", "duration_ms", time.Since(start).Milliseconds())
@@ -255,7 +261,7 @@ func (h *Handler) handleRetry(w http.ResponseWriter, r *http.Request, batchID st
 		products[i] = toProductForPublish(p)
 	}
 
-	result, err := h.orchestrator.RetryBatch(r.Context(), batchID, req.VTEXAccount, products)
+	result, err := h.orchestrator.RetryBatch(r.Context(), batchID, products)
 	if err != nil {
 		if errors.Is(err, domain.ErrBatchNotFound) {
 			writeConnectorsError(w, http.StatusNotFound, "CONNECTORS_BATCH_NOT_FOUND", "batch not found")

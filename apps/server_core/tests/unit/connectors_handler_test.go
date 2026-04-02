@@ -100,8 +100,7 @@ func TestConnectorsRetryHandlerNotFound(t *testing.T) {
 	handler.Register(mux)
 
 	body := map[string]any{
-		"vtex_account": "mystore",
-		"products":     []map[string]any{},
+		"products": []map[string]any{},
 	}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/connectors/vtex/publish/batch/nonexistent_batch_id/retry", bytes.NewReader(b))

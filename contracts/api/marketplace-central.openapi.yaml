@@ -158,7 +158,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PublishToVTEXRequest'
+              $ref: '#/components/schemas/RetryVTEXBatchRequest'
       responses:
         '201':
           description: Batch created
@@ -470,6 +470,19 @@ components:
       properties:
         vtex_account:
           type: string
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductForPublish'
+
+    RetryVTEXBatchRequest:
+      type: object
+      required:
+        - products
+      properties:
+        vtex_account:
+          type: string
+          description: Optional and ignored. Retry uses the persisted account from the batch.
         products:
           type: array
           items:

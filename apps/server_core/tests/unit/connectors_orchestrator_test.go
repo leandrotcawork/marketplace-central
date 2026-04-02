@@ -3,6 +3,7 @@ package unit
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -501,5 +502,39 @@ func TestBatchOrchestratorExecutesBatchWithBoundedConcurrency(t *testing.T) {
 	}
 	if batch.FailedCount != 0 {
 		t.Fatalf("expected FailedCount=0, got %d", batch.FailedCount)
+	}
+}
+
+func TestRetryBatchMissingProductReturnsError(t *testing.T) {
+	repo := newConnectorsRepoStub()
+	vtex := &vtexCatalogStub{}
+	orch := app.NewBatchOrchestrator(repo, vtex, "tenant_default")
+
+	batchID := "batch_retry_missing_product"
+	repo.batches[batchID] = domain.PublicationBatch{
+		BatchID:      batchID,
+		TenantID:     "tenant_default",
+		VTEXAccount:  "mystore",
+		Status:       domain.BatchStatusFailed,
+		CreatedAt:    time.Now(),
+		TotalProducts: 1,
+	}
+	repo.operations["op_"+batchID+"_prod_1"] = domain.PublicationOperation{
+		OperationID: "op_" + batchID + "_prod_1",
+		BatchID:     batchID,
+		TenantID:    "tenant_default",
+		VTEXAccount: "mystore",
+		ProductID:   "prod_1",
+		Status:      domain.OperationStatusFailed,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	_, err := orch.RetryBatch(context.Background(), batchID, []app.ProductForPublish{})
+	if err == nil {
+		t.Fatal("expected error when failed operation product is missing from supplemental products")
+	}
+	if !strings.Contains(err.Error(), "CONNECTORS_RETRY_MISSING_PRODUCT") {
+		t.Fatalf("expected CONNECTORS_RETRY_MISSING_PRODUCT error, got %v", err)
 	}
 }
