@@ -90,6 +90,8 @@ type connectorsRepoStub struct {
 	steps      map[string][]domain.PipelineStepResult
 	mappings   map[string]*domain.VTEXEntityMapping
 	batches    map[string]domain.PublicationBatch
+	updateOperationStatusAlwaysFail bool
+	updateOperationStatusErr        error
 }
 
 func newConnectorsRepoStub() *connectorsRepoStub {
@@ -138,6 +140,12 @@ func (s *connectorsRepoStub) ListOperationsByBatch(_ context.Context, batchID st
 	return ops, nil
 }
 func (s *connectorsRepoStub) UpdateOperationStatus(_ context.Context, opID, status, step, code, msg string) error {
+	if s.updateOperationStatusAlwaysFail {
+		if s.updateOperationStatusErr != nil {
+			return s.updateOperationStatusErr
+		}
+		return fmt.Errorf("CONNECTORS_OPERATION_STATUS_UPDATE_FAILED")
+	}
 	op := s.operations[opID]
 	op.Status = status
 	op.CurrentStep = step

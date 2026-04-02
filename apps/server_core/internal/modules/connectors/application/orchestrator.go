@@ -208,6 +208,7 @@ func (o *BatchOrchestrator) ExecuteBatch(
 	}
 
 	executor := NewPipelineExecutor(o.repo, o.vtex)
+	failedCount := 0
 
 	for _, p := range products {
 		op, hasPendingOp := opByProduct[p.ProductID]
@@ -263,6 +264,7 @@ func (o *BatchOrchestrator) ExecuteBatch(
 				"CONNECTORS_EXECUTOR_INTERNAL",
 				execErr.Error(),
 			)
+			failedCount++
 		}
 	}
 
@@ -272,14 +274,17 @@ func (o *BatchOrchestrator) ExecuteBatch(
 		return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
 	}
 	succeededCount := 0
-	failedCount := 0
+	failedFromDB := 0
 	for _, op := range finalOps {
 		switch op.Status {
 		case domain.OperationStatusSucceeded:
 			succeededCount++
 		case domain.OperationStatusFailed:
-			failedCount++
+			failedFromDB++
 		}
+	}
+	if failedFromDB > failedCount {
+		failedCount = failedFromDB
 	}
 
 	// Determine final batch status.

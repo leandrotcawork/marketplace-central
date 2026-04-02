@@ -2,6 +2,7 @@ package unit
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -221,5 +222,57 @@ func TestBatchOrchestratorExecutesBatchSuccessfully(t *testing.T) {
 	}
 	if repo.mappings["mystore|brand|DeWalt"] == nil {
 		t.Error("expected mapping for mystore|brand|DeWalt to exist")
+	}
+}
+
+func TestBatchOrchestratorCountsExecutorSystemError(t *testing.T) {
+	repo := newConnectorsRepoStub()
+	repo.updateOperationStatusAlwaysFail = true
+	repo.updateOperationStatusErr = fmt.Errorf("db down")
+	vtex := &vtexCatalogStub{}
+
+	orch := app.NewBatchOrchestrator(repo, vtex, "tenant_default")
+
+	products := []app.ProductForPublish{
+		{
+			ProductID:     "prod_bosch",
+			Name:          "Bosch Drill",
+			Description:   "A Bosch drill",
+			SKUName:       "Bosch Drill SKU",
+			EAN:           "5555555555555",
+			Category:      "Ferramentas",
+			Brand:         "Bosch",
+			Cost:          200.0,
+			BasePrice:     399.90,
+			ImageURLs:     []string{"https://example.com/bosch.jpg"},
+			Specs:         map[string]string{"voltage": "220V"},
+			StockQty:      10,
+			WarehouseID:   "warehouse_1",
+			TradePolicyID: "1",
+		},
+	}
+
+	createResult, err := orch.CreateBatch(context.Background(), "mystore", products)
+	if err != nil {
+		t.Fatalf("CreateBatch error: %v", err)
+	}
+
+	err = orch.ExecuteBatch(context.Background(), createResult.BatchID, "mystore", products)
+	if err != nil {
+		t.Fatalf("ExecuteBatch error: %v", err)
+	}
+
+	batch, _, err := orch.GetBatchStatus(context.Background(), createResult.BatchID)
+	if err != nil {
+		t.Fatalf("GetBatchStatus error: %v", err)
+	}
+	if batch.Status != domain.BatchStatusFailed {
+		t.Fatalf("expected batch status %q, got %q", domain.BatchStatusFailed, batch.Status)
+	}
+	if batch.FailedCount != 1 {
+		t.Fatalf("expected FailedCount=1, got %d", batch.FailedCount)
+	}
+	if batch.SucceededCount != 0 {
+		t.Fatalf("expected SucceededCount=0, got %d", batch.SucceededCount)
 	}
 }
