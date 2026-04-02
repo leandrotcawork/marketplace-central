@@ -1,17 +1,26 @@
-import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { MarketplaceSettingsPage } from "@marketplace-central/feature-marketplaces";
 import { PricingSimulatorPage } from "@marketplace-central/feature-simulator";
+import { Layout } from "./Layout";
+import { DashboardPage } from "../pages/DashboardPage";
+
+function MarketplaceSettingsPageWrapper() {
+  return <MarketplaceSettingsPage />;
+}
+
+function PricingSimulatorPageWrapper() {
+  return <PricingSimulatorPage />;
+}
 
 export function AppRouter() {
   return (
     <BrowserRouter>
-      <nav>
-        <NavLink to="/marketplaces">Marketplaces</NavLink>
-        <NavLink to="/simulator">Simulator</NavLink>
-      </nav>
       <Routes>
-        <Route path="/marketplaces" element={<MarketplaceSettingsPage />} />
-        <Route path="/simulator" element={<PricingSimulatorPage />} />
+        <Route element={<Layout />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="/marketplaces" element={<MarketplaceSettingsPageWrapper />} />
+          <Route path="/simulator" element={<PricingSimulatorPageWrapper />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@marketplace-central/feature-connectors": "0.1.0",
     "@marketplace-central/feature-marketplaces": "0.1.0",
     "@marketplace-central/feature-simulator": "0.1.0",
     "@tailwindcss/vite": "^4.2.2",
