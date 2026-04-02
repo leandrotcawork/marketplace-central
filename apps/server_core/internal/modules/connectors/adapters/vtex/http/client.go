@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -67,6 +66,11 @@ func (c *Client) do(ctx context.Context, vtexAccount, method, path string, body 
 	for attempt := 0; attempt < rc.MaxAttempts; attempt++ {
 		if attempt > 0 {
 			delay := jitteredDelay(rc.BaseDelay, attempt, rc.JitterPct)
+			select {
+			case <-ctx.Done():
+				return 0, nil, ctx.Err()
+			case <-time.After(delay):
+			}
 			slog.Info("vtex_http_retry",
 				"action", "retry",
 				"method", method,
@@ -75,11 +79,6 @@ func (c *Client) do(ctx context.Context, vtexAccount, method, path string, body 
 				"attempt", attempt+1,
 				"delay_ms", delay.Milliseconds(),
 			)
-			select {
-			case <-ctx.Done():
-				return 0, nil, ctx.Err()
-			case <-time.After(delay):
-			}
 		}
 
 		var reqBody io.Reader
@@ -102,7 +101,8 @@ func (c *Client) do(ctx context.Context, vtexAccount, method, path string, body 
 			lastErr = err
 			lastStatus = 0
 			lastBody = nil
-			if isTimeoutError(err) && !rc.RetryOnTimeout {
+			// RetryOnTimeout: false means don't retry on any network error (non-idempotent safety).
+			if !rc.RetryOnTimeout {
 				return 0, nil, lastErr
 			}
 			if attempt < rc.MaxAttempts-1 {
@@ -126,20 +126,20 @@ func (c *Client) do(ctx context.Context, vtexAccount, method, path string, body 
 		}
 	}
 
-	return lastStatus, lastBody, lastErr
-}
-
-func isTimeoutError(err error) bool {
-	type timeoutErr interface {
-		Timeout() bool
+	if lastErr == nil {
+		lastErr = classifyError(method, path, lastStatus, lastBody, nil)
 	}
-	var te timeoutErr
-	return errors.As(err, &te) && te.Timeout()
+
+	return lastStatus, lastBody, lastErr
 }
 
 func jitteredDelay(base time.Duration, attempt int, jitterPct float64) time.Duration {
 	exp := math.Pow(2, float64(attempt-1))
 	delay := float64(base) * exp
 	jitter := delay * jitterPct * (2*rand.Float64() - 1)
-	return time.Duration(delay + jitter)
+	result := time.Duration(delay + jitter)
+	if result < 0 {
+		result = 0
+	}
+	return result
 }
