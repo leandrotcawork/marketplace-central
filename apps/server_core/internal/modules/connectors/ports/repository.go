@@ -7,6 +7,11 @@ import (
 )
 
 type Repository interface {
+	// WithTx executes fn inside a single database transaction.
+	// fn receives a Repository bound to that transaction.
+	// If fn returns an error the transaction is rolled back; otherwise committed.
+	WithTx(ctx context.Context, fn func(tx Repository) error) error
+
 	// Batch operations
 	SaveBatch(ctx context.Context, batch domain.PublicationBatch) error
 	GetBatch(ctx context.Context, batchID string) (domain.PublicationBatch, error)

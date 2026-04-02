@@ -225,6 +225,41 @@ func TestBatchOrchestratorExecutesBatchSuccessfully(t *testing.T) {
 	}
 }
 
+func TestBatchOrchestratorCreateBatchUsesTransaction(t *testing.T) {
+	repo := newConnectorsRepoStub()
+	vtex := &vtexCatalogStub{}
+
+	orch := app.NewBatchOrchestrator(repo, vtex, "tenant_default")
+
+	products := []app.ProductForPublish{
+		{
+			ProductID:     "prod_tx_1",
+			Name:          "Product One",
+			Description:   "First product",
+			SKUName:       "SKU One",
+			EAN:           "8888888888881",
+			Category:      "Ferramentas",
+			Brand:         "Bosch",
+			Cost:          100.0,
+			BasePrice:     199.90,
+			ImageURLs:     []string{"https://example.com/one.jpg"},
+			Specs:         map[string]string{"voltage": "220V"},
+			StockQty:      10,
+			WarehouseID:   "warehouse_1",
+			TradePolicyID: "1",
+		},
+	}
+
+	_, err := orch.CreateBatch(context.Background(), "mystore", products)
+	if err != nil {
+		t.Fatalf("CreateBatch error: %v", err)
+	}
+
+	if repo.withTxCalls != 1 {
+		t.Fatalf("expected CreateBatch to call WithTx once, got %d", repo.withTxCalls)
+	}
+}
+
 func TestBatchOrchestratorCountsExecutorSystemError(t *testing.T) {
 	repo := newConnectorsRepoStub()
 	repo.updateOperationStatusAlwaysFail = true

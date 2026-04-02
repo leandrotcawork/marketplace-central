@@ -9,6 +9,7 @@ import (
 	"marketplace-central/apps/server_core/internal/modules/connectors/ports"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,14 +18,39 @@ var _ ports.Repository = (*Repository)(nil)
 type Repository struct {
 	pool     *pgxpool.Pool
 	tenantID string
+	tx       pgx.Tx
 }
 
 func NewRepository(pool *pgxpool.Pool, tenantID string) *Repository {
 	return &Repository{pool: pool, tenantID: tenantID}
 }
 
+func (r *Repository) db() interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+} {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.pool
+}
+
+func (r *Repository) WithTx(ctx context.Context, fn func(tx ports.Repository) error) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	txRepo := &Repository{pool: r.pool, tenantID: r.tenantID, tx: tx}
+	if err := fn(txRepo); err != nil {
+		_ = tx.Rollback(ctx)
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (r *Repository) SaveBatch(ctx context.Context, batch domain.PublicationBatch) error {
-	_, err := r.pool.Exec(ctx,
+	_, err := r.db().Exec(ctx,
 		`INSERT INTO publication_batches
 		 (batch_id, tenant_id, vtex_account, status, total_products, succeeded_count, failed_count, created_at, completed_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -37,7 +63,7 @@ func (r *Repository) SaveBatch(ctx context.Context, batch domain.PublicationBatc
 }
 
 func (r *Repository) GetBatch(ctx context.Context, batchID string) (domain.PublicationBatch, error) {
-	row := r.pool.QueryRow(ctx,
+	row := r.db().QueryRow(ctx,
 		`SELECT batch_id, tenant_id, vtex_account, status, total_products,
 		        succeeded_count, failed_count, created_at, completed_at
 		 FROM publication_batches
@@ -57,7 +83,7 @@ func (r *Repository) GetBatch(ctx context.Context, batchID string) (domain.Publi
 }
 
 func (r *Repository) UpdateBatchStatus(ctx context.Context, batchID, status string, succeededCount, failedCount int) error {
-	_, err := r.pool.Exec(ctx,
+	_, err := r.db().Exec(ctx,
 		`UPDATE publication_batches
 		 SET status = $2, succeeded_count = $3, failed_count = $4,
 		     completed_at = CASE WHEN $2 IN ('completed', 'failed') THEN now() ELSE completed_at END
@@ -68,7 +94,7 @@ func (r *Repository) UpdateBatchStatus(ctx context.Context, batchID, status stri
 }
 
 func (r *Repository) SaveOperation(ctx context.Context, op domain.PublicationOperation) error {
-	_, err := r.pool.Exec(ctx,
+	_, err := r.db().Exec(ctx,
 		`INSERT INTO publication_operations
 		 (operation_id, batch_id, tenant_id, vtex_account, product_id, current_step, status, error_code, error_message, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -81,7 +107,7 @@ func (r *Repository) SaveOperation(ctx context.Context, op domain.PublicationOpe
 }
 
 func (r *Repository) ListOperationsByBatch(ctx context.Context, batchID string) ([]domain.PublicationOperation, error) {
-	rows, err := r.pool.Query(ctx,
+	rows, err := r.db().Query(ctx,
 		`SELECT operation_id, batch_id, tenant_id, vtex_account, product_id,
 		        current_step, status, error_code, error_message, created_at, updated_at
 		 FROM publication_operations
@@ -110,7 +136,7 @@ func (r *Repository) ListOperationsByBatch(ctx context.Context, batchID string) 
 }
 
 func (r *Repository) UpdateOperationStatus(ctx context.Context, operationID, status, currentStep, errorCode, errorMessage string) error {
-	_, err := r.pool.Exec(ctx,
+	_, err := r.db().Exec(ctx,
 		`UPDATE publication_operations
 		 SET status = $3, current_step = $4, error_code = $5, error_message = $6, updated_at = now()
 		 WHERE tenant_id = $1 AND operation_id = $2`,
@@ -120,7 +146,7 @@ func (r *Repository) UpdateOperationStatus(ctx context.Context, operationID, sta
 }
 
 func (r *Repository) HasActiveOperation(ctx context.Context, vtexAccount, productID string) (bool, error) {
-	row := r.pool.QueryRow(ctx,
+	row := r.db().QueryRow(ctx,
 		`SELECT EXISTS(
 		   SELECT 1 FROM publication_operations
 		   WHERE tenant_id = $1 AND vtex_account = $2 AND product_id = $3
@@ -134,7 +160,7 @@ func (r *Repository) HasActiveOperation(ctx context.Context, vtexAccount, produc
 }
 
 func (r *Repository) SaveStepResult(ctx context.Context, result domain.PipelineStepResult) error {
-	_, err := r.pool.Exec(ctx,
+	_, err := r.db().Exec(ctx,
 		`INSERT INTO pipeline_step_results
 		 (step_result_id, operation_id, tenant_id, step_name, status,
 		  vtex_entity_id, attempt_count, error_code, error_message, started_at, completed_at)
@@ -149,7 +175,7 @@ func (r *Repository) SaveStepResult(ctx context.Context, result domain.PipelineS
 }
 
 func (r *Repository) UpdateStepResult(ctx context.Context, stepResultID, status string, vtexEntityID *string, errorCode, errorMessage string) error {
-	_, err := r.pool.Exec(ctx,
+	_, err := r.db().Exec(ctx,
 		`UPDATE pipeline_step_results
 		 SET status = $3, vtex_entity_id = $4, error_code = $5, error_message = $6,
 		     attempt_count = attempt_count + 1, completed_at = now()
@@ -160,7 +186,7 @@ func (r *Repository) UpdateStepResult(ctx context.Context, stepResultID, status 
 }
 
 func (r *Repository) ListStepResultsByOperation(ctx context.Context, operationID string) ([]domain.PipelineStepResult, error) {
-	rows, err := r.pool.Query(ctx,
+	rows, err := r.db().Query(ctx,
 		`SELECT step_result_id, operation_id, tenant_id, step_name, status,
 		        vtex_entity_id, attempt_count, error_code, error_message, started_at, completed_at
 		 FROM pipeline_step_results
@@ -189,7 +215,7 @@ func (r *Repository) ListStepResultsByOperation(ctx context.Context, operationID
 }
 
 func (r *Repository) FindMapping(ctx context.Context, vtexAccount, entityType, localID string) (*domain.VTEXEntityMapping, error) {
-	row := r.pool.QueryRow(ctx,
+	row := r.db().QueryRow(ctx,
 		`SELECT mapping_id, tenant_id, vtex_account, entity_type, local_id, vtex_id, created_at, updated_at
 		 FROM vtex_entity_mappings
 		 WHERE tenant_id = $1 AND vtex_account = $2 AND entity_type = $3 AND local_id = $4`,
@@ -210,7 +236,7 @@ func (r *Repository) FindMapping(ctx context.Context, vtexAccount, entityType, l
 }
 
 func (r *Repository) SaveMapping(ctx context.Context, mapping domain.VTEXEntityMapping) error {
-	_, err := r.pool.Exec(ctx,
+	_, err := r.db().Exec(ctx,
 		`INSERT INTO vtex_entity_mappings
 		 (mapping_id, tenant_id, vtex_account, entity_type, local_id, vtex_id, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

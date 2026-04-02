@@ -107,58 +107,63 @@ func (o *BatchOrchestrator) CreateBatch(
 
 	validated := len(products) - len(rejections)
 
-	// Step 3: Persist the batch record.
-	batch := domain.PublicationBatch{
-		BatchID:       batchID,
-		TenantID:      o.tenantID,
-		VTEXAccount:   vtexAccount,
-		Status:        domain.BatchStatusPending,
-		TotalProducts: len(products),
-		CreatedAt:     now,
-	}
-	if err := o.repo.SaveBatch(ctx, batch); err != nil {
+	// Step 3: Persist the batch record and operations in a single transaction.
+	if err := o.repo.WithTx(ctx, func(tx ports.Repository) error {
+		batch := domain.PublicationBatch{
+			BatchID:       batchID,
+			TenantID:      o.tenantID,
+			VTEXAccount:   vtexAccount,
+			Status:        domain.BatchStatusPending,
+			TotalProducts: len(products),
+			CreatedAt:     now,
+		}
+		if err := tx.SaveBatch(ctx, batch); err != nil {
+			return err
+		}
+
+		// Step 4: Save failed operations for rejected products.
+		for _, r := range rejections {
+			opID := fmt.Sprintf("op_%s_%s", batchID, r.ProductID)
+			op := domain.PublicationOperation{
+				OperationID:  opID,
+				BatchID:      batchID,
+				TenantID:     o.tenantID,
+				VTEXAccount:  vtexAccount,
+				ProductID:    r.ProductID,
+				Status:       domain.OperationStatusFailed,
+				ErrorCode:    r.ErrorCode,
+				ErrorMessage: r.ErrorCode,
+				CreatedAt:    time.Now(),
+				UpdatedAt:    time.Now(),
+			}
+			if err := tx.SaveOperation(ctx, op); err != nil {
+				return err
+			}
+		}
+
+		// Step 5: Save pending operations for valid products.
+		for _, p := range products {
+			if rejectedIDs[p.ProductID] {
+				continue
+			}
+			opID := fmt.Sprintf("op_%s_%s", batchID, p.ProductID)
+			op := domain.PublicationOperation{
+				OperationID: opID,
+				BatchID:     batchID,
+				TenantID:    o.tenantID,
+				VTEXAccount: vtexAccount,
+				ProductID:   p.ProductID,
+				Status:      domain.OperationStatusPending,
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+			}
+			if err := tx.SaveOperation(ctx, op); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
-	}
-
-	// Step 4: Save failed operations for rejected products.
-	for _, r := range rejections {
-		opID := fmt.Sprintf("op_%s_%s", batchID, r.ProductID)
-		op := domain.PublicationOperation{
-			OperationID:  opID,
-			BatchID:      batchID,
-			TenantID:     o.tenantID,
-			VTEXAccount:  vtexAccount,
-			ProductID:    r.ProductID,
-			Status:       domain.OperationStatusFailed,
-			ErrorCode:    r.ErrorCode,
-			ErrorMessage: r.ErrorCode,
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
-		}
-		if err := o.repo.SaveOperation(ctx, op); err != nil {
-			return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
-		}
-	}
-
-	// Step 5: Save pending operations for valid products.
-	for _, p := range products {
-		if rejectedIDs[p.ProductID] {
-			continue
-		}
-		opID := fmt.Sprintf("op_%s_%s", batchID, p.ProductID)
-		op := domain.PublicationOperation{
-			OperationID: opID,
-			BatchID:     batchID,
-			TenantID:    o.tenantID,
-			VTEXAccount: vtexAccount,
-			ProductID:   p.ProductID,
-			Status:      domain.OperationStatusPending,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		}
-		if err := o.repo.SaveOperation(ctx, op); err != nil {
-			return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
-		}
 	}
 
 	return BatchCreateResult{

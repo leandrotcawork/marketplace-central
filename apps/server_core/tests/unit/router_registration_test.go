@@ -58,6 +58,9 @@ func (r stubPricingRepo) ListSimulations(_ context.Context) ([]pricingdomain.Sim
 // stubConnectorsRepo satisfies connectors ports.Repository with in-memory no-ops.
 type stubConnectorsRepo struct{}
 
+func (r stubConnectorsRepo) WithTx(_ context.Context, fn func(connectorports.Repository) error) error {
+	return fn(r)
+}
 func (r stubConnectorsRepo) SaveBatch(_ context.Context, _ connectorsdomain.PublicationBatch) error {
 	return nil
 }

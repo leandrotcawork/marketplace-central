@@ -90,6 +90,7 @@ type connectorsRepoStub struct {
 	steps      map[string][]domain.PipelineStepResult
 	mappings   map[string]*domain.VTEXEntityMapping
 	batches    map[string]domain.PublicationBatch
+	withTxCalls int
 	updateOperationStatusAlwaysFail bool
 	updateOperationStatusErr        error
 }
@@ -106,6 +107,10 @@ func newConnectorsRepoStub() *connectorsRepoStub {
 func (s *connectorsRepoStub) SaveBatch(_ context.Context, b domain.PublicationBatch) error {
 	s.batches[b.BatchID] = b
 	return nil
+}
+func (s *connectorsRepoStub) WithTx(_ context.Context, fn func(ports.Repository) error) error {
+	s.withTxCalls++
+	return fn(s)
 }
 func (s *connectorsRepoStub) GetBatch(_ context.Context, batchID string) (domain.PublicationBatch, error) {
 	b, ok := s.batches[batchID]
