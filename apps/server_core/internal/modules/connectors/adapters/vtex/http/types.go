@@ -53,8 +53,15 @@ type vtexStockRequest struct {
 	DateUtcOnBalanceSystem *string `json:"dateUtcOnBalanceSystem"`
 }
 
-type vtexProductUpdateRequest struct {
-	IsActive bool `json:"IsActive"`
+type vtexProductGetResponse struct {
+	Id          int    `json:"Id"`
+	Name        string `json:"Name"`
+	CategoryId  int    `json:"CategoryId"`
+	BrandId     int    `json:"BrandId"`
+	Description string `json:"Description"`
+	RefId       string `json:"RefId"`
+	IsVisible   bool   `json:"IsVisible"`
+	IsActive    bool   `json:"IsActive"`
 }
 
 type vtexCategoryResponse struct {

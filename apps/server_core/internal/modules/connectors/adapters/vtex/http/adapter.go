@@ -2,6 +2,7 @@ package vtexhttp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -89,6 +90,11 @@ func (a *Adapter) CreateSKU(ctx context.Context, params ports.SKUParams) (string
 
 func (a *Adapter) AttachSpecsAndImages(ctx context.Context, params ports.SpecsImagesParams) error {
 	start := time.Now()
+	if len(params.ImageURLs) == 0 {
+		err := fmt.Errorf("CONNECTORS_ATTACHSPECSANDIMAGES_EMPTY_IMAGES: no image URLs provided for SKU %s", params.VTEXSKUID)
+		slog.Info("vtex_api_call", "action", "AttachSpecsAndImages", "result", "failed", "duration_ms", time.Since(start).Milliseconds(), "image_count", 0)
+		return err
+	}
 
 	for i, url := range params.ImageURLs {
 		payload := vtexImageRequest{
@@ -142,11 +148,33 @@ func (a *Adapter) SetStock(ctx context.Context, params ports.StockParams) error 
 func (a *Adapter) ActivateProduct(ctx context.Context, params ports.ActivateParams) error {
 	start := time.Now()
 	path := fmt.Sprintf("/api/catalog/pvt/product/%s", params.VTEXProductID)
-	payload := vtexProductUpdateRequest{IsActive: true}
 
-	_, _, err := a.client.Put(ctx, params.VTEXAccount, path, payload, retryConfigs["ActivateProduct"])
-	slog.Info("vtex_api_call", "action", "ActivateProduct", "result", resultStr(err), "duration_ms", time.Since(start).Milliseconds())
-	return err
+	_, getBody, getErr := a.client.Get(ctx, params.VTEXAccount, path, retryConfigs["GetProduct"])
+	if getErr != nil {
+		slog.Info("vtex_api_call", "action", "ActivateProduct", "result", "failed", "duration_ms", time.Since(start).Milliseconds())
+		return getErr
+	}
+
+	var current vtexProductGetResponse
+	if err := json.Unmarshal(getBody, &current); err != nil {
+		parseErr := fmt.Errorf("parse product for activation: %w", err)
+		slog.Info("vtex_api_call", "action", "ActivateProduct", "result", "failed", "duration_ms", time.Since(start).Milliseconds())
+		return parseErr
+	}
+
+	payload := vtexProductRequest{
+		Name:        current.Name,
+		RefId:       current.RefId,
+		CategoryId:  current.CategoryId,
+		BrandId:     current.BrandId,
+		Description: current.Description,
+		IsVisible:   current.IsVisible,
+		IsActive:    true,
+	}
+
+	_, _, putErr := a.client.Put(ctx, params.VTEXAccount, path, payload, retryConfigs["ActivateProduct"])
+	slog.Info("vtex_api_call", "action", "ActivateProduct", "result", resultStr(putErr), "duration_ms", time.Since(start).Milliseconds())
+	return putErr
 }
 
 func (a *Adapter) GetProduct(ctx context.Context, vtexAccount, vtexID string) (ports.ProductData, error) {
