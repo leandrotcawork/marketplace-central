@@ -3,12 +3,14 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	app "marketplace-central/apps/server_core/internal/modules/connectors/application"
+	domain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
 	"marketplace-central/apps/server_core/internal/platform/httpx"
 )
 
@@ -119,7 +121,7 @@ func (h *Handler) handlePublish(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.orchestrator.CreateBatch(r.Context(), req.VTEXAccount, products)
 	if err != nil {
-		writeConnectorsError(w, http.StatusInternalServerError, "CONNECTORS_PUBLISH_INTERNAL", err.Error())
+		writeConnectorsError(w, http.StatusInternalServerError, "CONNECTORS_PUBLISH_INTERNAL", "internal server error")
 		slog.Error("connectors.publish", "action", "create_batch", "result", "500", "error", err.Error(), "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
@@ -189,12 +191,12 @@ func (h *Handler) handleBatchStatus(w http.ResponseWriter, r *http.Request, batc
 
 	batch, ops, err := h.orchestrator.GetBatchStatus(r.Context(), batchID)
 	if err != nil {
-		if strings.Contains(err.Error(), "NOT_FOUND") {
+		if errors.Is(err, domain.ErrBatchNotFound) {
 			writeConnectorsError(w, http.StatusNotFound, "CONNECTORS_BATCH_NOT_FOUND", "batch not found")
 			slog.Info("connectors.batch_status", "action", "get_batch", "result", "404", "batch_id", batchID, "duration_ms", time.Since(start).Milliseconds())
 			return
 		}
-		writeConnectorsError(w, http.StatusInternalServerError, "CONNECTORS_PUBLISH_INTERNAL", err.Error())
+		writeConnectorsError(w, http.StatusInternalServerError, "CONNECTORS_PUBLISH_INTERNAL", "internal server error")
 		slog.Error("connectors.batch_status", "action", "get_batch", "result", "500", "batch_id", batchID, "error", err.Error(), "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
@@ -255,12 +257,12 @@ func (h *Handler) handleRetry(w http.ResponseWriter, r *http.Request, batchID st
 
 	result, err := h.orchestrator.RetryBatch(r.Context(), batchID, req.VTEXAccount, products)
 	if err != nil {
-		if strings.Contains(err.Error(), "NOT_FOUND") {
+		if errors.Is(err, domain.ErrBatchNotFound) {
 			writeConnectorsError(w, http.StatusNotFound, "CONNECTORS_BATCH_NOT_FOUND", "batch not found")
 			slog.Info("connectors.retry", "action", "retry_batch", "result", "404", "batch_id", batchID, "duration_ms", time.Since(start).Milliseconds())
 			return
 		}
-		writeConnectorsError(w, http.StatusInternalServerError, "CONNECTORS_PUBLISH_INTERNAL", err.Error())
+		writeConnectorsError(w, http.StatusInternalServerError, "CONNECTORS_PUBLISH_INTERNAL", "internal server error")
 		slog.Error("connectors.retry", "action", "retry_batch", "result", "500", "batch_id", batchID, "error", err.Error(), "duration_ms", time.Since(start).Milliseconds())
 		return
 	}

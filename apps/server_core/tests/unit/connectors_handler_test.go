@@ -90,6 +90,29 @@ func TestConnectorsPublishHandlerRejectsInvalidMethod(t *testing.T) {
 	}
 }
 
+func TestConnectorsRetryHandlerNotFound(t *testing.T) {
+	repo := newConnectorsRepoStub()
+	vtex := &vtexCatalogStub{}
+	orch := app.NewBatchOrchestrator(repo, vtex, "tenant_default")
+
+	handler := transport.NewHandler(orch)
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	body := map[string]any{
+		"vtex_account": "mystore",
+		"products":     []map[string]any{},
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/connectors/vtex/publish/batch/nonexistent_batch_id/retry", bytes.NewReader(b))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown batch, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestConnectorsBatchStatusHandler(t *testing.T) {
 	repo := newConnectorsRepoStub()
 	vtex := &vtexCatalogStub{}

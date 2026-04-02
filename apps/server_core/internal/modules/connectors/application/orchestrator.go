@@ -409,6 +409,10 @@ func (o *BatchOrchestrator) RetryBatch(
 	vtexAccount string,
 	products []ProductForPublish,
 ) (BatchCreateResult, error) {
+	if _, err := o.repo.GetBatch(ctx, batchID); err != nil {
+		return BatchCreateResult{}, fmt.Errorf("CONNECTORS_BATCH_NOT_FOUND: %w", domain.ErrBatchNotFound)
+	}
+
 	ops, err := o.repo.ListOperationsByBatch(ctx, batchID)
 	if err != nil {
 		return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
