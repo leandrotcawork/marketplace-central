@@ -1,1 +1,1 @@
-export {};
+export { VTEXPublishPage } from "./VTEXPublishPage";
