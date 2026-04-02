@@ -6,6 +6,10 @@ import (
 	catalogpostgres "marketplace-central/apps/server_core/internal/modules/catalog/adapters/postgres"
 	catalogapp "marketplace-central/apps/server_core/internal/modules/catalog/application"
 	catalogtransport "marketplace-central/apps/server_core/internal/modules/catalog/transport"
+	connectorspostgres "marketplace-central/apps/server_core/internal/modules/connectors/adapters/postgres"
+	connectorsstub "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/stub"
+	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
+	connectorstransport "marketplace-central/apps/server_core/internal/modules/connectors/transport"
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
 	marketplacestransport "marketplace-central/apps/server_core/internal/modules/marketplaces/transport"
@@ -35,6 +39,11 @@ func NewRootRouter(pool *pgxpool.Pool, cfg pgdb.Config) http.Handler {
 	pricingRepo := pricingpostgres.NewRepository(pool, cfg.DefaultTenantID)
 	pricingSvc := pricingapp.NewService(pricingRepo, cfg.DefaultTenantID)
 	pricingtransport.NewHandler(pricingSvc).Register(mux)
+
+	connectorsRepo := connectorspostgres.NewRepository(pool, cfg.DefaultTenantID)
+	vtexAdapter := connectorsstub.NewAdapter()
+	connectorsOrch := connectorsapp.NewBatchOrchestrator(connectorsRepo, vtexAdapter, cfg.DefaultTenantID)
+	connectorstransport.NewHandler(connectorsOrch).Register(mux)
 
 	return mux
 }
