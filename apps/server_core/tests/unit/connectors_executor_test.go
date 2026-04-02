@@ -3,6 +3,7 @@ package unit
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,9 +16,14 @@ import (
 // --- In-memory stub implementations ---
 
 type vtexCatalogStub struct {
-	counter    atomic.Int64
-	failOnStep string
-	failError  error
+	counter                     atomic.Int64
+	activeCreateProductCalls    atomic.Int64
+	maxConcurrentCreateProducts atomic.Int64
+	failOnStep                  string
+	failError                   error
+	failCreateProductByLocalID  map[string]error
+	createProductWaitByLocalID  map[string]<-chan struct{}
+	createProductRelease        <-chan struct{}
 }
 
 func (s *vtexCatalogStub) nextID(prefix string) string {
@@ -31,10 +37,35 @@ func (s *vtexCatalogStub) FindOrCreateBrand(_ context.Context, p ports.BrandPara
 	return s.nextID("brand"), nil
 }
 func (s *vtexCatalogStub) CreateProduct(_ context.Context, p ports.ProductParams) (string, error) {
+	active := s.activeCreateProductCalls.Add(1)
+	defer s.activeCreateProductCalls.Add(-1)
+	s.recordMaxConcurrentCreateProducts(active)
+
+	if wait, ok := s.createProductWaitByLocalID[p.LocalID]; ok && wait != nil {
+		<-wait
+	}
+	if err, ok := s.failCreateProductByLocalID[p.LocalID]; ok {
+		return "", err
+	}
+	if s.createProductRelease != nil {
+		<-s.createProductRelease
+	}
 	if s.failOnStep == domain.StepProduct {
 		return "", s.failError
 	}
 	return s.nextID("prod"), nil
+}
+
+func (s *vtexCatalogStub) recordMaxConcurrentCreateProducts(active int64) {
+	for {
+		currentMax := s.maxConcurrentCreateProducts.Load()
+		if active <= currentMax {
+			return
+		}
+		if s.maxConcurrentCreateProducts.CompareAndSwap(currentMax, active) {
+			return
+		}
+	}
 }
 func (s *vtexCatalogStub) CreateSKU(_ context.Context, p ports.SKUParams) (string, error) {
 	if s.failOnStep == domain.StepSKU {
@@ -86,11 +117,12 @@ func (s *vtexCatalogStub) GetBrand(_ context.Context, a, id string) (ports.Brand
 }
 
 type connectorsRepoStub struct {
-	operations map[string]domain.PublicationOperation
-	steps      map[string][]domain.PipelineStepResult
-	mappings   map[string]*domain.VTEXEntityMapping
-	batches    map[string]domain.PublicationBatch
-	withTxCalls int
+	mu                              sync.RWMutex
+	operations                      map[string]domain.PublicationOperation
+	steps                           map[string][]domain.PipelineStepResult
+	mappings                        map[string]*domain.VTEXEntityMapping
+	batches                         map[string]domain.PublicationBatch
+	withTxCalls                     int
 	updateOperationStatusAlwaysFail bool
 	updateOperationStatusErr        error
 }
@@ -105,14 +137,20 @@ func newConnectorsRepoStub() *connectorsRepoStub {
 }
 
 func (s *connectorsRepoStub) SaveBatch(_ context.Context, b domain.PublicationBatch) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.batches[b.BatchID] = b
 	return nil
 }
 func (s *connectorsRepoStub) WithTx(_ context.Context, fn func(ports.Repository) error) error {
+	s.mu.Lock()
 	s.withTxCalls++
+	s.mu.Unlock()
 	return fn(s)
 }
 func (s *connectorsRepoStub) GetBatch(_ context.Context, batchID string) (domain.PublicationBatch, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	b, ok := s.batches[batchID]
 	if !ok {
 		return domain.PublicationBatch{}, fmt.Errorf("CONNECTORS_BATCH_NOT_FOUND: %w", domain.ErrBatchNotFound)
@@ -120,6 +158,8 @@ func (s *connectorsRepoStub) GetBatch(_ context.Context, batchID string) (domain
 	return b, nil
 }
 func (s *connectorsRepoStub) UpdateBatchStatus(_ context.Context, batchID, status string, succeeded, failed int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	b := s.batches[batchID]
 	b.Status = status
 	b.SucceededCount = succeeded
@@ -132,10 +172,14 @@ func (s *connectorsRepoStub) UpdateBatchStatus(_ context.Context, batchID, statu
 	return nil
 }
 func (s *connectorsRepoStub) SaveOperation(_ context.Context, op domain.PublicationOperation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.operations[op.OperationID] = op
 	return nil
 }
 func (s *connectorsRepoStub) ListOperationsByBatch(_ context.Context, batchID string) ([]domain.PublicationOperation, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var ops []domain.PublicationOperation
 	for _, op := range s.operations {
 		if op.BatchID == batchID {
@@ -151,6 +195,8 @@ func (s *connectorsRepoStub) UpdateOperationStatus(_ context.Context, opID, stat
 		}
 		return fmt.Errorf("CONNECTORS_OPERATION_STATUS_UPDATE_FAILED")
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	op := s.operations[opID]
 	op.Status = status
 	op.CurrentStep = step
@@ -160,6 +206,8 @@ func (s *connectorsRepoStub) UpdateOperationStatus(_ context.Context, opID, stat
 	return nil
 }
 func (s *connectorsRepoStub) HasActiveOperation(_ context.Context, vtexAccount, productID string) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, op := range s.operations {
 		if op.VTEXAccount == vtexAccount && op.ProductID == productID &&
 			(op.Status == domain.OperationStatusPending || op.Status == domain.OperationStatusInProgress) {
@@ -169,10 +217,14 @@ func (s *connectorsRepoStub) HasActiveOperation(_ context.Context, vtexAccount, 
 	return false, nil
 }
 func (s *connectorsRepoStub) SaveStepResult(_ context.Context, r domain.PipelineStepResult) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.steps[r.OperationID] = append(s.steps[r.OperationID], r)
 	return nil
 }
 func (s *connectorsRepoStub) UpdateStepResult(_ context.Context, stepResultID, status string, vtexEntityID *string, errorCode, errorMessage string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for opID, results := range s.steps {
 		for i, r := range results {
 			if r.StepResultID == stepResultID {
@@ -191,16 +243,41 @@ func (s *connectorsRepoStub) UpdateStepResult(_ context.Context, stepResultID, s
 	return nil
 }
 func (s *connectorsRepoStub) ListStepResultsByOperation(_ context.Context, opID string) ([]domain.PipelineStepResult, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.steps[opID], nil
 }
 func (s *connectorsRepoStub) FindMapping(_ context.Context, vtexAccount, entityType, localID string) (*domain.VTEXEntityMapping, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	key := vtexAccount + "|" + entityType + "|" + localID
 	return s.mappings[key], nil
 }
 func (s *connectorsRepoStub) SaveMapping(_ context.Context, m domain.VTEXEntityMapping) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	key := m.VTEXAccount + "|" + m.EntityType + "|" + m.LocalID
 	s.mappings[key] = &m
 	return nil
+}
+
+func (s *connectorsRepoStub) operation(opID string) domain.PublicationOperation {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.operations[opID]
+}
+
+func (s *connectorsRepoStub) startedOperationsCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	count := 0
+	for _, results := range s.steps {
+		if len(results) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 // --- Tests ---

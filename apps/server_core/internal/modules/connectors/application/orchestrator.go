@@ -5,11 +5,21 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	domain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
 	"marketplace-central/apps/server_core/internal/modules/connectors/ports"
 )
+
+const maxConcurrentPipelines = 5
+
+type workItem struct {
+	op               domain.PublicationOperation
+	product          ProductForPublish
+	resolvedMappings map[string]string
+}
 
 // newID generates a random prefixed ID with 64 bits of entropy to avoid collisions under concurrency.
 func newID(prefix string) string {
@@ -198,7 +208,6 @@ func (o *BatchOrchestrator) ExecuteBatch(
 		return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
 	}
 
-	// Index operations by product ID for lookup.
 	opByProduct := make(map[string]domain.PublicationOperation)
 	for _, op := range ops {
 		if op.Status == domain.OperationStatusPending {
@@ -206,22 +215,36 @@ func (o *BatchOrchestrator) ExecuteBatch(
 		}
 	}
 
-	// Build a product lookup by product ID.
 	productByID := make(map[string]ProductForPublish)
 	for _, p := range products {
 		productByID[p.ProductID] = p
 	}
 
-	executor := NewPipelineExecutor(o.repo, o.vtex)
-	failedCount := 0
+	var (
+		succeededCount atomic.Int64
+		failedCount    atomic.Int64
+		authHalt       atomic.Bool
+		wg             sync.WaitGroup
+		firstWorkerErr error
+		errOnce        sync.Once
+	)
 
+	recordWorkerError := func(err error) {
+		if err == nil {
+			return
+		}
+		errOnce.Do(func() {
+			firstWorkerErr = err
+		})
+	}
+
+	items := make([]workItem, 0, len(opByProduct))
 	for _, p := range products {
 		op, hasPendingOp := opByProduct[p.ProductID]
 		if !hasPendingOp {
 			continue
 		}
 
-		// Check if category resolution failed for this product.
 		if reason, bad := failures["category|"+p.Category]; bad {
 			_ = o.repo.UpdateOperationStatus(ctx, op.OperationID,
 				domain.OperationStatusFailed,
@@ -229,10 +252,10 @@ func (o *BatchOrchestrator) ExecuteBatch(
 				"CONNECTORS_PUBLISH_DEPENDENCY_FAILED",
 				reason,
 			)
+			failedCount.Add(1)
 			continue
 		}
 
-		// Check if brand resolution failed for this product.
 		if reason, bad := failures["brand|"+p.Brand]; bad {
 			_ = o.repo.UpdateOperationStatus(ctx, op.OperationID,
 				domain.OperationStatusFailed,
@@ -240,102 +263,131 @@ func (o *BatchOrchestrator) ExecuteBatch(
 				"CONNECTORS_PUBLISH_DEPENDENCY_FAILED",
 				reason,
 			)
+			failedCount.Add(1)
 			continue
 		}
 
-		productMappings := map[string]string{
-			domain.EntityTypeCategory: resolved["category|"+p.Category],
-			domain.EntityTypeBrand:    resolved["brand|"+p.Brand],
-		}
-
-		data := ProductPublishData{
-			Name:          p.Name,
-			Description:   p.Description,
-			SKUName:       p.SKUName,
-			EAN:           p.EAN,
-			ImageURLs:     p.ImageURLs,
-			Specs:         p.Specs,
-			TradePolicyID: p.TradePolicyID,
-			BasePrice:     p.BasePrice,
-			WarehouseID:   p.WarehouseID,
-			StockQuantity: p.StockQty,
-		}
-
-		// Execute the pipeline. Executor handles its own state — errors here are system errors.
-		if execErr := executor.Execute(ctx, op, data, productMappings); execErr != nil {
-			_ = o.repo.UpdateOperationStatus(ctx, op.OperationID,
-				domain.OperationStatusFailed,
-				"",
-				"CONNECTORS_EXECUTOR_INTERNAL",
-				execErr.Error(),
-			)
-			failedCount++
-			continue
-		}
-
-		executedOps, err := o.repo.ListOperationsByBatch(ctx, batchID)
-		if err != nil {
-			return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
-		}
-		if authFailed(executedOps, op.OperationID) {
-			o.failPendingOperationsForAuth(ctx, batchID)
-			break
-		}
+		items = append(items, workItem{
+			op:      op,
+			product: productByID[op.ProductID],
+			resolvedMappings: map[string]string{
+				domain.EntityTypeCategory: resolved["category|"+p.Category],
+				domain.EntityTypeBrand:    resolved["brand|"+p.Brand],
+			},
+		})
 	}
 
-	// Count final statuses with a single DB read after all operations complete.
-	finalOps, err := o.repo.ListOperationsByBatch(ctx, batchID)
-	if err != nil {
-		return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
+	work := make(chan workItem, len(items))
+	for _, item := range items {
+		work <- item
 	}
-	succeededCount := 0
-	failedFromDB := 0
-	for _, op := range finalOps {
-		switch op.Status {
-		case domain.OperationStatusSucceeded:
-			succeededCount++
-		case domain.OperationStatusFailed:
-			failedFromDB++
-		}
-	}
-	if failedFromDB > failedCount {
-		failedCount = failedFromDB
+	close(work)
+
+	workerCount := len(items)
+	if workerCount > maxConcurrentPipelines {
+		workerCount = maxConcurrentPipelines
 	}
 
-	// Determine final batch status.
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			executor := NewPipelineExecutor(o.repo, o.vtex)
+			for item := range work {
+				if authHalt.Load() {
+					continue
+				}
+
+				data := ProductPublishData{
+					Name:          item.product.Name,
+					Description:   item.product.Description,
+					SKUName:       item.product.SKUName,
+					EAN:           item.product.EAN,
+					ImageURLs:     item.product.ImageURLs,
+					Specs:         item.product.Specs,
+					TradePolicyID: item.product.TradePolicyID,
+					BasePrice:     item.product.BasePrice,
+					WarehouseID:   item.product.WarehouseID,
+					StockQuantity: item.product.StockQty,
+				}
+
+				// Executor state transitions are persisted by the executor itself.
+				if execErr := executor.Execute(ctx, item.op, data, item.resolvedMappings); execErr != nil {
+					_ = o.repo.UpdateOperationStatus(ctx, item.op.OperationID,
+						domain.OperationStatusFailed,
+						"",
+						"CONNECTORS_EXECUTOR_INTERNAL",
+						execErr.Error(),
+					)
+					failedCount.Add(1)
+					continue
+				}
+
+				executedOps, listErr := o.repo.ListOperationsByBatch(ctx, batchID)
+				if listErr != nil {
+					recordWorkerError(listErr)
+					return
+				}
+
+				for _, executedOp := range executedOps {
+					if executedOp.OperationID != item.op.OperationID {
+						continue
+					}
+
+					switch executedOp.Status {
+					case domain.OperationStatusSucceeded:
+						succeededCount.Add(1)
+					case domain.OperationStatusFailed:
+						failedCount.Add(1)
+						if executedOp.ErrorCode == "CONNECTORS_VTEX_AUTH" && authHalt.CompareAndSwap(false, true) {
+							failedCount.Add(int64(o.failPendingOperationsForAuth(ctx, batchID)))
+						}
+					}
+					break
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if firstWorkerErr != nil {
+		return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", firstWorkerErr)
+	}
+
 	finalStatus := domain.BatchStatusCompleted
-	if failedCount > 0 {
+	if failedCount.Load() > 0 {
 		finalStatus = domain.BatchStatusFailed
 	}
 
-	if err := o.repo.UpdateBatchStatus(ctx, batchID, finalStatus, succeededCount, failedCount); err != nil {
+	if err := o.repo.UpdateBatchStatus(ctx, batchID, finalStatus, int(succeededCount.Load()), int(failedCount.Load())); err != nil {
 		return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
 	}
 
 	return nil
 }
 
-func (o *BatchOrchestrator) failPendingOperationsForAuth(ctx context.Context, batchID string) {
+func (o *BatchOrchestrator) failPendingOperationsForAuth(ctx context.Context, batchID string) int {
 	ops, err := o.repo.ListOperationsByBatch(ctx, batchID)
 	if err != nil {
-		return
+		return 0
 	}
-	for _, op := range ops {
-		if op.Status == domain.OperationStatusPending || op.Status == domain.OperationStatusInProgress {
-			_ = o.repo.UpdateOperationStatus(ctx, op.OperationID,
-				domain.OperationStatusFailed, op.CurrentStep,
-				"CONNECTORS_VTEX_AUTH", "batch halted: VTEX authentication failed")
-		}
-	}
-}
 
-func authFailed(ops []domain.PublicationOperation, operationID string) bool {
+	failedCount := 0
 	for _, op := range ops {
-		if op.OperationID == operationID && op.ErrorCode == "CONNECTORS_VTEX_AUTH" {
-			return true
+		if op.Status != domain.OperationStatusPending {
+			continue
+		}
+
+		if err := o.repo.UpdateOperationStatus(ctx, op.OperationID,
+			domain.OperationStatusFailed, op.CurrentStep,
+			"CONNECTORS_VTEX_AUTH", "batch halted: VTEX authentication failed"); err == nil {
+			failedCount++
 		}
 	}
-	return false
+
+	return failedCount
 }
 
 // resolveSharedResources resolves (or creates) VTEX category and brand IDs for all unique
@@ -481,7 +533,7 @@ func (o *BatchOrchestrator) RetryBatch(
 		}
 		p, ok := productByID[op.ProductID]
 		if !ok {
-			// No product data supplied for this failed op — skip it, don't reset.
+			// No product data supplied for this failed op - skip it, don't reset.
 			continue
 		}
 		if err := o.repo.UpdateOperationStatus(ctx, op.OperationID,

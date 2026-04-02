@@ -10,6 +10,25 @@ import (
 	domain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
 )
 
+func makeProductForPublish(productID string) app.ProductForPublish {
+	return app.ProductForPublish{
+		ProductID:     productID,
+		Name:          "Product " + productID,
+		Description:   "Description " + productID,
+		SKUName:       "SKU " + productID,
+		EAN:           "ean-" + productID,
+		Category:      "Ferramentas",
+		Brand:         "Bosch",
+		Cost:          100.0,
+		BasePrice:     199.90,
+		ImageURLs:     []string{"https://example.com/" + productID + ".jpg"},
+		Specs:         map[string]string{"voltage": "220V"},
+		StockQty:      10,
+		WarehouseID:   "warehouse_1",
+		TradePolicyID: "1",
+	}
+}
+
 func TestBatchOrchestratorPreflightRejectsMissingFields(t *testing.T) {
 	repo := newConnectorsRepoStub()
 	vtex := &vtexCatalogStub{}
@@ -314,46 +333,27 @@ func TestBatchOrchestratorCountsExecutorSystemError(t *testing.T) {
 
 func TestBatchOrchestratorHaltsOnAuthError(t *testing.T) {
 	repo := newConnectorsRepoStub()
+	releaseAuthFailure := make(chan struct{})
+	releaseCreateProduct := make(chan struct{})
 	vtex := &vtexCatalogStub{
-		failOnStep: domain.StepProduct,
-		failError:  fmt.Errorf("auth: %w", domain.ErrVTEXAuth),
+		failCreateProductByLocalID: map[string]error{
+			"prod_1": fmt.Errorf("auth: %w", domain.ErrVTEXAuth),
+		},
+		createProductWaitByLocalID: map[string]<-chan struct{}{
+			"prod_1": releaseAuthFailure,
+		},
+		createProductRelease: releaseCreateProduct,
 	}
 
 	orch := app.NewBatchOrchestrator(repo, vtex, "tenant_default")
 
 	products := []app.ProductForPublish{
-		{
-			ProductID:     "prod_1",
-			Name:          "Product One",
-			Description:   "First product",
-			SKUName:       "SKU One",
-			EAN:           "7777777777771",
-			Category:      "Ferramentas",
-			Brand:         "Bosch",
-			Cost:          100.0,
-			BasePrice:     199.90,
-			ImageURLs:     []string{"https://example.com/one.jpg"},
-			Specs:         map[string]string{"voltage": "220V"},
-			StockQty:      10,
-			WarehouseID:   "warehouse_1",
-			TradePolicyID: "1",
-		},
-		{
-			ProductID:     "prod_2",
-			Name:          "Product Two",
-			Description:   "Second product",
-			SKUName:       "SKU Two",
-			EAN:           "7777777777772",
-			Category:      "Ferramentas",
-			Brand:         "Bosch",
-			Cost:          120.0,
-			BasePrice:     249.90,
-			ImageURLs:     []string{"https://example.com/two.jpg"},
-			Specs:         map[string]string{"voltage": "110V"},
-			StockQty:      8,
-			WarehouseID:   "warehouse_1",
-			TradePolicyID: "1",
-		},
+		makeProductForPublish("prod_1"),
+		makeProductForPublish("prod_2"),
+		makeProductForPublish("prod_3"),
+		makeProductForPublish("prod_4"),
+		makeProductForPublish("prod_5"),
+		makeProductForPublish("prod_6"),
 	}
 
 	createResult, err := orch.CreateBatch(context.Background(), "mystore", products)
@@ -361,8 +361,39 @@ func TestBatchOrchestratorHaltsOnAuthError(t *testing.T) {
 		t.Fatalf("CreateBatch error: %v", err)
 	}
 
-	err = orch.ExecuteBatch(context.Background(), createResult.BatchID, "mystore", products)
-	if err != nil {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- orch.ExecuteBatch(context.Background(), createResult.BatchID, "mystore", products)
+	}()
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for repo.startedOperationsCount() < 5 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if repo.startedOperationsCount() != 5 {
+		close(releaseCreateProduct)
+		close(releaseAuthFailure)
+		if execErr := <-errCh; execErr != nil {
+			t.Fatalf("ExecuteBatch error: %v", execErr)
+		}
+		t.Fatalf("expected 5 in-flight pipelines before auth halt, got %d", repo.startedOperationsCount())
+	}
+
+	close(releaseAuthFailure)
+
+	prod6OperationID := fmt.Sprintf("op_%s_prod_6", createResult.BatchID)
+	deadline = time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		op := repo.operation(prod6OperationID)
+		if op.Status == domain.OperationStatusFailed && op.ErrorCode == "CONNECTORS_VTEX_AUTH" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	close(releaseCreateProduct)
+
+	if err := <-errCh; err != nil {
 		t.Fatalf("ExecuteBatch error: %v", err)
 	}
 
@@ -375,26 +406,100 @@ func TestBatchOrchestratorHaltsOnAuthError(t *testing.T) {
 		t.Fatalf("expected batch status %q, got %q", domain.BatchStatusFailed, batch.Status)
 	}
 
-	if len(ops) != 2 {
-		t.Fatalf("expected 2 operations, got %d", len(ops))
+	if len(ops) != 6 {
+		t.Fatalf("expected 6 operations, got %d", len(ops))
 	}
 
+	if batch.SucceededCount != 4 {
+		t.Fatalf("expected SucceededCount=4, got %d", batch.SucceededCount)
+	}
+	if batch.FailedCount != 2 {
+		t.Fatalf("expected FailedCount=2, got %d", batch.FailedCount)
+	}
+
+	statusByProduct := make(map[string]domain.PublicationOperation)
 	for _, op := range ops {
+		statusByProduct[op.ProductID] = op
+	}
+
+	for _, productID := range []string{"prod_2", "prod_3", "prod_4", "prod_5"} {
+		op := statusByProduct[productID]
+		if op.Status != domain.OperationStatusSucceeded {
+			t.Fatalf("expected in-flight operation %s to succeed, got %q", productID, op.Status)
+		}
+	}
+
+	for _, productID := range []string{"prod_1", "prod_6"} {
+		op := statusByProduct[productID]
 		if op.Status != domain.OperationStatusFailed {
-			t.Fatalf("expected operation %s status %q, got %q", op.ProductID, domain.OperationStatusFailed, op.Status)
+			t.Fatalf("expected halted operation %s to fail, got %q", productID, op.Status)
 		}
 		if op.ErrorCode != "CONNECTORS_VTEX_AUTH" {
-			t.Fatalf("expected operation %s error code CONNECTORS_VTEX_AUTH, got %q", op.ProductID, op.ErrorCode)
+			t.Fatalf("expected halted operation %s error code CONNECTORS_VTEX_AUTH, got %q", productID, op.ErrorCode)
 		}
 	}
 
-	startedPipelines := 0
-	for _, stepResults := range repo.steps {
-		if len(stepResults) > 0 {
-			startedPipelines++
-		}
+	if repo.startedOperationsCount() != 5 {
+		t.Fatalf("expected 5 started pipelines, got %d", repo.startedOperationsCount())
 	}
-	if startedPipelines != 1 {
-		t.Fatalf("expected exactly 1 started pipeline before auth halt, got %d", startedPipelines)
+	if steps, _ := repo.ListStepResultsByOperation(context.Background(), prod6OperationID); len(steps) != 0 {
+		t.Fatalf("expected queued halted operation to have no step results, got %d", len(steps))
+	}
+}
+
+func TestBatchOrchestratorExecutesBatchWithBoundedConcurrency(t *testing.T) {
+	repo := newConnectorsRepoStub()
+	releaseCreateProduct := make(chan struct{})
+	vtex := &vtexCatalogStub{
+		createProductRelease: releaseCreateProduct,
+	}
+
+	orch := app.NewBatchOrchestrator(repo, vtex, "tenant_default")
+
+	products := []app.ProductForPublish{
+		makeProductForPublish("prod_1"),
+		makeProductForPublish("prod_2"),
+		makeProductForPublish("prod_3"),
+		makeProductForPublish("prod_4"),
+		makeProductForPublish("prod_5"),
+		makeProductForPublish("prod_6"),
+		makeProductForPublish("prod_7"),
+		makeProductForPublish("prod_8"),
+	}
+
+	createResult, err := orch.CreateBatch(context.Background(), "mystore", products)
+	if err != nil {
+		t.Fatalf("CreateBatch error: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- orch.ExecuteBatch(context.Background(), createResult.BatchID, "mystore", products)
+	}()
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for vtex.maxConcurrentCreateProducts.Load() < 5 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	close(releaseCreateProduct)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("ExecuteBatch error: %v", err)
+	}
+
+	if got := vtex.maxConcurrentCreateProducts.Load(); got != 5 {
+		t.Fatalf("expected max concurrent product pipelines to be 5, got %d", got)
+	}
+
+	batch, _, err := orch.GetBatchStatus(context.Background(), createResult.BatchID)
+	if err != nil {
+		t.Fatalf("GetBatchStatus error: %v", err)
+	}
+	if batch.SucceededCount != 8 {
+		t.Fatalf("expected SucceededCount=8, got %d", batch.SucceededCount)
+	}
+	if batch.FailedCount != 0 {
+		t.Fatalf("expected FailedCount=0, got %d", batch.FailedCount)
 	}
 }
