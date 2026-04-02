@@ -103,12 +103,12 @@ func (c *Client) do(ctx context.Context, vtexAccount, method, path string, body 
 			lastBody = nil
 			// RetryOnTimeout: false means don't retry on any network error (non-idempotent safety).
 			if !rc.RetryOnTimeout {
-				return 0, nil, lastErr
+				return 0, nil, classifyError(method, path, 0, nil, lastErr)
 			}
 			if attempt < rc.MaxAttempts-1 {
 				continue
 			}
-			return 0, nil, lastErr
+			return 0, nil, classifyError(method, path, 0, nil, lastErr)
 		}
 
 		respBody, readErr := io.ReadAll(resp.Body)

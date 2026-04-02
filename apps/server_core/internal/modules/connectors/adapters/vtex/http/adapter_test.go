@@ -3,11 +3,14 @@ package vtexhttp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	gohttp "net/http"
 	"strings"
 	"testing"
 
+	"marketplace-central/apps/server_core/internal/modules/connectors/domain"
 	"marketplace-central/apps/server_core/internal/modules/connectors/ports"
 )
 
@@ -22,6 +25,14 @@ type roundTripFunc func(*gohttp.Request) (*gohttp.Response, error)
 func (f roundTripFunc) RoundTrip(req *gohttp.Request) (*gohttp.Response, error) {
 	return f(req)
 }
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "i/o timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
+
+var _ net.Error = timeoutError{}
 
 func TestAttachSpecsAndImagesReturnsErrorWhenImageListIsEmpty(t *testing.T) {
 	adapter := &Adapter{}
@@ -88,6 +99,30 @@ func TestActivateProductFetchesCurrentProductBeforeFullPut(t *testing.T) {
 	}
 	if putCalls != 1 {
 		t.Fatalf("expected 1 PUT call, got %d", putCalls)
+	}
+}
+
+func TestClientGetClassifiesTimeoutNetworkErrorsAsTransient(t *testing.T) {
+	client := &Client{
+		credentials: staticCredentialProvider{},
+		httpClient: &gohttp.Client{
+			Transport: roundTripFunc(func(req *gohttp.Request) (*gohttp.Response, error) {
+				return nil, timeoutError{}
+			}),
+		},
+	}
+
+	_, _, err := client.Get(context.Background(), "account", "/api/test", RetryConfig{
+		MaxAttempts:    1,
+		BaseDelay:      0,
+		JitterPct:      0,
+		RetryOnTimeout: false,
+	})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !errors.Is(err, domain.ErrVTEXTransient) {
+		t.Fatalf("expected ErrVTEXTransient, got %v", err)
 	}
 }
 
