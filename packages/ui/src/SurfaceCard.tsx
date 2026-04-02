@@ -1,5 +1,9 @@
 import type { PropsWithChildren } from "react";
 
-export function SurfaceCard({ children }: PropsWithChildren) {
-  return <section style={{ border: "1px solid #d6d6d6", padding: 16, borderRadius: 12 }}>{children}</section>;
+interface SurfaceCardProps {
+  className?: string;
+}
+
+export function SurfaceCard({ children, className = "" }: PropsWithChildren<SurfaceCardProps>) {
+  return <section className={`bg-white border border-slate-200 rounded-xl p-6 ${className}`}>{children}</section>;
 }
