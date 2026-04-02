@@ -2,12 +2,21 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
 	domain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
 	"marketplace-central/apps/server_core/internal/modules/connectors/ports"
 )
+
+// newID generates a random prefixed ID with 64 bits of entropy to avoid collisions under concurrency.
+func newID(prefix string) string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return prefix + "_" + hex.EncodeToString(b)
+}
 
 // ProductForPublish holds all data needed to publish a product to VTEX.
 type ProductForPublish struct {
@@ -64,7 +73,7 @@ func (o *BatchOrchestrator) CreateBatch(
 	vtexAccount string,
 	products []ProductForPublish,
 ) (BatchCreateResult, error) {
-	batchID := fmt.Sprintf("batch_%d", time.Now().UnixNano())
+	batchID := newID("batch")
 	now := time.Now()
 
 	var rejections []Rejection
@@ -113,7 +122,7 @@ func (o *BatchOrchestrator) CreateBatch(
 
 	// Step 4: Save failed operations for rejected products.
 	for _, r := range rejections {
-		opID := fmt.Sprintf("op_%s_%s_%d", batchID, r.ProductID, time.Now().UnixNano())
+		opID := fmt.Sprintf("op_%s_%s", batchID, r.ProductID)
 		op := domain.PublicationOperation{
 			OperationID:  opID,
 			BatchID:      batchID,
@@ -136,7 +145,7 @@ func (o *BatchOrchestrator) CreateBatch(
 		if rejectedIDs[p.ProductID] {
 			continue
 		}
-		opID := fmt.Sprintf("op_%s_%s_%d", batchID, p.ProductID, time.Now().UnixNano())
+		opID := fmt.Sprintf("op_%s_%s", batchID, p.ProductID)
 		op := domain.PublicationOperation{
 			OperationID: opID,
 			BatchID:     batchID,
@@ -199,8 +208,6 @@ func (o *BatchOrchestrator) ExecuteBatch(
 	}
 
 	executor := NewPipelineExecutor(o.repo, o.vtex)
-	succeededCount := 0
-	failedCount := 0
 
 	for _, p := range products {
 		op, hasPendingOp := opByProduct[p.ProductID]
@@ -216,7 +223,6 @@ func (o *BatchOrchestrator) ExecuteBatch(
 				"CONNECTORS_PUBLISH_DEPENDENCY_FAILED",
 				reason,
 			)
-			failedCount++
 			continue
 		}
 
@@ -228,7 +234,6 @@ func (o *BatchOrchestrator) ExecuteBatch(
 				"CONNECTORS_PUBLISH_DEPENDENCY_FAILED",
 				reason,
 			)
-			failedCount++
 			continue
 		}
 
@@ -252,21 +257,21 @@ func (o *BatchOrchestrator) ExecuteBatch(
 
 		// Execute the pipeline. Executor handles its own state — errors here are system errors.
 		_ = executor.Execute(ctx, op, data, productMappings)
+	}
 
-		// Re-read the operation to determine its final status for counting.
-		updatedOps, listErr := o.repo.ListOperationsByBatch(ctx, batchID)
-		if listErr != nil {
-			return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", listErr)
-		}
-		for _, updatedOp := range updatedOps {
-			if updatedOp.OperationID == op.OperationID {
-				if updatedOp.Status == domain.OperationStatusSucceeded {
-					succeededCount++
-				} else {
-					failedCount++
-				}
-				break
-			}
+	// Count final statuses with a single DB read after all operations complete.
+	finalOps, err := o.repo.ListOperationsByBatch(ctx, batchID)
+	if err != nil {
+		return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
+	}
+	succeededCount := 0
+	failedCount := 0
+	for _, op := range finalOps {
+		switch op.Status {
+		case domain.OperationStatusSucceeded:
+			succeededCount++
+		case domain.OperationStatusFailed:
+			failedCount++
 		}
 	}
 
@@ -328,8 +333,7 @@ func (o *BatchOrchestrator) resolveSharedResources(
 			failures[key] = createErr.Error()
 			continue
 		}
-		resolved[key] = vtexID
-		_ = o.repo.SaveMapping(ctx, domain.VTEXEntityMapping{
+		if err := o.repo.SaveMapping(ctx, domain.VTEXEntityMapping{
 			MappingID:   fmt.Sprintf("map_%s_category_%s", vtexAccount, cat),
 			TenantID:    o.tenantID,
 			VTEXAccount: vtexAccount,
@@ -338,7 +342,10 @@ func (o *BatchOrchestrator) resolveSharedResources(
 			VTEXID:      vtexID,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
-		})
+		}); err != nil {
+			return nil, nil, err
+		}
+		resolved[key] = vtexID
 	}
 
 	// Resolve brands.
@@ -361,8 +368,7 @@ func (o *BatchOrchestrator) resolveSharedResources(
 			failures[key] = createErr.Error()
 			continue
 		}
-		resolved[key] = vtexID
-		_ = o.repo.SaveMapping(ctx, domain.VTEXEntityMapping{
+		if err := o.repo.SaveMapping(ctx, domain.VTEXEntityMapping{
 			MappingID:   fmt.Sprintf("map_%s_brand_%s", vtexAccount, brand),
 			TenantID:    o.tenantID,
 			VTEXAccount: vtexAccount,
@@ -371,7 +377,10 @@ func (o *BatchOrchestrator) resolveSharedResources(
 			VTEXID:      vtexID,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
-		})
+		}); err != nil {
+			return nil, nil, err
+		}
+		resolved[key] = vtexID
 	}
 
 	return resolved, failures, nil
@@ -413,15 +422,19 @@ func (o *BatchOrchestrator) RetryBatch(
 
 	var failedProducts []ProductForPublish
 	for _, op := range ops {
-		if op.Status == domain.OperationStatusFailed {
-			if err := o.repo.UpdateOperationStatus(ctx, op.OperationID,
-				domain.OperationStatusPending, "", "", ""); err != nil {
-				return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
-			}
-			if p, ok := productByID[op.ProductID]; ok {
-				failedProducts = append(failedProducts, p)
-			}
+		if op.Status != domain.OperationStatusFailed {
+			continue
 		}
+		p, ok := productByID[op.ProductID]
+		if !ok {
+			// No product data supplied for this failed op — skip it, don't reset.
+			continue
+		}
+		if err := o.repo.UpdateOperationStatus(ctx, op.OperationID,
+			domain.OperationStatusPending, "", "", ""); err != nil {
+			return BatchCreateResult{}, fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
+		}
+		failedProducts = append(failedProducts, p)
 	}
 
 	if len(failedProducts) == 0 {

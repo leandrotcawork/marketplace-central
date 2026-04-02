@@ -194,7 +194,7 @@ func TestBatchOrchestratorExecutesBatchSuccessfully(t *testing.T) {
 		t.Fatalf("ExecuteBatch error: %v", err)
 	}
 
-	batch, _, err := orch.GetBatchStatus(context.Background(), createResult.BatchID)
+	batch, ops, err := orch.GetBatchStatus(context.Background(), createResult.BatchID)
 	if err != nil {
 		t.Fatalf("GetBatchStatus error: %v", err)
 	}
@@ -203,6 +203,13 @@ func TestBatchOrchestratorExecutesBatchSuccessfully(t *testing.T) {
 	}
 	if batch.FailedCount != 0 {
 		t.Errorf("expected FailedCount=0, got %d", batch.FailedCount)
+	}
+
+	// Verify each individual operation reached succeeded status.
+	for _, op := range ops {
+		if op.Status != domain.OperationStatusSucceeded {
+			t.Errorf("expected op %s to be succeeded, got %q", op.ProductID, op.Status)
+		}
 	}
 
 	// Verify category and brand mappings were saved
