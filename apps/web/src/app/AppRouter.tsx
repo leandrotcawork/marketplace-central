@@ -22,7 +22,8 @@ function MarketplaceSettingsPageWrapper() {
 }
 
 function PricingSimulatorPageWrapper() {
-  return <PricingSimulatorPage />;
+  const client = useClient();
+  return <PricingSimulatorPage client={client} />;
 }
 
 export function AppRouter() {
