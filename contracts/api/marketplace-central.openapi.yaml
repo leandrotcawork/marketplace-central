@@ -171,7 +171,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ConnectorErrorResponse'
 
   /connectors/vtex/publish/batch/{batch_id}:
     get:
@@ -195,12 +195,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ConnectorErrorResponse'
 
   /connectors/vtex/publish/batch/{batch_id}/retry:
     post:
       operationId: retryVTEXBatch
       summary: Retry failed operations in a batch
+      description: Only failed operations are retried. `supplemental_products` must include data for every failed product (by `product_id`). If any failed product is missing from `supplemental_products`, the entire retry request is rejected with `CONNECTORS_RETRY_MISSING_PRODUCT`.
       parameters:
         - name: batch_id
           in: path
@@ -225,7 +226,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ConnectorErrorResponse'
 
 components:
   schemas:
@@ -478,15 +479,15 @@ components:
     RetryVTEXBatchRequest:
       type: object
       required:
-        - products
+        - supplemental_products
       properties:
-        vtex_account:
-          type: string
-          description: Optional and ignored. Retry uses the persisted account from the batch.
-        products:
+        supplemental_products:
           type: array
           items:
             $ref: '#/components/schemas/ProductForPublish'
+        vtex_account:
+          type: string
+          description: Optional; ignored if present (persisted batch account is used).
 
     ProductForPublish:
       type: object
@@ -611,3 +612,30 @@ components:
             details:
               type: object
               additionalProperties: true
+
+    ConnectorErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - CONNECTORS_PUBLISH_MISSING_NAME
+                    - CONNECTORS_PUBLISH_MISSING_SKU
+                    - CONNECTORS_PUBLISH_MISSING_CATEGORY
+                    - CONNECTORS_PUBLISH_MISSING_BRAND
+                    - CONNECTORS_PUBLISH_MISSING_PRICE
+                    - CONNECTORS_PUBLISH_MISSING_STOCK
+                    - CONNECTORS_PUBLISH_ALREADY_IN_PROGRESS
+                    - CONNECTORS_PUBLISH_DEPENDENCY_FAILED
+                    - CONNECTORS_VTEX_VALIDATION
+                    - CONNECTORS_VTEX_NOT_FOUND
+                    - CONNECTORS_VTEX_TRANSIENT
+                    - CONNECTORS_VTEX_AUTH
+                    - CONNECTORS_EXECUTOR_INTERNAL
+                    - CONNECTORS_RETRY_MISSING_PRODUCT
+                    - CONNECTORS_BATCH_NOT_FOUND
