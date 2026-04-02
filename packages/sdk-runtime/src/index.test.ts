@@ -139,3 +139,75 @@ describe("sdk runtime", () => {
     });
   });
 });
+
+const sampleVTEXProduct = {
+  product_id: "p1",
+  name: "Test",
+  description: "Desc",
+  sku_name: "Test SKU",
+  ean: "7890000000001",
+  category: "Electronics",
+  brand: "BrandX",
+  cost: 60,
+  base_price: 100,
+  image_urls: ["https://example.com/img.png"],
+  specs: {},
+  stock_qty: 10,
+  warehouse_id: "1_1",
+  trade_policy_id: "1",
+};
+
+describe("publishToVTEX", () => {
+  it("POSTs to /connectors/vtex/publish with products array", async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ batch_id: "b1", total_products: 1, validated: 1, rejected: 0, rejections: [] }),
+    });
+    const client = createMarketplaceCentralClient({ baseUrl: "http://localhost:8080", fetchImpl: mockFetch as unknown as typeof fetch });
+
+    const result = await client.publishToVTEX({ vtex_account: "mystore", products: [sampleVTEXProduct] });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8080/connectors/vtex/publish",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.batch_id).toBe("b1");
+    expect(result.validated).toBe(1);
+  });
+});
+
+describe("getBatchStatus", () => {
+  it("GETs /connectors/vtex/publish/batch/{id}", async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ batch_id: "b1", vtex_account: "mystore", status: "completed", total: 1, succeeded: 1, failed: 0, in_progress: 0, operations: [] }),
+    });
+    const client = createMarketplaceCentralClient({ baseUrl: "http://localhost:8080", fetchImpl: mockFetch as unknown as typeof fetch });
+
+    const result = await client.getBatchStatus("b1");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8080/connectors/vtex/publish/batch/b1",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(result.status).toBe("completed");
+  });
+});
+
+describe("retryBatch", () => {
+  it("POSTs to /connectors/vtex/publish/batch/{id}/retry with supplemental_products", async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ batch_id: "b1", total_products: 1, validated: 1, rejected: 0, rejections: [] }),
+    });
+    const client = createMarketplaceCentralClient({ baseUrl: "http://localhost:8080", fetchImpl: mockFetch as unknown as typeof fetch });
+
+    const result = await client.retryBatch("b1", [sampleVTEXProduct]);
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8080/connectors/vtex/publish/batch/b1/retry",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.batch_id).toBe("b1");
+  });
+});
