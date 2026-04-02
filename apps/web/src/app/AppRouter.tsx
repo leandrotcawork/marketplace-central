@@ -17,7 +17,8 @@ function BatchDetailPageWrapper() {
 }
 
 function MarketplaceSettingsPageWrapper() {
-  return <MarketplaceSettingsPage />;
+  const client = useClient();
+  return <MarketplaceSettingsPage client={client} />;
 }
 
 function PricingSimulatorPageWrapper() {
