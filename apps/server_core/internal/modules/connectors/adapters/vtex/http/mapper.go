@@ -95,6 +95,9 @@ func fromVTEXProductDataResponse(body []byte) (ports.ProductData, error) {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return ports.ProductData{}, fmt.Errorf("unmarshal product response: %w", err)
 	}
+	if resp.Id == 0 {
+		return ports.ProductData{}, fmt.Errorf("product response missing Id field")
+	}
 
 	return ports.ProductData{
 		VTEXID: strconv.Itoa(resp.Id),
@@ -107,6 +110,12 @@ func fromVTEXSKUDataResponse(body []byte) (ports.SKUData, error) {
 	var resp vtexSKUResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return ports.SKUData{}, fmt.Errorf("unmarshal sku response: %w", err)
+	}
+	if resp.Id == 0 {
+		return ports.SKUData{}, fmt.Errorf("sku response missing Id field")
+	}
+	if resp.ProductId == 0 {
+		return ports.SKUData{}, fmt.Errorf("sku response missing ProductId field")
 	}
 
 	return ports.SKUData{
@@ -123,6 +132,9 @@ func fromVTEXCategoryDataResponse(body []byte) (ports.CategoryData, error) {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return ports.CategoryData{}, fmt.Errorf("unmarshal category response: %w", err)
 	}
+	if resp.Id == 0 {
+		return ports.CategoryData{}, fmt.Errorf("category response missing Id field")
+	}
 
 	return ports.CategoryData{
 		VTEXID: strconv.Itoa(resp.Id),
@@ -134,6 +146,9 @@ func fromVTEXBrandDataResponse(body []byte) (ports.BrandData, error) {
 	var resp vtexBrandResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return ports.BrandData{}, fmt.Errorf("unmarshal brand response: %w", err)
+	}
+	if resp.Id == 0 {
+		return ports.BrandData{}, fmt.Errorf("brand response missing Id field")
 	}
 
 	return ports.BrandData{
