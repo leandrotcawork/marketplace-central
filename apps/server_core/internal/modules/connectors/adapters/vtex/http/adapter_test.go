@@ -126,6 +126,24 @@ func TestClientGetClassifiesTimeoutNetworkErrorsAsTransient(t *testing.T) {
 	}
 }
 
+func TestRetryConfigsDisableTimeoutRetriesForNonIdempotentPosts(t *testing.T) {
+	testCases := []string{
+		"FindOrCreateCategory",
+		"FindOrCreateBrand",
+		"AttachSpecsAndImages",
+	}
+
+	for _, operation := range testCases {
+		cfg, ok := retryConfigs[operation]
+		if !ok {
+			t.Fatalf("missing retry config for %s", operation)
+		}
+		if cfg.RetryOnTimeout {
+			t.Fatalf("expected RetryOnTimeout to be false for %s", operation)
+		}
+	}
+}
+
 func jsonResponse(status int, body string) *gohttp.Response {
 	return &gohttp.Response{
 		StatusCode: status,
