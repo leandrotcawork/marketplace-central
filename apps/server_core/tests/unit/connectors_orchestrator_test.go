@@ -276,3 +276,90 @@ func TestBatchOrchestratorCountsExecutorSystemError(t *testing.T) {
 		t.Fatalf("expected SucceededCount=0, got %d", batch.SucceededCount)
 	}
 }
+
+func TestBatchOrchestratorHaltsOnAuthError(t *testing.T) {
+	repo := newConnectorsRepoStub()
+	vtex := &vtexCatalogStub{
+		failOnStep: domain.StepProduct,
+		failError:  fmt.Errorf("auth: %w", domain.ErrVTEXAuth),
+	}
+
+	orch := app.NewBatchOrchestrator(repo, vtex, "tenant_default")
+
+	products := []app.ProductForPublish{
+		{
+			ProductID:     "prod_1",
+			Name:          "Product One",
+			Description:   "First product",
+			SKUName:       "SKU One",
+			EAN:           "7777777777771",
+			Category:      "Ferramentas",
+			Brand:         "Bosch",
+			Cost:          100.0,
+			BasePrice:     199.90,
+			ImageURLs:     []string{"https://example.com/one.jpg"},
+			Specs:         map[string]string{"voltage": "220V"},
+			StockQty:      10,
+			WarehouseID:   "warehouse_1",
+			TradePolicyID: "1",
+		},
+		{
+			ProductID:     "prod_2",
+			Name:          "Product Two",
+			Description:   "Second product",
+			SKUName:       "SKU Two",
+			EAN:           "7777777777772",
+			Category:      "Ferramentas",
+			Brand:         "Bosch",
+			Cost:          120.0,
+			BasePrice:     249.90,
+			ImageURLs:     []string{"https://example.com/two.jpg"},
+			Specs:         map[string]string{"voltage": "110V"},
+			StockQty:      8,
+			WarehouseID:   "warehouse_1",
+			TradePolicyID: "1",
+		},
+	}
+
+	createResult, err := orch.CreateBatch(context.Background(), "mystore", products)
+	if err != nil {
+		t.Fatalf("CreateBatch error: %v", err)
+	}
+
+	err = orch.ExecuteBatch(context.Background(), createResult.BatchID, "mystore", products)
+	if err != nil {
+		t.Fatalf("ExecuteBatch error: %v", err)
+	}
+
+	batch, ops, err := orch.GetBatchStatus(context.Background(), createResult.BatchID)
+	if err != nil {
+		t.Fatalf("GetBatchStatus error: %v", err)
+	}
+
+	if batch.Status != domain.BatchStatusFailed {
+		t.Fatalf("expected batch status %q, got %q", domain.BatchStatusFailed, batch.Status)
+	}
+
+	if len(ops) != 2 {
+		t.Fatalf("expected 2 operations, got %d", len(ops))
+	}
+
+	for _, op := range ops {
+		if op.Status != domain.OperationStatusFailed {
+			t.Fatalf("expected operation %s status %q, got %q", op.ProductID, domain.OperationStatusFailed, op.Status)
+		}
+		if op.ErrorCode != "CONNECTORS_VTEX_AUTH" {
+			t.Fatalf("expected operation %s error code CONNECTORS_VTEX_AUTH, got %q", op.ProductID, op.ErrorCode)
+		}
+	}
+
+	startedPipelines := 0
+	for _, stepResults := range repo.steps {
+		if len(stepResults) > 0 {
+			startedPipelines++
+		}
+	}
+	if startedPipelines != 1 {
+		t.Fatalf("expected exactly 1 started pipeline before auth halt, got %d", startedPipelines)
+	}
+}

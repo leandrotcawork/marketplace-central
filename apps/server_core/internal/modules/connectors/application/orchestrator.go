@@ -265,6 +265,16 @@ func (o *BatchOrchestrator) ExecuteBatch(
 				execErr.Error(),
 			)
 			failedCount++
+			continue
+		}
+
+		executedOps, err := o.repo.ListOperationsByBatch(ctx, batchID)
+		if err != nil {
+			return fmt.Errorf("CONNECTORS_PUBLISH_INTERNAL: %w", err)
+		}
+		if authFailed(executedOps, op.OperationID) {
+			o.failPendingOperationsForAuth(ctx, batchID)
+			break
 		}
 	}
 
@@ -298,6 +308,29 @@ func (o *BatchOrchestrator) ExecuteBatch(
 	}
 
 	return nil
+}
+
+func (o *BatchOrchestrator) failPendingOperationsForAuth(ctx context.Context, batchID string) {
+	ops, err := o.repo.ListOperationsByBatch(ctx, batchID)
+	if err != nil {
+		return
+	}
+	for _, op := range ops {
+		if op.Status == domain.OperationStatusPending || op.Status == domain.OperationStatusInProgress {
+			_ = o.repo.UpdateOperationStatus(ctx, op.OperationID,
+				domain.OperationStatusFailed, op.CurrentStep,
+				"CONNECTORS_VTEX_AUTH", "batch halted: VTEX authentication failed")
+		}
+	}
+}
+
+func authFailed(ops []domain.PublicationOperation, operationID string) bool {
+	for _, op := range ops {
+		if op.OperationID == operationID && op.ErrorCode == "CONNECTORS_VTEX_AUTH" {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveSharedResources resolves (or creates) VTEX category and brand IDs for all unique
