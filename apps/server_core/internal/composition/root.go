@@ -1,13 +1,14 @@
 package composition
 
 import (
+	"log"
 	"net/http"
 
 	catalogpostgres "marketplace-central/apps/server_core/internal/modules/catalog/adapters/postgres"
 	catalogapp "marketplace-central/apps/server_core/internal/modules/catalog/application"
 	catalogtransport "marketplace-central/apps/server_core/internal/modules/catalog/transport"
 	connectorspostgres "marketplace-central/apps/server_core/internal/modules/connectors/adapters/postgres"
-	connectorsstub "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/stub"
+	connectorshttp "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/http"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	connectorstransport "marketplace-central/apps/server_core/internal/modules/connectors/transport"
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
@@ -40,8 +41,13 @@ func NewRootRouter(pool *pgxpool.Pool, cfg pgdb.Config) http.Handler {
 	pricingSvc := pricingapp.NewService(pricingRepo, cfg.DefaultTenantID)
 	pricingtransport.NewHandler(pricingSvc).Register(mux)
 
+	vtexCredentials, err := connectorshttp.NewEnvCredentialProvider()
+	if err != nil {
+		log.Fatalf("vtex credentials: %v", err)
+	}
+
 	connectorsRepo := connectorspostgres.NewRepository(pool, cfg.DefaultTenantID)
-	vtexAdapter := connectorsstub.NewAdapter()
+	vtexAdapter := connectorshttp.NewAdapter(vtexCredentials)
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(connectorsRepo, vtexAdapter, cfg.DefaultTenantID)
 	connectorstransport.NewHandler(connectorsOrch).Register(mux)
 

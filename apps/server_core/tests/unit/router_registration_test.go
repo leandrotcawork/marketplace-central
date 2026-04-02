@@ -145,6 +145,9 @@ func (a stubVTEXAdapter) GetBrand(_ context.Context, _, _ string) (connectorport
 // is registered and returns a non-404 response. It builds a minimal mux with
 // stub repository adapters so that no real database connection is required.
 func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
+	t.Setenv("VTEX_APP_KEY", "test-key")
+	t.Setenv("VTEX_APP_TOKEN", "test-token")
+
 	mux := http.NewServeMux()
 
 	// /healthz
