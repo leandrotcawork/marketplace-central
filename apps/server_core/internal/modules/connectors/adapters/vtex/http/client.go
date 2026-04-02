@@ -101,8 +101,8 @@ func (c *Client) do(ctx context.Context, vtexAccount, method, path string, body 
 			lastErr = err
 			lastStatus = 0
 			lastBody = nil
-			// RetryOnTimeout: false means don't retry on any network error (non-idempotent safety).
-			if !rc.RetryOnTimeout {
+			// AllowNetworkRetry: false means don't retry on any network error (non-idempotent safety).
+			if !rc.AllowNetworkRetry {
 				return 0, nil, classifyError(method, path, 0, nil, lastErr)
 			}
 			if attempt < rc.MaxAttempts-1 {
