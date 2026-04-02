@@ -129,8 +129,10 @@ func (e *PipelineExecutor) Execute(
 		}
 	}
 
-	_ = e.repo.UpdateOperationStatus(ctx, op.OperationID,
-		domain.OperationStatusSucceeded, domain.StepActivate, "", "")
+	if err := e.repo.UpdateOperationStatus(ctx, op.OperationID,
+		domain.OperationStatusSucceeded, domain.StepActivate, "", ""); err != nil {
+		return fmt.Errorf("CONNECTORS_OPERATION_STATUS_UPDATE_FAILED: %w", err)
+	}
 	return nil
 }
 

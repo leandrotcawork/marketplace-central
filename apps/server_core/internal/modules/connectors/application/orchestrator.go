@@ -256,7 +256,14 @@ func (o *BatchOrchestrator) ExecuteBatch(
 		}
 
 		// Execute the pipeline. Executor handles its own state — errors here are system errors.
-		_ = executor.Execute(ctx, op, data, productMappings)
+		if execErr := executor.Execute(ctx, op, data, productMappings); execErr != nil {
+			_ = o.repo.UpdateOperationStatus(ctx, op.OperationID,
+				domain.OperationStatusFailed,
+				"",
+				"CONNECTORS_EXECUTOR_INTERNAL",
+				execErr.Error(),
+			)
+		}
 	}
 
 	// Count final statuses with a single DB read after all operations complete.
