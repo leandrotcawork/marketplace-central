@@ -87,15 +87,17 @@ func (e *PipelineExecutor) Execute(
 			return nil // pipeline halted for this product, not a system error
 		}
 
-		_ = e.repo.UpdateStepResult(ctx, stepResultID,
-			domain.StepStatusSucceeded, vtexID, "", "")
+		if err := e.repo.UpdateStepResult(ctx, stepResultID,
+			domain.StepStatusSucceeded, vtexID, "", ""); err != nil {
+			return err
+		}
 
 		// Track VTEX IDs for subsequent steps
 		switch step {
 		case domain.StepProduct:
 			if vtexID != nil {
 				vtexProductID = *vtexID
-				_ = e.repo.SaveMapping(ctx, domain.VTEXEntityMapping{
+				if err := e.repo.SaveMapping(ctx, domain.VTEXEntityMapping{
 					MappingID:   fmt.Sprintf("map_%s_%s", op.OperationID, step),
 					TenantID:    op.TenantID,
 					VTEXAccount: op.VTEXAccount,
@@ -104,12 +106,14 @@ func (e *PipelineExecutor) Execute(
 					VTEXID:      vtexProductID,
 					CreatedAt:   time.Now(),
 					UpdatedAt:   time.Now(),
-				})
+				}); err != nil {
+					return err
+				}
 			}
 		case domain.StepSKU:
 			if vtexID != nil {
 				vtexSKUID = *vtexID
-				_ = e.repo.SaveMapping(ctx, domain.VTEXEntityMapping{
+				if err := e.repo.SaveMapping(ctx, domain.VTEXEntityMapping{
 					MappingID:   fmt.Sprintf("map_%s_%s", op.OperationID, step),
 					TenantID:    op.TenantID,
 					VTEXAccount: op.VTEXAccount,
@@ -118,7 +122,9 @@ func (e *PipelineExecutor) Execute(
 					VTEXID:      vtexSKUID,
 					CreatedAt:   time.Now(),
 					UpdatedAt:   time.Now(),
-				})
+				}); err != nil {
+					return err
+				}
 			}
 		}
 	}

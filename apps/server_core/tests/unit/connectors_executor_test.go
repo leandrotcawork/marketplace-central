@@ -309,6 +309,12 @@ func TestPipelineExecutorHaltsOnFailure(t *testing.T) {
 	if len(steps) != 2 {
 		t.Fatalf("expected 2 step results (product + sku), got %d", len(steps))
 	}
+
+	// Verify the failed step result (SKU) has the correct terminal status
+	skuStep := steps[1]
+	if skuStep.Status != domain.StepStatusFailed {
+		t.Fatalf("expected SKU step status %q, got %q", domain.StepStatusFailed, skuStep.Status)
+	}
 }
 
 func TestPipelineExecutorReconciliationSkipsCreate(t *testing.T) {
