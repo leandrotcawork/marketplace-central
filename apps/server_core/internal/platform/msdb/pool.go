@@ -3,6 +3,7 @@ package msdb
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 
 	"github.com/jackc/pgx/v5"
@@ -38,6 +39,9 @@ func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	if cfg.DatabaseURL == "" {
 		return nil, errors.New("MS_DATABASE_URL is required")
 	}
+	if cfg.TenantID == "" {
+		return nil, errors.New("MS_TENANT_ID is required")
+	}
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
@@ -46,7 +50,11 @@ func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	// MetalShopping's RLS policies work even on reused pooled connections.
 	poolCfg.BeforeAcquire = func(ctx context.Context, conn *pgx.Conn) bool {
 		_, err := conn.Exec(ctx, "SELECT set_config('app.tenant_id', $1, false)", cfg.TenantID)
-		return err == nil
+		if err != nil {
+			log.Printf("msdb: failed to set tenant context: %v", err)
+			return false
+		}
+		return true
 	}
 	return pgxpool.NewWithConfig(ctx, poolCfg)
 }
