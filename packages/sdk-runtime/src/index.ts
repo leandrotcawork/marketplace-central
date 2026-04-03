@@ -1,10 +1,63 @@
 export interface CatalogProduct {
   product_id: string;
-  tenant_id: string;
   sku: string;
   name: string;
+  description: string;
+  brand_name: string;
   status: string;
-  cost: number;
+  cost_amount: number;
+  price_amount: number;
+  stock_quantity: number;
+  ean: string;
+  reference: string;
+  taxonomy_node_id: string;
+  taxonomy_name: string;
+  suggested_price: number | null;
+  height_cm: number | null;
+  width_cm: number | null;
+  length_cm: number | null;
+}
+
+export interface TaxonomyNode {
+  node_id: string;
+  name: string;
+  level: number;
+  level_label: string;
+  parent_node_id: string;
+  is_active: boolean;
+  product_count: number;
+}
+
+export interface ProductEnrichment {
+  product_id: string;
+  tenant_id?: string;
+  height_cm: number | null;
+  width_cm: number | null;
+  length_cm: number | null;
+  suggested_price_amount: number | null;
+}
+
+export interface Classification {
+  classification_id: string;
+  tenant_id?: string;
+  name: string;
+  ai_context: string;
+  product_ids: string[];
+  product_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateClassificationRequest {
+  name: string;
+  ai_context: string;
+  product_ids: string[];
+}
+
+export interface UpdateClassificationRequest {
+  name: string;
+  ai_context: string;
+  product_ids: string[];
 }
 
 export interface MarketplaceAccount {
@@ -154,6 +207,27 @@ export function createMarketplaceCentralClient(options: {
     return data as T;
   }
 
+  async function putJson<T>(path: string, body: unknown): Promise<T> {
+    const response = await fetchImpl(`${options.baseUrl}${path}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw { status: response.status, error: (data as ErrorResponse).error } satisfies MarketplaceCentralClientError;
+    }
+    return data as T;
+  }
+
+  async function deleteJson(path: string): Promise<void> {
+    const response = await fetchImpl(`${options.baseUrl}${path}`, { method: "DELETE" });
+    if (!response.ok) {
+      const data = await response.json();
+      throw { status: response.status, error: (data as ErrorResponse).error } satisfies MarketplaceCentralClientError;
+    }
+  }
+
   async function postJson<T>(path: string, body: unknown): Promise<T> {
     const response = await fetchImpl(`${options.baseUrl}${path}`, {
       method: "POST",
@@ -184,5 +258,29 @@ export function createMarketplaceCentralClient(options: {
       getJson<BatchStatus>(`/connectors/vtex/publish/batch/${batchId}`),
     retryBatch: (batchId: string, products: VTEXProduct[]) =>
       postJson<PublishBatchResponse>(`/connectors/vtex/publish/batch/${batchId}/retry`, { supplemental_products: products }),
+
+    // Catalog
+    searchCatalogProducts: (query: string) =>
+      getJson<ListResponse<CatalogProduct>>(`/catalog/products/search?q=${encodeURIComponent(query)}`),
+    getCatalogProduct: (productId: string) =>
+      getJson<CatalogProduct>(`/catalog/products/${productId}`),
+    listTaxonomyNodes: () =>
+      getJson<ListResponse<TaxonomyNode>>("/catalog/taxonomy"),
+    getProductEnrichment: (productId: string) =>
+      getJson<ProductEnrichment>(`/catalog/products/${productId}/enrichment`),
+    updateProductEnrichment: (productId: string, data: Partial<ProductEnrichment>) =>
+      putJson<ProductEnrichment>(`/catalog/products/${productId}/enrichment`, data),
+
+    // Classifications
+    listClassifications: () =>
+      getJson<ListResponse<Classification>>("/classifications"),
+    createClassification: (req: CreateClassificationRequest) =>
+      postJson<Classification>("/classifications", req),
+    getClassification: (id: string) =>
+      getJson<Classification>(`/classifications/${id}`),
+    updateClassification: (id: string, req: UpdateClassificationRequest) =>
+      putJson<Classification>(`/classifications/${id}`, req),
+    deleteClassification: (id: string) =>
+      deleteJson(`/classifications/${id}`),
   };
 }
