@@ -1,8 +1,9 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Send, Store, Calculator } from "lucide-react";
+import { LayoutDashboard, Package, Send, Store, Calculator } from "lucide-react";
 
 const navItems = [
   { to: "/",                label: "Dashboard",         icon: LayoutDashboard },
+  { to: "/products",        label: "Products",          icon: Package },
   { to: "/connectors/vtex", label: "VTEX Publisher",    icon: Send },
   { to: "/marketplaces",    label: "Marketplaces",      icon: Store },
   { to: "/simulator",       label: "Pricing Simulator", icon: Calculator },

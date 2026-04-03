@@ -1,10 +1,16 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { MarketplaceSettingsPage } from "@marketplace-central/feature-marketplaces";
 import { PricingSimulatorPage } from "@marketplace-central/feature-simulator";
+import { ProductsPage } from "@marketplace-central/feature-products";
 import { VTEXPublishPage, BatchDetailPage } from "@marketplace-central/feature-connectors";
 import { Layout } from "./Layout";
 import { DashboardPage } from "../pages/DashboardPage";
 import { useClient } from "./ClientContext";
+
+function ProductsPageWrapper() {
+  const client = useClient();
+  return <ProductsPage client={client} />;
+}
 
 function VTEXPublishPageWrapper() {
   const client = useClient();
@@ -32,6 +38,7 @@ export function AppRouter() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<DashboardPage />} />
+          <Route path="/products" element={<ProductsPageWrapper />} />
           <Route path="/connectors/vtex" element={<VTEXPublishPageWrapper />} />
           <Route path="/connectors/vtex/batch/:batchId" element={<BatchDetailPageWrapper />} />
           <Route path="/marketplaces" element={<MarketplaceSettingsPageWrapper />} />
