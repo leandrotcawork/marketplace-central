@@ -4,9 +4,13 @@ import (
 	"log"
 	"net/http"
 
+	catalogmetalshopping "marketplace-central/apps/server_core/internal/modules/catalog/adapters/metalshopping"
 	catalogpostgres "marketplace-central/apps/server_core/internal/modules/catalog/adapters/postgres"
 	catalogapp "marketplace-central/apps/server_core/internal/modules/catalog/application"
 	catalogtransport "marketplace-central/apps/server_core/internal/modules/catalog/transport"
+	classpostgres "marketplace-central/apps/server_core/internal/modules/classifications/adapters/postgres"
+	classapp "marketplace-central/apps/server_core/internal/modules/classifications/application"
+	classtransport "marketplace-central/apps/server_core/internal/modules/classifications/transport"
 	connectorspostgres "marketplace-central/apps/server_core/internal/modules/connectors/adapters/postgres"
 	connectorshttp "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/http"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
@@ -23,16 +27,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewRootRouter(pool *pgxpool.Pool, cfg pgdb.Config) http.Handler {
+func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) http.Handler {
 	mux := http.NewServeMux()
 
 	base := httpx.NewRouter()
 	mux.Handle("/healthz", base)
 
+	catalogReader := catalogmetalshopping.NewRepository(msPool)
 	catalogEnrichments := catalogpostgres.NewEnrichmentRepository(pool, cfg.DefaultTenantID)
-	// TODO: wire MetalShopping ProductReader when msdb pool is available
-	catalogSvc := catalogapp.NewService(nil, catalogEnrichments, cfg.DefaultTenantID)
+	catalogSvc := catalogapp.NewService(catalogReader, catalogEnrichments, cfg.DefaultTenantID)
 	catalogtransport.Handler{Service: catalogSvc}.Register(mux)
+
+	classRepo := classpostgres.NewRepository(pool, cfg.DefaultTenantID)
+	classSvc := classapp.NewService(classRepo, cfg.DefaultTenantID)
+	classtransport.NewHandler(classSvc).Register(mux)
 
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
 	marketSvc := marketplacesapp.NewService(marketRepo, cfg.DefaultTenantID)

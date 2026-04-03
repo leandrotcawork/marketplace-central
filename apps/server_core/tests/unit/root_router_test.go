@@ -15,7 +15,7 @@ import (
 
 func TestNewRootRouterRequiresVTEXCredentials(t *testing.T) {
 	if os.Getenv("TEST_NEW_ROOT_ROUTER_MISSING_CREDENTIALS") == "1" {
-		composition.NewRootRouter(nil, pgdb.Config{DefaultTenantID: "tenant_default"})
+		composition.NewRootRouter(nil, nil, pgdb.Config{DefaultTenantID: "tenant_default"})
 		return
 	}
 
@@ -37,7 +37,7 @@ func TestNewRootRouterBuildsWhenVTEXCredentialsArePresent(t *testing.T) {
 	t.Setenv("VTEX_APP_KEY", "test-key")
 	t.Setenv("VTEX_APP_TOKEN", "test-token")
 
-	router := composition.NewRootRouter(nil, pgdb.Config{DefaultTenantID: "tenant_default"})
+	router := composition.NewRootRouter(nil, nil, pgdb.Config{DefaultTenantID: "tenant_default"})
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()

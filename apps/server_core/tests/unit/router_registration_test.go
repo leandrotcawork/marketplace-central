@@ -9,6 +9,9 @@ import (
 	catalogapp "marketplace-central/apps/server_core/internal/modules/catalog/application"
 	catalogdomain "marketplace-central/apps/server_core/internal/modules/catalog/domain"
 	catalogtransport "marketplace-central/apps/server_core/internal/modules/catalog/transport"
+	classapp "marketplace-central/apps/server_core/internal/modules/classifications/application"
+	classdomain "marketplace-central/apps/server_core/internal/modules/classifications/domain"
+	classtransport "marketplace-central/apps/server_core/internal/modules/classifications/transport"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	connectorsdomain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
 	connectorports "marketplace-central/apps/server_core/internal/modules/connectors/ports"
@@ -80,6 +83,25 @@ func (r stubPricingRepo) SaveSimulation(_ context.Context, _ pricingdomain.Simul
 }
 func (r stubPricingRepo) ListSimulations(_ context.Context) ([]pricingdomain.Simulation, error) {
 	return nil, nil
+}
+
+// stubClassificationsRepo satisfies classifications ports.Repository with in-memory no-ops.
+type stubClassificationsRepo struct{}
+
+func (r stubClassificationsRepo) List(_ context.Context) ([]classdomain.Classification, error) {
+	return nil, nil
+}
+func (r stubClassificationsRepo) GetByID(_ context.Context, _ string) (classdomain.Classification, error) {
+	return classdomain.Classification{}, nil
+}
+func (r stubClassificationsRepo) Create(_ context.Context, _ classdomain.Classification) error {
+	return nil
+}
+func (r stubClassificationsRepo) Update(_ context.Context, _ classdomain.Classification) error {
+	return nil
+}
+func (r stubClassificationsRepo) Delete(_ context.Context, _ string) error {
+	return nil
 }
 
 // stubConnectorsRepo satisfies connectors ports.Repository with in-memory no-ops.
@@ -185,6 +207,10 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 	catalogSvc := catalogapp.NewService(stubCatalogReader{}, stubCatalogEnrichments{}, "tenant_default")
 	catalogtransport.Handler{Service: catalogSvc}.Register(mux)
 
+	// /classifications
+	classSvc := classapp.NewService(stubClassificationsRepo{}, "tenant_default")
+	classtransport.NewHandler(classSvc).Register(mux)
+
 	// /marketplaces/accounts, /marketplaces/policies
 	marketSvc := marketplacesapp.NewService(stubMarketplacesRepo{}, "tenant_default")
 	marketplacestransport.NewHandler(marketSvc).Register(mux)
@@ -200,6 +226,7 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 	cases := []string{
 		"/healthz",
 		"/catalog/products",
+		"/classifications",
 		"/marketplaces/accounts",
 		"/marketplaces/policies",
 		"/pricing/simulations",
