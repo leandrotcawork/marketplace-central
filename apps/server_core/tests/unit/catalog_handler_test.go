@@ -12,23 +12,49 @@ import (
 	"marketplace-central/apps/server_core/internal/modules/catalog/transport"
 )
 
-type catalogHandlerRepoStub struct {
+type catalogHandlerReaderStub struct {
 	products []catalogdomain.Product
 }
 
-func (r *catalogHandlerRepoStub) ListProducts(_ context.Context) ([]catalogdomain.Product, error) {
+func (r *catalogHandlerReaderStub) ListProducts(_ context.Context) ([]catalogdomain.Product, error) {
 	return r.products, nil
 }
 
+func (r *catalogHandlerReaderStub) GetProduct(_ context.Context, _ string) (catalogdomain.Product, error) {
+	return catalogdomain.Product{}, nil
+}
+
+func (r *catalogHandlerReaderStub) SearchProducts(_ context.Context, _ string) ([]catalogdomain.Product, error) {
+	return nil, nil
+}
+
+func (r *catalogHandlerReaderStub) ListTaxonomyNodes(_ context.Context) ([]catalogdomain.TaxonomyNode, error) {
+	return nil, nil
+}
+
+type catalogHandlerEnrichmentStub struct{}
+
+func (s catalogHandlerEnrichmentStub) GetEnrichment(_ context.Context, productID string) (catalogdomain.ProductEnrichment, error) {
+	return catalogdomain.ProductEnrichment{ProductID: productID}, nil
+}
+
+func (s catalogHandlerEnrichmentStub) UpsertEnrichment(_ context.Context, _ catalogdomain.ProductEnrichment) error {
+	return nil
+}
+
+func (s catalogHandlerEnrichmentStub) ListEnrichments(_ context.Context, _ []string) (map[string]catalogdomain.ProductEnrichment, error) {
+	return make(map[string]catalogdomain.ProductEnrichment), nil
+}
+
 func newCatalogHandler(products []catalogdomain.Product) transport.Handler {
-	repo := &catalogHandlerRepoStub{products: products}
-	svc := catalogapp.NewService(repo, "tenant_default")
+	reader := &catalogHandlerReaderStub{products: products}
+	svc := catalogapp.NewService(reader, catalogHandlerEnrichmentStub{})
 	return transport.Handler{Service: svc}
 }
 
 func TestCatalogHandlerGetReturnsProducts(t *testing.T) {
 	seeded := []catalogdomain.Product{
-		{ProductID: "p-1", TenantID: "tenant_default", SKU: "SKU-1", Name: "Widget", Status: "active", Cost: 10.0},
+		{ProductID: "p-1", SKU: "SKU-1", Name: "Widget", Status: "active", CostAmount: 10.0},
 	}
 	mux := http.NewServeMux()
 	newCatalogHandler(seeded).Register(mux)

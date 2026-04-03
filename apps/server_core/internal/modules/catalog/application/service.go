@@ -8,14 +8,14 @@ import (
 )
 
 type Service struct {
-	repo     ports.Repository
-	tenantID string
+	reader      ports.ProductReader
+	enrichments ports.EnrichmentStore
 }
 
-func NewService(repo ports.Repository, tenantID string) Service {
-	return Service{repo: repo, tenantID: tenantID}
+func NewService(reader ports.ProductReader, enrichments ports.EnrichmentStore) Service {
+	return Service{reader: reader, enrichments: enrichments}
 }
 
 func (s Service) ListProducts(ctx context.Context) ([]domain.Product, error) {
-	return s.repo.ListProducts(ctx)
+	return s.reader.ListProducts(ctx)
 }

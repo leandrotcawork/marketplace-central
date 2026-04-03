@@ -2,42 +2,82 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"marketplace-central/apps/server_core/internal/modules/catalog/domain"
 	"marketplace-central/apps/server_core/internal/modules/catalog/ports"
 )
 
-var _ ports.Repository = (*Repository)(nil)
+var _ ports.EnrichmentStore = (*EnrichmentRepository)(nil)
 
-type Repository struct {
+type EnrichmentRepository struct {
 	pool     *pgxpool.Pool
 	tenantID string
 }
 
-func NewRepository(pool *pgxpool.Pool, tenantID string) *Repository {
-	return &Repository{pool: pool, tenantID: tenantID}
+func NewEnrichmentRepository(pool *pgxpool.Pool, tenantID string) *EnrichmentRepository {
+	return &EnrichmentRepository{pool: pool, tenantID: tenantID}
 }
 
-func (r *Repository) ListProducts(ctx context.Context) ([]domain.Product, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT tenant_id, product_id, sku, name, status, cost_amount
-		FROM catalog_products
-		WHERE tenant_id = $1
-		ORDER BY product_id
-	`, r.tenantID)
+func (r *EnrichmentRepository) GetEnrichment(ctx context.Context, productID string) (domain.ProductEnrichment, error) {
+	var e domain.ProductEnrichment
+	err := r.pool.QueryRow(ctx, `
+		SELECT product_id, tenant_id, height_cm, width_cm, length_cm, suggested_price_amount
+		FROM product_enrichments
+		WHERE tenant_id = $1 AND product_id = $2
+	`, r.tenantID, productID).Scan(
+		&e.ProductID, &e.TenantID, &e.HeightCM, &e.WidthCM, &e.LengthCM, &e.SuggestedPriceAmount,
+	)
+	if err == pgx.ErrNoRows {
+		return domain.ProductEnrichment{ProductID: productID, TenantID: r.tenantID}, nil
+	}
 	if err != nil {
-		return nil, err
+		return domain.ProductEnrichment{}, fmt.Errorf("get enrichment: %w", err)
+	}
+	return e, nil
+}
+
+// UpsertEnrichment uses partial-update semantics: only non-nil fields overwrite existing values.
+func (r *EnrichmentRepository) UpsertEnrichment(ctx context.Context, e domain.ProductEnrichment) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO product_enrichments (product_id, tenant_id, height_cm, width_cm, length_cm, suggested_price_amount, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, now())
+		ON CONFLICT (tenant_id, product_id) DO UPDATE SET
+			height_cm = COALESCE(EXCLUDED.height_cm, product_enrichments.height_cm),
+			width_cm = COALESCE(EXCLUDED.width_cm, product_enrichments.width_cm),
+			length_cm = COALESCE(EXCLUDED.length_cm, product_enrichments.length_cm),
+			suggested_price_amount = COALESCE(EXCLUDED.suggested_price_amount, product_enrichments.suggested_price_amount),
+			updated_at = now()
+	`, e.ProductID, r.tenantID, e.HeightCM, e.WidthCM, e.LengthCM, e.SuggestedPriceAmount)
+	if err != nil {
+		return fmt.Errorf("upsert enrichment: %w", err)
+	}
+	return nil
+}
+
+func (r *EnrichmentRepository) ListEnrichments(ctx context.Context, productIDs []string) (map[string]domain.ProductEnrichment, error) {
+	if len(productIDs) == 0 {
+		return make(map[string]domain.ProductEnrichment), nil
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT product_id, tenant_id, height_cm, width_cm, length_cm, suggested_price_amount
+		FROM product_enrichments
+		WHERE tenant_id = $1 AND product_id = ANY($2)
+	`, r.tenantID, productIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list enrichments: %w", err)
 	}
 	defer rows.Close()
 
-	products := make([]domain.Product, 0)
+	result := make(map[string]domain.ProductEnrichment)
 	for rows.Next() {
-		var p domain.Product
-		if err := rows.Scan(&p.TenantID, &p.ProductID, &p.SKU, &p.Name, &p.Status, &p.Cost); err != nil {
-			return nil, err
+		var e domain.ProductEnrichment
+		if err := rows.Scan(&e.ProductID, &e.TenantID, &e.HeightCM, &e.WidthCM, &e.LengthCM, &e.SuggestedPriceAmount); err != nil {
+			return nil, fmt.Errorf("scan enrichment: %w", err)
 		}
-		products = append(products, p)
+		result[e.ProductID] = e
 	}
-	return products, rows.Err()
+	return result, rows.Err()
 }

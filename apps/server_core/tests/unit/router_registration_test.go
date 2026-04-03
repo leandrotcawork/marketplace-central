@@ -22,11 +22,38 @@ import (
 	"marketplace-central/apps/server_core/internal/platform/httpx"
 )
 
-// stubCatalogRepo satisfies catalog ports.Repository with in-memory no-ops.
-type stubCatalogRepo struct{}
+// stubCatalogReader satisfies catalog ports.ProductReader with in-memory no-ops.
+type stubCatalogReader struct{}
 
-func (r stubCatalogRepo) ListProducts(_ context.Context) ([]catalogdomain.Product, error) {
+func (r stubCatalogReader) ListProducts(_ context.Context) ([]catalogdomain.Product, error) {
 	return nil, nil
+}
+
+func (r stubCatalogReader) GetProduct(_ context.Context, _ string) (catalogdomain.Product, error) {
+	return catalogdomain.Product{}, nil
+}
+
+func (r stubCatalogReader) SearchProducts(_ context.Context, _ string) ([]catalogdomain.Product, error) {
+	return nil, nil
+}
+
+func (r stubCatalogReader) ListTaxonomyNodes(_ context.Context) ([]catalogdomain.TaxonomyNode, error) {
+	return nil, nil
+}
+
+// stubCatalogEnrichments satisfies catalog ports.EnrichmentStore with in-memory no-ops.
+type stubCatalogEnrichments struct{}
+
+func (r stubCatalogEnrichments) GetEnrichment(_ context.Context, productID string) (catalogdomain.ProductEnrichment, error) {
+	return catalogdomain.ProductEnrichment{ProductID: productID}, nil
+}
+
+func (r stubCatalogEnrichments) UpsertEnrichment(_ context.Context, _ catalogdomain.ProductEnrichment) error {
+	return nil
+}
+
+func (r stubCatalogEnrichments) ListEnrichments(_ context.Context, _ []string) (map[string]catalogdomain.ProductEnrichment, error) {
+	return make(map[string]catalogdomain.ProductEnrichment), nil
 }
 
 // stubMarketplacesRepo satisfies marketplaces ports.Repository with in-memory no-ops.
@@ -155,7 +182,7 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 	mux.Handle("/healthz", base)
 
 	// /catalog/products
-	catalogSvc := catalogapp.NewService(stubCatalogRepo{}, "tenant_default")
+	catalogSvc := catalogapp.NewService(stubCatalogReader{}, stubCatalogEnrichments{})
 	catalogtransport.Handler{Service: catalogSvc}.Register(mux)
 
 	// /marketplaces/accounts, /marketplaces/policies
