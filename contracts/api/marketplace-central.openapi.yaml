@@ -796,7 +796,7 @@ components:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/ClassificationSummary'
+            $ref: '#/components/schemas/Classification'
     ListMarketplaceAccountsResponse:
       type: object
       required:
