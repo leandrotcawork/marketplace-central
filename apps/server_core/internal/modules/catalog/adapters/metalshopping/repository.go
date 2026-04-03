@@ -74,7 +74,7 @@ func (r *Repository) ListTaxonomyNodes(ctx context.Context) ([]domain.TaxonomyNo
 		LEFT JOIN catalog_products p
 			ON p.primary_taxonomy_node_id = tn.taxonomy_node_id
 			AND p.tenant_id = tn.tenant_id AND p.status = 'active'
-		WHERE tn.is_active = true
+		WHERE tn.tenant_id = current_setting('app.tenant_id') AND tn.is_active = true
 		GROUP BY tn.taxonomy_node_id, tn.name, tn.level, ld.label, tn.parent_taxonomy_node_id, tn.is_active
 		ORDER BY tn.level, tn.name
 	`)
@@ -127,13 +127,15 @@ func (r *Repository) queryProducts(ctx context.Context, kind filterKind, args ..
 		LEFT JOIN catalog_taxonomy_nodes tn
 			ON tn.taxonomy_node_id = p.primary_taxonomy_node_id AND tn.tenant_id = p.tenant_id
 		LEFT JOIN LATERAL (
+			-- shopping_price_latest_snapshot has no tenant_id column.
+			-- Tenant isolation is enforced by the outer p.tenant_id predicate.
 			SELECT sp2.observed_price
 			FROM shopping_price_latest_snapshot sp2
 			WHERE sp2.sku = p.sku
 			ORDER BY sp2.observed_at DESC
 			LIMIT 1
 		) sp ON true
-		WHERE p.status = 'active' ` + filterSQL(kind) + `
+		WHERE p.tenant_id = current_setting('app.tenant_id') AND p.status = 'active' ` + filterSQL(kind) + `
 		ORDER BY p.name
 	`
 
