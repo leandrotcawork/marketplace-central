@@ -113,10 +113,10 @@ func TestClientGetClassifiesTimeoutNetworkErrorsAsTransient(t *testing.T) {
 	}
 
 	_, _, err := client.Get(context.Background(), "account", "/api/test", RetryConfig{
-		MaxAttempts:    1,
-		BaseDelay:      0,
-		JitterPct:      0,
-		RetryOnTimeout: false,
+		MaxAttempts:       1,
+		BaseDelay:         0,
+		JitterPct:         0,
+		AllowNetworkRetry: false,
 	})
 	if err == nil {
 		t.Fatal("expected timeout error")
@@ -138,8 +138,8 @@ func TestRetryConfigsDisableTimeoutRetriesForNonIdempotentPosts(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing retry config for %s", operation)
 		}
-		if cfg.RetryOnTimeout {
-			t.Fatalf("expected RetryOnTimeout to be false for %s", operation)
+		if cfg.AllowNetworkRetry {
+			t.Fatalf("expected AllowNetworkRetry to be false for %s", operation)
 		}
 	}
 }
