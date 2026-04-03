@@ -24,7 +24,8 @@ func NewRepository(pool *pgxpool.Pool, tenantID string) *Repository {
 func (r *Repository) List(ctx context.Context) ([]domain.Classification, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.classification_id, c.tenant_id, c.name, c.ai_context,
-		       c.created_at, c.updated_at, COUNT(cp.product_id)
+		       c.created_at, c.updated_at,
+		       COALESCE(array_agg(cp.product_id) FILTER (WHERE cp.product_id IS NOT NULL), '{}')
 		FROM classifications c
 		LEFT JOIN classification_products cp
 			ON cp.classification_id = c.classification_id AND cp.tenant_id = c.tenant_id
@@ -42,10 +43,11 @@ func (r *Repository) List(ctx context.Context) ([]domain.Classification, error) 
 		var c domain.Classification
 		if err := rows.Scan(
 			&c.ClassificationID, &c.TenantID, &c.Name, &c.AIContext,
-			&c.CreatedAt, &c.UpdatedAt, &c.ProductCount,
+			&c.CreatedAt, &c.UpdatedAt, &c.ProductIDs,
 		); err != nil {
 			return nil, fmt.Errorf("scan classification: %w", err)
 		}
+		c.ProductCount = len(c.ProductIDs)
 		result = append(result, c)
 	}
 	return result, rows.Err()

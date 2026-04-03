@@ -129,5 +129,5 @@ func (h Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeClassificationsError(w, status, code, message)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"deleted": true})
+	w.WriteHeader(http.StatusNoContent)
 }
