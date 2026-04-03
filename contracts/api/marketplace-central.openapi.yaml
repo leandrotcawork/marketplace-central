@@ -963,11 +963,15 @@ components:
           properties:
             code:
               type: string
-              enum:
-                - invalid_request
-                - not_found
-                - conflict
-                - internal_error
+              description: >
+                Module-specific error code following the pattern MODULE_ENTITY_REASON.
+                Known codes include: CATALOG_PRODUCT_NOT_FOUND, CATALOG_ENRICHMENT_INVALID,
+                CLASSIFICATIONS_ENTITY_NOT_FOUND, CLASSIFICATIONS_DUPLICATE_NAME,
+                MARKETPLACES_ACCOUNT_NOT_FOUND, MARKETPLACES_POLICY_NOT_FOUND,
+                MARKETPLACES_DUPLICATE_ACCOUNT, MARKETPLACES_DUPLICATE_POLICY,
+                PRICING_SIMULATION_INVALID, PRICING_SIMULATION_NOT_FOUND,
+                CONNECTORS_BATCH_NOT_FOUND, CONNECTORS_RETRY_MISSING_PRODUCT,
+                INTERNAL_ERROR, INVALID_REQUEST, NOT_FOUND, CONFLICT.
             message:
               type: string
             details:

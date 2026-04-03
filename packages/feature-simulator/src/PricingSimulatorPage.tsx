@@ -285,6 +285,7 @@ export function PricingSimulatorPage({ client }: PricingSimulatorPageProps) {
                 <tr>
                   <th className="px-4 py-3 text-left font-medium text-slate-700">Product</th>
                   <th className="px-4 py-3 text-right font-medium text-slate-700">Cost (R$)</th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-700">Suggested (R$)</th>
                   <th className="px-4 py-3 text-right font-medium text-slate-700">Base Price (R$)</th>
                   <th className="px-4 py-3 text-right font-medium text-slate-700">Margin (R$)</th>
                   <th className="px-4 py-3 text-right font-medium text-slate-700">Margin %</th>
@@ -300,6 +301,11 @@ export function PricingSimulatorPage({ client }: PricingSimulatorPageProps) {
                     </td>
                     <td className="px-4 py-3 text-right text-slate-600 font-mono">
                       {formatCurrency(row.product.cost_amount)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-500 font-mono">
+                      {row.product.suggested_price != null
+                        ? formatCurrency(row.product.suggested_price)
+                        : "—"}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-600 font-mono">
                       {formatCurrency(row.basePrice)}
