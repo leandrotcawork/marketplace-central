@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Marketplace Central API
-  version: 2026-03-31
+  version: 2026-04-02
 paths:
   /catalog/products:
     get:
@@ -14,6 +14,235 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListCatalogProductsResponse'
+  /catalog/products/{id}:
+    get:
+      summary: Get a single catalog product
+      operationId: getCatalogProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProduct'
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /catalog/products/search:
+    get:
+      summary: Search catalog products
+      operationId: searchCatalogProducts
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListCatalogProductsResponse'
+  /catalog/products/{id}/enrichment:
+    get:
+      summary: Get product enrichment data
+      operationId: getProductEnrichment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductEnrichment'
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Upsert product enrichment data
+      operationId: upsertProductEnrichment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductEnrichment'
+      responses:
+        "200":
+          description: Enrichment upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductEnrichment'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /catalog/taxonomy:
+    get:
+      summary: List taxonomy nodes
+      operationId: listTaxonomyNodes
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTaxonomyNodesResponse'
+  /classifications:
+    get:
+      summary: List classifications
+      operationId: listClassifications
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListClassificationsResponse'
+    post:
+      summary: Create classification
+      operationId: createClassification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClassificationRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Classification'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /classifications/{id}:
+    get:
+      summary: Get classification with product IDs
+      operationId: getClassification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Classification'
+        "404":
+          description: Classification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update classification
+      operationId: updateClassification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateClassificationRequest'
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Classification'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Classification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete classification
+      operationId: deleteClassification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Classification deleted
+        "404":
+          description: Classification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /marketplaces/accounts:
     get:
       summary: List marketplace accounts
@@ -232,27 +461,141 @@ components:
   schemas:
     CatalogProduct:
       type: object
-      required:
-        - product_id
-        - tenant_id
-        - sku
-        - name
-        - status
-        - cost
       properties:
         product_id:
-          type: string
-        tenant_id:
           type: string
         sku:
           type: string
         name:
           type: string
+        description:
+          type: string
+        brand_name:
+          type: string
         status:
           type: string
-        cost:
+        cost_amount:
           type: number
-          format: double
+        price_amount:
+          type: number
+        stock_quantity:
+          type: number
+        ean:
+          type: string
+        reference:
+          type: string
+        taxonomy_node_id:
+          type: string
+        taxonomy_name:
+          type: string
+        suggested_price:
+          type: number
+          nullable: true
+        height_cm:
+          type: number
+          nullable: true
+        width_cm:
+          type: number
+          nullable: true
+        length_cm:
+          type: number
+          nullable: true
+    TaxonomyNode:
+      type: object
+      properties:
+        node_id:
+          type: string
+        name:
+          type: string
+        level:
+          type: integer
+        level_label:
+          type: string
+        parent_node_id:
+          type: string
+        is_active:
+          type: boolean
+        product_count:
+          type: integer
+    ProductEnrichment:
+      type: object
+      properties:
+        product_id:
+          type: string
+        height_cm:
+          type: number
+          nullable: true
+        width_cm:
+          type: number
+          nullable: true
+        length_cm:
+          type: number
+          nullable: true
+        suggested_price_amount:
+          type: number
+          nullable: true
+    Classification:
+      type: object
+      properties:
+        classification_id:
+          type: string
+        name:
+          type: string
+        ai_context:
+          type: string
+        product_ids:
+          type: array
+          items:
+            type: string
+        product_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ClassificationSummary:
+      type: object
+      properties:
+        classification_id:
+          type: string
+        name:
+          type: string
+        ai_context:
+          type: string
+        product_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateClassificationRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        ai_context:
+          type: string
+        product_ids:
+          type: array
+          items:
+            type: string
+    UpdateClassificationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        ai_context:
+          type: string
+        product_ids:
+          type: array
+          items:
+            type: string
     MarketplaceAccount:
       type: object
       required:
@@ -397,7 +740,6 @@ components:
         - product_id
         - account_id
         - base_price_amount
-        - cost_amount
         - commission_percent
         - fixed_fee_amount
         - shipping_amount
@@ -415,6 +757,7 @@ components:
         cost_amount:
           type: number
           format: double
+          description: "Optional. If not provided, the backend resolves cost from MetalShopping catalog."
         commission_percent:
           type: number
           format: double
@@ -436,6 +779,24 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CatalogProduct'
+    ListTaxonomyNodesResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxonomyNode'
+    ListClassificationsResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassificationSummary'
     ListMarketplaceAccountsResponse:
       type: object
       required:
