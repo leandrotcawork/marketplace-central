@@ -182,7 +182,7 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 	mux.Handle("/healthz", base)
 
 	// /catalog/products
-	catalogSvc := catalogapp.NewService(stubCatalogReader{}, stubCatalogEnrichments{})
+	catalogSvc := catalogapp.NewService(stubCatalogReader{}, stubCatalogEnrichments{}, "tenant_default")
 	catalogtransport.Handler{Service: catalogSvc}.Register(mux)
 
 	// /marketplaces/accounts, /marketplaces/policies

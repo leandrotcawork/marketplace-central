@@ -31,7 +31,7 @@ func NewRootRouter(pool *pgxpool.Pool, cfg pgdb.Config) http.Handler {
 
 	catalogEnrichments := catalogpostgres.NewEnrichmentRepository(pool, cfg.DefaultTenantID)
 	// TODO: wire MetalShopping ProductReader when msdb pool is available
-	catalogSvc := catalogapp.NewService(nil, catalogEnrichments)
+	catalogSvc := catalogapp.NewService(nil, catalogEnrichments, cfg.DefaultTenantID)
 	catalogtransport.Handler{Service: catalogSvc}.Register(mux)
 
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
