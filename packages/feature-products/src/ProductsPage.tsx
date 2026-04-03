@@ -1,16 +1,25 @@
 import { useState, useEffect, useCallback } from "react";
 import { Pencil, X, Save } from "lucide-react";
 import { Button } from "@marketplace-central/ui";
+import type {
+  CatalogProduct,
+  TaxonomyNode,
+  Classification,
+  ProductEnrichment,
+} from "@marketplace-central/sdk-runtime";
 
 // ---------------------------------------------------------------------------
 // Client interface (injected via props)
 // ---------------------------------------------------------------------------
 
 interface ProductsClient {
-  listCatalogProducts: () => Promise<{ items: any[] }>;
-  listTaxonomyNodes: () => Promise<{ items: any[] }>;
-  listClassifications: () => Promise<{ items: any[] }>;
-  updateProductEnrichment: (productId: string, data: any) => Promise<any>;
+  listCatalogProducts: () => Promise<{ items: CatalogProduct[] }>;
+  listTaxonomyNodes: () => Promise<{ items: TaxonomyNode[] }>;
+  listClassifications: () => Promise<{ items: Classification[] }>;
+  updateProductEnrichment: (
+    productId: string,
+    data: Partial<ProductEnrichment>,
+  ) => Promise<ProductEnrichment>;
 }
 
 interface ProductsPageProps {
@@ -20,33 +29,6 @@ interface ProductsPageProps {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface Product {
-  id: string;
-  name: string;
-  sku: string;
-  ean: string;
-  brand: string;
-  cost: number;
-  price: number;
-  stock: number;
-  suggested_price: number | null;
-  height_cm: number | null;
-  width_cm: number | null;
-  length_cm: number | null;
-  taxonomy_id?: string;
-  classification_id?: string;
-}
-
-interface TaxonomyNode {
-  id: string;
-  name: string;
-}
-
-interface Classification {
-  id: string;
-  name: string;
-}
 
 interface EnrichmentForm {
   height_cm: string;
@@ -59,7 +41,7 @@ interface EnrichmentForm {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function toEnrichmentForm(p: Product): EnrichmentForm {
+function toEnrichmentForm(p: CatalogProduct): EnrichmentForm {
   return {
     height_cm: p.height_cm != null ? String(p.height_cm) : "",
     width_cm: p.width_cm != null ? String(p.width_cm) : "",
@@ -73,7 +55,7 @@ function formatCurrency(value: number | null | undefined): string {
   return `R$ ${value.toFixed(2)}`;
 }
 
-function formatDimensions(p: Product): string {
+function formatDimensions(p: CatalogProduct): string {
   const h = p.height_cm;
   const w = p.width_cm;
   const l = p.length_cm;
@@ -86,7 +68,7 @@ function formatDimensions(p: Product): string {
 // ---------------------------------------------------------------------------
 
 export function ProductsPage({ client }: ProductsPageProps) {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [taxonomyNodes, setTaxonomyNodes] = useState<TaxonomyNode[]>([]);
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,7 +80,7 @@ export function ProductsPage({ client }: ProductsPageProps) {
   const [classificationFilter, setClassificationFilter] = useState("");
 
   // Enrichment modal
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(null);
   const [enrichForm, setEnrichForm] = useState<EnrichmentForm>({
     height_cm: "",
     width_cm: "",
@@ -146,10 +128,12 @@ export function ProductsPage({ client }: ProductsPageProps) {
       p.name.toLowerCase().includes(q) ||
       p.sku.toLowerCase().includes(q) ||
       p.ean.toLowerCase().includes(q) ||
-      p.brand.toLowerCase().includes(q);
-    const matchesTaxonomy = !taxonomyFilter || p.taxonomy_id === taxonomyFilter;
+      p.brand_name.toLowerCase().includes(q);
+    const matchesTaxonomy = !taxonomyFilter || p.taxonomy_node_id === taxonomyFilter;
     const matchesClassification =
-      !classificationFilter || p.classification_id === classificationFilter;
+      !classificationFilter ||
+      classifications.find((c) => c.classification_id === classificationFilter)
+        ?.product_ids?.includes(p.product_id) === true;
     return matchesSearch && matchesTaxonomy && matchesClassification;
   });
 
@@ -157,7 +141,7 @@ export function ProductsPage({ client }: ProductsPageProps) {
   // Enrichment modal actions
   // -----------------------------------------------------------------------
 
-  function openEnrichment(p: Product) {
+  function openEnrichment(p: CatalogProduct) {
     setEditingProduct(p);
     setEnrichForm(toEnrichmentForm(p));
     setSaveError(null);
@@ -173,11 +157,11 @@ export function ProductsPage({ client }: ProductsPageProps) {
     setSaving(true);
     setSaveError(null);
     try {
-      await client.updateProductEnrichment(editingProduct.id, {
+      await client.updateProductEnrichment(editingProduct.product_id, {
         height_cm: enrichForm.height_cm ? parseFloat(enrichForm.height_cm) : null,
         width_cm: enrichForm.width_cm ? parseFloat(enrichForm.width_cm) : null,
         length_cm: enrichForm.length_cm ? parseFloat(enrichForm.length_cm) : null,
-        suggested_price: enrichForm.suggested_price
+        suggested_price_amount: enrichForm.suggested_price
           ? parseFloat(enrichForm.suggested_price)
           : null,
       });
@@ -256,7 +240,7 @@ export function ProductsPage({ client }: ProductsPageProps) {
           >
             <option value="">All</option>
             {taxonomyNodes.map((t) => (
-              <option key={t.id} value={t.id}>
+              <option key={t.node_id} value={t.node_id}>
                 {t.name}
               </option>
             ))}
@@ -275,7 +259,7 @@ export function ProductsPage({ client }: ProductsPageProps) {
           >
             <option value="">All</option>
             {classifications.map((c) => (
-              <option key={c.id} value={c.id}>
+              <option key={c.classification_id} value={c.classification_id}>
                 {c.name}
               </option>
             ))}
@@ -307,18 +291,18 @@ export function ProductsPage({ client }: ProductsPageProps) {
             </thead>
             <tbody>
               {filtered.map((p) => (
-                <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <tr key={p.product_id} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-900">{p.name}</td>
                   <td className="px-4 py-3 text-slate-600 font-mono text-xs">{p.sku}</td>
                   <td className="px-4 py-3 text-slate-600 font-mono text-xs">{p.ean}</td>
-                  <td className="px-4 py-3 text-slate-600">{p.brand}</td>
+                  <td className="px-4 py-3 text-slate-600">{p.brand_name}</td>
                   <td className="px-4 py-3 text-slate-600 text-right font-mono">
-                    {formatCurrency(p.cost)}
+                    {formatCurrency(p.cost_amount)}
                   </td>
                   <td className="px-4 py-3 text-slate-600 text-right font-mono">
-                    {formatCurrency(p.price)}
+                    {formatCurrency(p.price_amount)}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 text-right">{p.stock}</td>
+                  <td className="px-4 py-3 text-slate-600 text-right">{p.stock_quantity}</td>
                   <td className="px-4 py-3 text-slate-600 text-right font-mono">
                     {formatCurrency(p.suggested_price)}
                   </td>

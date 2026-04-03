@@ -16,20 +16,47 @@ const mockClient = {
 
 const sampleProducts = [
   {
-    id: "prod-1",
-    name: "Steel Bolt M10",
+    product_id: "prod-1",
     sku: "SKU-001",
+    name: "Steel Bolt M10",
+    description: "Steel bolt",
+    brand_name: "BoltCo",
+    status: "active",
+    cost_amount: 2.5,
+    price_amount: 5.0,
+    stock_quantity: 1500,
     ean: "7890000000001",
-    brand: "BoltCo",
-    cost: 2.5,
-    price: 5.0,
-    stock: 1500,
+    reference: "REF-001",
+    taxonomy_node_id: "tax-1",
+    taxonomy_name: "Fasteners",
     suggested_price: 4.8,
     height_cm: 1,
     width_cm: 1,
     length_cm: 5,
-    taxonomy_id: "tax-1",
+  },
+];
+
+const sampleTaxonomyNodes = [
+  {
+    node_id: "tax-1",
+    name: "Fasteners",
+    level: 0,
+    level_label: "Group",
+    parent_node_id: "",
+    is_active: true,
+    product_count: 1,
+  },
+];
+
+const sampleClassifications = [
+  {
     classification_id: "cls-1",
+    name: "Hardware",
+    ai_context: "",
+    product_ids: ["prod-1"],
+    product_count: 1,
+    created_at: "2026-04-02T00:00:00Z",
+    updated_at: "2026-04-02T00:00:00Z",
   },
 ];
 
@@ -52,8 +79,8 @@ describe("ProductsPage", () => {
 
   it("renders product name after loading", async () => {
     mockListProducts.mockResolvedValueOnce({ items: sampleProducts });
-    mockListTaxonomy.mockResolvedValueOnce({ items: [{ id: "tax-1", name: "Fasteners" }] });
-    mockListClassifications.mockResolvedValueOnce({ items: [{ id: "cls-1", name: "Hardware" }] });
+    mockListTaxonomy.mockResolvedValueOnce({ items: sampleTaxonomyNodes });
+    mockListClassifications.mockResolvedValueOnce({ items: sampleClassifications });
 
     render(<ProductsPage client={mockClient} />);
 
