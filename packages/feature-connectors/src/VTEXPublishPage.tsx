@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@marketplace-central/ui";
+import {
+  Button,
+  ProductPicker,
+} from "@marketplace-central/ui";
 import type {
+  CatalogProduct,
+  TaxonomyNode,
+  Classification,
   VTEXProduct,
   PublishBatchRequest,
   PublishBatchResponse,
@@ -9,173 +15,103 @@ import type {
 
 interface PublishClient {
   publishToVTEX: (req: PublishBatchRequest) => Promise<PublishBatchResponse>;
+  listCatalogProducts: () => Promise<{ items: CatalogProduct[] }>;
+  listTaxonomyNodes: () => Promise<{ items: TaxonomyNode[] }>;
+  listClassifications: () => Promise<{ items: Classification[] }>;
 }
 
 interface VTEXPublishPageProps {
   client: PublishClient;
 }
 
-interface ProductForm {
-  product_id: string;
-  name: string;
-  description: string;
-  sku_name: string;
-  ean: string;
-  category: string;
-  brand: string;
-  cost: string;
-  base_price: string;
-  image_url: string;
-  stock_qty: string;
-  warehouse_id: string;
-  trade_policy_id: string;
-}
-
-interface FormErrors {
-  vtex_account?: string;
-  name?: string;
-}
-
-const emptyProduct: ProductForm = {
-  product_id: "",
-  name: "",
-  description: "",
-  sku_name: "",
-  ean: "",
-  category: "",
-  brand: "",
-  cost: "",
-  base_price: "",
-  image_url: "",
-  stock_qty: "",
-  warehouse_id: "1_1",
-  trade_policy_id: "1",
-};
-
-function toVTEXProduct(f: ProductForm): VTEXProduct {
-  return {
-    product_id: f.product_id.trim(),
-    name: f.name.trim(),
-    description: f.description.trim(),
-    sku_name: f.sku_name.trim() || f.name.trim(),
-    ean: f.ean.trim(),
-    category: f.category.trim(),
-    brand: f.brand.trim(),
-    cost: parseFloat(f.cost) || 0,
-    base_price: parseFloat(f.base_price) || 0,
-    image_urls: f.image_url.trim() ? [f.image_url.trim()] : [],
-    specs: {},
-    stock_qty: parseInt(f.stock_qty, 10) || 0,
-    warehouse_id: f.warehouse_id.trim() || "1_1",
-    trade_policy_id: f.trade_policy_id.trim() || "1",
-  };
-}
-
-function validate(vtexAccount: string, product: ProductForm): FormErrors {
-  const errors: FormErrors = {};
-  if (!vtexAccount.trim()) errors.vtex_account = "VTEX account is required";
-  if (!product.name.trim()) errors.name = "Product name is required";
-  return errors;
-}
-
-function TextField({
-  id,
-  label,
-  placeholder,
-  value,
-  onChange,
-  required = false,
-}: {
-  id: string;
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-  required?: boolean;
-}) {
-  return (
-    <div className="space-y-1">
-      <label htmlFor={id} className="block text-sm font-medium text-slate-700">
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      <input
-        id={id}
-        type="text"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
-  );
-}
-
-function NumberField({
-  id,
-  label,
-  placeholder,
-  value,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <label htmlFor={id} className="block text-sm font-medium text-slate-700">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="number"
-        step="any"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
-  );
-}
-
 export function VTEXPublishPage({ client }: VTEXPublishPageProps) {
   const navigate = useNavigate();
+
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [taxonomyNodes, setTaxonomyNodes] = useState<TaxonomyNode[]>([]);
+  const [classifications, setClassifications] = useState<Classification[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [vtexAccount, setVtexAccount] = useState("");
-  const [product, setProduct] = useState<ProductForm>(emptyProduct);
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [tradePolicyId, setTradePolicyId] = useState("1");
+  const [warehouseId, setWarehouseId] = useState("1_1");
+
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<PublishBatchResponse | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  function setField(key: keyof ProductForm) {
-    return (v: string) => setProduct((p) => ({ ...p, [key]: v }));
-  }
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [prodRes, taxRes, clsRes] = await Promise.all([
+          client.listCatalogProducts(),
+          client.listTaxonomyNodes(),
+          client.listClassifications(),
+        ]);
+        if (!cancelled) {
+          setProducts(prodRes.items);
+          setTaxonomyNodes(taxRes.items);
+          setClassifications(clsRes.items);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [client]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const errs = validate(vtexAccount, product);
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
+    setValidationError(null);
+
+    if (!vtexAccount.trim()) {
+      setValidationError("VTEX account is required");
+      return;
+    }
+    if (selectedIds.length === 0) {
+      setValidationError("Select at least one product");
+      return;
+    }
+
+    const selectedProducts = products.filter((p) =>
+      selectedIds.includes(p.product_id),
+    );
+
+    const vtexProducts: VTEXProduct[] = selectedProducts.map((p) => ({
+      product_id: p.product_id,
+      name: p.name,
+      description: p.description || "",
+      sku_name: p.name,
+      ean: p.ean || "",
+      category: p.taxonomy_name || "",
+      brand: p.brand_name || "",
+      cost: p.cost_amount,
+      base_price: p.price_amount,
+      image_urls: [],
+      specs: {},
+      stock_qty: p.stock_quantity,
+      warehouse_id: warehouseId,
+      trade_policy_id: tradePolicyId,
+    }));
 
     setSubmitting(true);
     setApiError(null);
     try {
-      const vtexProduct = toVTEXProduct(product);
       const res = await client.publishToVTEX({
         vtex_account: vtexAccount.trim(),
-        products: [vtexProduct],
+        products: vtexProducts,
       });
       setResult(res);
       setTimeout(
         () =>
           navigate(`/connectors/vtex/batch/${res.batch_id}`, {
-            state: { products: [vtexProduct] },
+            state: { products: vtexProducts },
           }),
-        2000
+        2000,
       );
     } catch (err: any) {
       setApiError(err?.error?.message ?? "Failed to start batch. Please try again.");
@@ -189,7 +125,7 @@ export function VTEXPublishPage({ client }: VTEXPublishPageProps) {
       <div>
         <h2 className="text-xl font-semibold text-slate-900">VTEX Publisher</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Fill in the product details to publish it through the VTEX catalog pipeline.
+          Select products from your catalog and publish them to VTEX.
         </p>
       </div>
 
@@ -215,128 +151,75 @@ export function VTEXPublishPage({ client }: VTEXPublishPageProps) {
             </div>
           )}
 
-          {/* VTEX Account */}
-          <div className="space-y-1">
-            <label
-              htmlFor="vtex_account"
-              className="block text-sm font-medium text-slate-700"
-            >
-              VTEX Account<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              id="vtex_account"
-              type="text"
-              placeholder="mystore"
-              value={vtexAccount}
-              onChange={(e) => setVtexAccount(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          {validationError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+              {validationError}
+            </div>
+          )}
+
+          {/* Product selection */}
+          <div className="border-b border-slate-100 pb-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
+              Select Products
+            </p>
+            <ProductPicker
+              products={products}
+              taxonomyNodes={taxonomyNodes}
+              classifications={classifications}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              loading={loading}
             />
-            {errors.vtex_account && (
-              <p className="text-xs text-red-600">{errors.vtex_account}</p>
-            )}
           </div>
 
-          <div className="border-t border-slate-100 pt-4">
+          {/* VTEX configuration */}
+          <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
-              Product Details
+              VTEX Configuration
             </p>
-            <div className="grid grid-cols-2 gap-4">
-              <TextField
-                id="product_id"
-                label="Product ID"
-                placeholder="prod-001"
-                value={product.product_id}
-                onChange={setField("product_id")}
-              />
-              <TextField
-                id="product_name"
-                label="Product Name"
-                placeholder="My Product"
-                value={product.name}
-                onChange={setField("name")}
-                required
-              />
-              <TextField
-                id="description"
-                label="Description"
-                placeholder="Product description"
-                value={product.description}
-                onChange={setField("description")}
-              />
-              <TextField
-                id="sku_name"
-                label="SKU Name"
-                placeholder="My SKU"
-                value={product.sku_name}
-                onChange={setField("sku_name")}
-              />
-              <TextField
-                id="ean"
-                label="EAN"
-                placeholder="7890000000001"
-                value={product.ean}
-                onChange={setField("ean")}
-              />
-              <TextField
-                id="category"
-                label="Category"
-                placeholder="Electronics"
-                value={product.category}
-                onChange={setField("category")}
-              />
-              <TextField
-                id="brand"
-                label="Brand"
-                placeholder="BrandX"
-                value={product.brand}
-                onChange={setField("brand")}
-              />
-              <NumberField
-                id="cost"
-                label="Cost (R$)"
-                placeholder="60.00"
-                value={product.cost}
-                onChange={setField("cost")}
-              />
-              <NumberField
-                id="base_price"
-                label="Base Price (R$)"
-                placeholder="100.00"
-                value={product.base_price}
-                onChange={setField("base_price")}
-              />
-              <TextField
-                id="image_url"
-                label="Image URL"
-                placeholder="https://..."
-                value={product.image_url}
-                onChange={setField("image_url")}
-              />
-              <NumberField
-                id="stock_quantity"
-                label="Stock Quantity"
-                placeholder="10"
-                value={product.stock_qty}
-                onChange={setField("stock_qty")}
-              />
-              <TextField
-                id="warehouse_id"
-                label="Warehouse ID"
-                placeholder="1_1"
-                value={product.warehouse_id}
-                onChange={setField("warehouse_id")}
-              />
-              <TextField
-                id="trade_policy_id"
-                label="Trade Policy ID"
-                placeholder="1"
-                value={product.trade_policy_id}
-                onChange={setField("trade_policy_id")}
-              />
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label htmlFor="vtex_account" className="block text-sm font-medium text-slate-700">
+                  VTEX Account<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  id="vtex_account"
+                  type="text"
+                  placeholder="mystore"
+                  value={vtexAccount}
+                  onChange={(e) => setVtexAccount(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="trade_policy_id" className="block text-sm font-medium text-slate-700">
+                  Trade Policy ID
+                </label>
+                <input
+                  id="trade_policy_id"
+                  type="text"
+                  placeholder="1"
+                  value={tradePolicyId}
+                  onChange={(e) => setTradePolicyId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="warehouse_id" className="block text-sm font-medium text-slate-700">
+                  Warehouse ID
+                </label>
+                <input
+                  id="warehouse_id"
+                  type="text"
+                  placeholder="1_1"
+                  value={warehouseId}
+                  onChange={(e) => setWarehouseId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-            {errors.name && (
-              <p className="mt-2 text-xs text-red-600">{errors.name}</p>
-            )}
           </div>
 
           <div className="flex justify-end">

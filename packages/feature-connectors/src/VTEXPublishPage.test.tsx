@@ -4,7 +4,52 @@ import { VTEXPublishPage } from "./VTEXPublishPage";
 import type { PublishBatchResponse } from "@marketplace-central/sdk-runtime";
 
 const mockPublish = vi.fn();
-const mockClient = { publishToVTEX: mockPublish } as any;
+const mockListProducts = vi.fn();
+const mockListTaxonomy = vi.fn();
+const mockListClassifications = vi.fn();
+
+const mockClient = {
+  publishToVTEX: mockPublish,
+  listCatalogProducts: mockListProducts,
+  listTaxonomyNodes: mockListTaxonomy,
+  listClassifications: mockListClassifications,
+} as any;
+
+const sampleProducts = [
+  {
+    product_id: "prod-1",
+    sku: "SKU-001",
+    name: "Test Product",
+    description: "A test product",
+    brand_name: "BrandX",
+    status: "active",
+    cost_amount: 60,
+    price_amount: 100,
+    stock_quantity: 10,
+    ean: "7890000000001",
+    reference: "REF-001",
+    taxonomy_node_id: "tax-1",
+    taxonomy_name: "Electronics",
+    suggested_price: null,
+    height_cm: null,
+    width_cm: null,
+    length_cm: null,
+  },
+];
+
+const sampleTaxonomy = [
+  { node_id: "tax-1", name: "Electronics", level: 1, level_label: "Department", product_count: 1 },
+];
+
+const sampleClassifications = [
+  { classification_id: "cls-1", name: "Featured", product_ids: ["prod-1"], product_count: 1 },
+];
+
+function setupMocks() {
+  mockListProducts.mockResolvedValue({ items: sampleProducts });
+  mockListTaxonomy.mockResolvedValue({ items: sampleTaxonomy });
+  mockListClassifications.mockResolvedValue({ items: sampleClassifications });
+}
 
 function renderPage() {
   return render(
@@ -26,40 +71,60 @@ const successResponse: PublishBatchResponse = {
 };
 
 describe("VTEXPublishPage", () => {
-  beforeEach(() => mockPublish.mockReset());
+  beforeEach(() => {
+    mockPublish.mockReset();
+    mockListProducts.mockReset();
+    mockListTaxonomy.mockReset();
+    mockListClassifications.mockReset();
+    setupMocks();
+  });
 
-  it("renders all required form fields", () => {
+  it("renders the heading and loads products", async () => {
     renderPage();
+    expect(screen.getByText("VTEX Publisher")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
+  });
+
+  it("renders VTEX configuration fields", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
     expect(screen.getByLabelText(/vtex account/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/product id/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/product name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/trade policy id/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/warehouse id/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /publish/i })).toBeInTheDocument();
   });
 
-  it("shows validation error when vtex_account is empty", async () => {
+  it("shows validation error when vtex account is empty", async () => {
     renderPage();
+    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
+
     fireEvent.click(screen.getByRole("button", { name: /publish/i }));
     expect(await screen.findByText(/vtex account is required/i)).toBeInTheDocument();
   });
 
-  it("calls publishToVTEX with correct products array on submit", async () => {
+  it("shows validation error when no products are selected", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/vtex account/i), { target: { value: "mystore" } });
+    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+
+    expect(await screen.findByText(/select at least one product/i)).toBeInTheDocument();
+  });
+
+  it("calls publishToVTEX with mapped products on submit", async () => {
     mockPublish.mockResolvedValueOnce(successResponse);
     renderPage();
 
+    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
+
+    // Select the product
+    fireEvent.click(screen.getByLabelText(/select test product/i));
+
+    // Fill VTEX account
     fireEvent.change(screen.getByLabelText(/vtex account/i), { target: { value: "mystore" } });
-    fireEvent.change(screen.getByLabelText(/product id/i), { target: { value: "prod-1" } });
-    fireEvent.change(screen.getByLabelText(/product name/i), { target: { value: "Test Product" } });
-    fireEvent.change(screen.getByLabelText(/description/i), { target: { value: "A product" } });
-    fireEvent.change(screen.getByLabelText(/sku name/i), { target: { value: "Test SKU" } });
-    fireEvent.change(screen.getByLabelText(/ean/i), { target: { value: "7890000000001" } });
-    fireEvent.change(screen.getByLabelText(/category/i), { target: { value: "Electronics" } });
-    fireEvent.change(screen.getByLabelText(/brand/i), { target: { value: "BrandX" } });
-    fireEvent.change(screen.getByLabelText(/cost/i), { target: { value: "60" } });
-    fireEvent.change(screen.getByLabelText(/base price/i), { target: { value: "100" } });
-    fireEvent.change(screen.getByLabelText(/image url/i), { target: { value: "https://example.com/img.png" } });
-    fireEvent.change(screen.getByLabelText(/stock quantity/i), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText(/warehouse id/i), { target: { value: "1_1" } });
-    fireEvent.change(screen.getByLabelText(/trade policy id/i), { target: { value: "1" } });
+
+    // Submit
     fireEvent.click(screen.getByRole("button", { name: /publish/i }));
 
     await waitFor(() =>
@@ -69,11 +134,17 @@ describe("VTEXPublishPage", () => {
           expect.objectContaining({
             product_id: "prod-1",
             name: "Test Product",
-            base_price: 100,
+            description: "A test product",
+            brand: "BrandX",
+            category: "Electronics",
             cost: 60,
+            base_price: 100,
+            stock_qty: 10,
+            warehouse_id: "1_1",
+            trade_policy_id: "1",
           }),
         ],
-      })
+      }),
     );
   });
 
@@ -81,8 +152,10 @@ describe("VTEXPublishPage", () => {
     mockPublish.mockResolvedValueOnce(successResponse);
     renderPage();
 
+    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText(/select test product/i));
     fireEvent.change(screen.getByLabelText(/vtex account/i), { target: { value: "mystore" } });
-    fireEvent.change(screen.getByLabelText(/product name/i), { target: { value: "Test Product" } });
     fireEvent.click(screen.getByRole("button", { name: /publish/i }));
 
     await waitFor(() => expect(screen.getByText(/batch created/i)).toBeInTheDocument());
