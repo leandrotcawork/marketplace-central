@@ -24,7 +24,7 @@ func (r *Repository) SaveAccount(ctx context.Context, account domain.Account) er
 		INSERT INTO marketplace_accounts (
 			tenant_id, account_id, channel_code, display_name, status, connection_mode
 		) VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (tenant_id, account_id) DO UPDATE SET
+		ON CONFLICT (account_id) DO UPDATE SET
 			channel_code = EXCLUDED.channel_code,
 			display_name = EXCLUDED.display_name,
 			status = EXCLUDED.status,
@@ -38,13 +38,13 @@ func (r *Repository) SavePolicy(ctx context.Context, policy domain.Policy) error
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO marketplace_pricing_policies (
 			tenant_id, policy_id, account_id, commission_percent, fixed_fee_amount,
-			default_shipping, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours
+			default_shipping_amount, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		ON CONFLICT (tenant_id, policy_id) DO UPDATE SET
+		ON CONFLICT (policy_id) DO UPDATE SET
 			account_id = EXCLUDED.account_id,
 			commission_percent = EXCLUDED.commission_percent,
 			fixed_fee_amount = EXCLUDED.fixed_fee_amount,
-			default_shipping = EXCLUDED.default_shipping,
+			default_shipping_amount = EXCLUDED.default_shipping_amount,
 			tax_percent = EXCLUDED.tax_percent,
 			min_margin_percent = EXCLUDED.min_margin_percent,
 			sla_question_minutes = EXCLUDED.sla_question_minutes,
@@ -81,7 +81,7 @@ func (r *Repository) ListAccounts(ctx context.Context) ([]domain.Account, error)
 func (r *Repository) ListPolicies(ctx context.Context) ([]domain.Policy, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT tenant_id, policy_id, account_id, commission_percent, fixed_fee_amount,
-		       default_shipping, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours
+		       default_shipping_amount, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours
 		FROM marketplace_pricing_policies
 		WHERE tenant_id = $1
 		ORDER BY policy_id
