@@ -120,10 +120,10 @@ func (r *Repository) queryProducts(ctx context.Context, kind filterKind, args ..
 			AND inv.position_status = 'active' AND inv.effective_to IS NULL
 		LEFT JOIN catalog_product_identifiers ean
 			ON ean.product_id = p.product_id AND ean.tenant_id = p.tenant_id
-			AND ean.identifier_type = 'ean' AND ean.is_primary = true
+			AND ean.identifier_type = 'ean'
 		LEFT JOIN catalog_product_identifiers ref
 			ON ref.product_id = p.product_id AND ref.tenant_id = p.tenant_id
-			AND ref.identifier_type = 'reference' AND ref.is_primary = true
+			AND ref.identifier_type = 'reference'
 		LEFT JOIN catalog_taxonomy_nodes tn
 			ON tn.taxonomy_node_id = p.primary_taxonomy_node_id AND tn.tenant_id = p.tenant_id
 		LEFT JOIN LATERAL (
@@ -131,7 +131,7 @@ func (r *Repository) queryProducts(ctx context.Context, kind filterKind, args ..
 			-- Tenant isolation is enforced by the outer p.tenant_id predicate.
 			SELECT sp2.observed_price
 			FROM shopping_price_latest_snapshot sp2
-			WHERE sp2.sku = p.sku
+			WHERE sp2.product_id = p.product_id
 			ORDER BY sp2.observed_at DESC
 			LIMIT 1
 		) sp ON true
