@@ -235,6 +235,7 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 		"/pricing/simulations",
 		"/connectors/vtex/publish",
 		"/connectors/vtex/publish/batch/test_batch_123",
+		"/connectors/vtex/validate-connection",
 	}
 
 	for _, path := range cases {
