@@ -1,0 +1,225 @@
+{
+  "project": "marketplace-central",
+  "last_updated": "2026-04-04",
+  "phases": [
+    {
+      "id": "phase-0",
+      "name": "Foundation scaffold",
+      "status": "done",
+      "focus": "Monorepo structure, stubs, tests, documents",
+      "tasks": []
+    },
+    {
+      "id": "phase-1",
+      "name": "Foundation wiring",
+      "status": "in_progress",
+      "focus": "Connect handlers to Postgres, real CRUD, SDK methods",
+      "tasks": [
+        {
+          "id": "1.1",
+          "name": "Database connectivity",
+          "status": "pending",
+          "subtasks": [
+            "Wire pgxpool.Pool into composition root via pgdb.NewPool()",
+            "Pass pool to module adapters via dependency injection",
+            "Implement catalog/adapters/postgres/repository.go — real SaveProduct, ListProducts",
+            "Implement marketplaces/adapters/postgres/repository.go — real SaveAccount, SavePolicy, List operations",
+            "Implement pricing/adapters/postgres/repository.go — real SaveSimulation, ListSimulations"
+          ]
+        },
+        {
+          "id": "1.2",
+          "name": "Handler wiring",
+          "status": "pending",
+          "subtasks": [
+            "Inject services into transport handlers (currently empty structs)",
+            "Catalog handler: decode JSON body on POST, call service.CreateProduct, return created entity",
+            "Marketplaces handler: decode JSON body on POST for accounts and policies",
+            "Pricing handler: decode JSON body on POST, call service.RunSimulation, return result with margin data",
+            "Add proper error responses with structured JSON errors"
+          ]
+        },
+        {
+          "id": "1.3",
+          "name": "SDK and frontend",
+          "status": "pending",
+          "subtasks": [
+            "Extend sdk-runtime with POST methods (createProduct, createAccount, createPolicy, runSimulation)",
+            "Add request/response TypeScript types matching OpenAPI contract",
+            "Update OpenAPI contract with request/response schemas",
+            "Wire feature pages to SDK methods (form → SDK → backend → display result)"
+          ]
+        },
+        {
+          "id": "1.4",
+          "name": "Migration runner",
+          "status": "pending",
+          "subtasks": [
+            "Implement real migration runner in cmd/migrate/main.go (read SQL files, track applied migrations)"
+          ]
+        },
+        {
+          "id": "1.5",
+          "name": "Verification",
+          "status": "pending",
+          "subtasks": [
+            "Integration test: create product → create account → create policy → run simulation → verify margin",
+            "Frontend smoke test: fill form → submit → see result",
+            "All existing unit tests still pass"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "name": "Pricing simulator",
+      "status": "planned",
+      "focus": "Full simulation engine with frontend UI",
+      "tasks": [
+        {
+          "id": "2.1",
+          "name": "Backend",
+          "status": "pending",
+          "subtasks": [
+            "Batch simulation: run simulation for all products × all active marketplaces",
+            "Simulation history: list past simulations with snapshots",
+            "Manual price overrides: CRUD for target prices per product per marketplace",
+            "Margin threshold alerts: flag products below minimum margin",
+            "Freight calculation: integrate freight cost (initially manual input, later Melhor Envios)"
+          ]
+        },
+        {
+          "id": "2.2",
+          "name": "Frontend",
+          "status": "pending",
+          "subtasks": [
+            "Pricing simulator page: cross-table (products × marketplaces) with margin cells",
+            "Inline price editing for scenario simulation",
+            "Health indicators: green (>20%), yellow (10-20%), red (<10%)",
+            "Summary KPIs: total products, average margin, critical products count",
+            "Export simulation results (CSV)"
+          ]
+        },
+        {
+          "id": "2.3",
+          "name": "SDK",
+          "status": "pending",
+          "subtasks": [
+            "Add batch simulation method",
+            "Add simulation history method",
+            "Add manual override methods"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "name": "VTEX connector",
+      "status": "planned",
+      "focus": "Product registration via VTEX API, catalog sync",
+      "tasks": [
+        {
+          "id": "3.1",
+          "name": "Connector infrastructure",
+          "status": "pending",
+          "subtasks": [
+            "Create connectors module with port interface",
+            "Implement VTEX adapter: authentication, product registration, price update",
+            "Scheduler infrastructure: cron-style job runner in the server",
+            "Job: sync products from VTEX catalog into MPC catalog"
+          ]
+        },
+        {
+          "id": "3.2",
+          "name": "Catalog enhancement",
+          "status": "pending",
+          "subtasks": [
+            "Product registration flow: MPC → VTEX API → confirmation",
+            "Catalog sync: VTEX → MPC (pull product data, prices, stock)",
+            "Link MPC product_id to VTEX SKU/product IDs"
+          ]
+        },
+        {
+          "id": "3.3",
+          "name": "Frontend",
+          "status": "pending",
+          "subtasks": [
+            "Product registration form with VTEX publish button",
+            "Sync status display (last sync, errors)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase-4",
+      "name": "Messaging + Orders + Alerts",
+      "status": "planned",
+      "focus": "Message centralization, order monitoring, SLA alerts",
+      "tasks": [
+        {
+          "id": "4.1",
+          "name": "Messaging module",
+          "status": "pending",
+          "subtasks": [
+            "Message entity: id, marketplace, thread_id, customer, content, status, received_at, responded_at",
+            "Polling job: fetch messages from VTEX",
+            "Unified inbox API: list messages, filter by status/marketplace",
+            "Reply dispatch: send reply through connector adapter",
+            "SLA tracking: 1-hour response time target"
+          ]
+        },
+        {
+          "id": "4.2",
+          "name": "Orders module",
+          "status": "pending",
+          "subtasks": [
+            "Order entity: id, marketplace, order_number, status, items, created_at, dispatched_at",
+            "Polling job: fetch orders from VTEX",
+            "Order timeline API: list orders with status history",
+            "SLA tracking: 24-hour dispatch target"
+          ]
+        },
+        {
+          "id": "4.3",
+          "name": "Alerts module",
+          "status": "pending",
+          "subtasks": [
+            "Alert entity: id, type, severity, module, entity_id, message, created_at, acknowledged_at",
+            "Alert rules: message approaching 1h SLA, order approaching 24h SLA, margin below threshold",
+            "Alert API: list active alerts, acknowledge",
+            "Frontend: alert badge in sidebar, alert list page"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase-5",
+      "name": "Multi-marketplace",
+      "status": "planned",
+      "focus": "Additional connectors (ML, Magalu), unified inbox",
+      "tasks": [
+        {
+          "id": "5.1",
+          "name": "Additional connectors",
+          "status": "pending",
+          "subtasks": [
+            "Mercado Livre adapter (messages, orders, Q&A)",
+            "Magalu adapter (messages, orders, tickets)",
+            "Amazon adapter (messages, orders — limited by SP-API)"
+          ]
+        },
+        {
+          "id": "5.2",
+          "name": "Unified features",
+          "status": "pending",
+          "subtasks": [
+            "Cross-marketplace message inbox",
+            "Cross-marketplace order dashboard",
+            "Aggregated SLA metrics",
+            "Per-marketplace performance comparison"
+          ]
+        }
+      ]
+    }
+  ]
+}

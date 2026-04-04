@@ -6,11 +6,12 @@ apps/web/node_modules/
 packages/*/node_modules/
 apps/server_core/bin/
 apps/server_core/.gocache/
+.gocache/
+*.exe
 .env*
 .next/
 next-env.d.ts
 *.tsbuildinfo
-.brain/
 .worktrees/
 data/
 certificates/
