@@ -100,6 +100,8 @@ type VTEXCatalogPort interface {
 	SetStock(ctx context.Context, params StockParams) error
 	ActivateProduct(ctx context.Context, params ActivateParams) error
 
+	ValidateConnection(ctx context.Context, vtexAccount string) error
+
 	GetProduct(ctx context.Context, vtexAccount, vtexID string) (ProductData, error)
 	GetSKU(ctx context.Context, vtexAccount, vtexID string) (SKUData, error)
 	GetCategory(ctx context.Context, vtexAccount, vtexID string) (CategoryData, error)
