@@ -115,6 +115,9 @@ func (s *vtexCatalogStub) GetCategory(_ context.Context, a, id string) (ports.Ca
 func (s *vtexCatalogStub) GetBrand(_ context.Context, a, id string) (ports.BrandData, error) {
 	return ports.BrandData{}, nil
 }
+func (s *vtexCatalogStub) ValidateConnection(_ context.Context, _ string) error {
+	return nil
+}
 
 type connectorsRepoStub struct {
 	mu                              sync.RWMutex

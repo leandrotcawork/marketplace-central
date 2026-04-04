@@ -189,6 +189,9 @@ func (a stubVTEXAdapter) GetCategory(_ context.Context, _, _ string) (connectorp
 func (a stubVTEXAdapter) GetBrand(_ context.Context, _, _ string) (connectorports.BrandData, error) {
 	return connectorports.BrandData{}, nil
 }
+func (a stubVTEXAdapter) ValidateConnection(_ context.Context, _ string) error {
+	return nil
+}
 
 // TestRouterRegistersAllFoundationEndpoints verifies that every expected route
 // is registered and returns a non-404 response. It builds a minimal mux with

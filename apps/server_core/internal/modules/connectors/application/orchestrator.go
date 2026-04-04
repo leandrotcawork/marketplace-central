@@ -77,6 +77,11 @@ func NewBatchOrchestrator(repo ports.Repository, vtex ports.VTEXCatalogPort, ten
 	}
 }
 
+// ValidateConnection verifies that VTEX API credentials are valid for the given account.
+func (o *BatchOrchestrator) ValidateConnection(ctx context.Context, vtexAccount string) error {
+	return o.vtex.ValidateConnection(ctx, vtexAccount)
+}
+
 // CreateBatch validates products, checks for concurrency conflicts, persists the batch and
 // initial operations, and returns a summary of accepted and rejected products.
 func (o *BatchOrchestrator) CreateBatch(
