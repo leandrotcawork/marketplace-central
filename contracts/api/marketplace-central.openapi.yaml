@@ -378,6 +378,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /connectors/vtex/validate-connection:
+    post:
+      summary: Validate VTEX API credentials
+      operationId: validateVTEXConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vtex_account
+              properties:
+                vtex_account:
+                  type: string
+                  description: VTEX account name
+      responses:
+        "200":
+          description: Connection successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [connected]
+                  vtex_account:
+                    type: string
+        "400":
+          description: Missing vtex_account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Invalid VTEX credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "502":
+          description: VTEX API unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /connectors/vtex/publish:
     post:
       operationId: publishToVTEX
