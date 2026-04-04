@@ -81,7 +81,11 @@
       "Bash(curl -s \"http://localhost:8080/marketplaces/accounts\" -H \"Origin: http://localhost:5173\")",
       "Bash('/c/Program Files/PostgreSQL/16/bin/psql.exe' -h 127.0.0.1 -p 5432 -U metalshopping_app -d metalshopping -c 'SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '\\\\''catalog_product_identifiers'\\\\'' ORDER BY ordinal_position;' -c 'SELECT set_config\\('\\\\''app.tenant_id'\\\\'', '\\\\''tenant_default'\\\\'', true\\); SELECT * FROM catalog_product_identifiers LIMIT 5;')",
       "Bash('/c/Program Files/PostgreSQL/16/bin/psql.exe' -h 127.0.0.1 -p 5432 -U metalshopping_app -d metalshopping -c 'SELECT column_name FROM information_schema.columns WHERE table_schema='\\\\''mpc'\\\\'' AND table_name='\\\\''marketplace_accounts'\\\\'' ORDER BY ordinal_position;' -c 'SELECT column_name FROM information_schema.columns WHERE table_schema='\\\\''mpc'\\\\'' AND table_name='\\\\''marketplace_pricing_policies'\\\\'' ORDER BY ordinal_position;')",
-      "Bash(curl -s -X POST http://localhost:8080/pricing/simulations -H 'Content-Type: application/json' -d '{:*)"
+      "Bash(curl -s -X POST http://localhost:8080/pricing/simulations -H 'Content-Type: application/json' -d '{:*)",
+      "Skill(update-config)",
+      "mcp__claudewatch__get_live_friction",
+      "mcp__claudewatch__get_blockers",
+      "mcp__claudewatch__get_session_dashboard"
     ],
     "additionalDirectories": [
       "C:\\Users\\leandro.theodoro.MN-NTB-LEANDROT\\.claude\\skills"
