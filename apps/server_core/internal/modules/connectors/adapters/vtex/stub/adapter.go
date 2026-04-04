@@ -74,3 +74,7 @@ func (a *Adapter) GetCategory(_ context.Context, vtexAccount, vtexID string) (po
 func (a *Adapter) GetBrand(_ context.Context, vtexAccount, vtexID string) (ports.BrandData, error) {
 	return ports.BrandData{VTEXID: vtexID, Name: "Stub Brand"}, nil
 }
+
+func (a *Adapter) ValidateConnection(_ context.Context, vtexAccount string) error {
+	return nil
+}

@@ -144,6 +144,46 @@ func TestRetryConfigsDisableTimeoutRetriesForNonIdempotentPosts(t *testing.T) {
 	}
 }
 
+func TestValidateConnectionReturnsNilOn200(t *testing.T) {
+	client := &Client{
+		credentials: staticCredentialProvider{},
+		httpClient: &gohttp.Client{
+			Transport: roundTripFunc(func(req *gohttp.Request) (*gohttp.Response, error) {
+				if req.Method != gohttp.MethodGet {
+					t.Fatalf("expected GET, got %s", req.Method)
+				}
+				if req.URL.Path != "/api/catalog/pvt/category/tree/1" {
+					t.Fatalf("expected category tree path, got %s", req.URL.Path)
+				}
+				return jsonResponse(gohttp.StatusOK, `[]`), nil
+			}),
+		},
+	}
+
+	adapter := &Adapter{client: client}
+	err := adapter.ValidateConnection(context.Background(), "test-account")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+}
+
+func TestValidateConnectionReturnsErrorOn401(t *testing.T) {
+	client := &Client{
+		credentials: staticCredentialProvider{},
+		httpClient: &gohttp.Client{
+			Transport: roundTripFunc(func(req *gohttp.Request) (*gohttp.Response, error) {
+				return jsonResponse(gohttp.StatusUnauthorized, `{"Message":"Invalid credentials"}`), nil
+			}),
+		},
+	}
+
+	adapter := &Adapter{client: client}
+	err := adapter.ValidateConnection(context.Background(), "test-account")
+	if err == nil {
+		t.Fatal("expected auth error, got nil")
+	}
+}
+
 func jsonResponse(status int, body string) *gohttp.Response {
 	return &gohttp.Response{
 		StatusCode: status,
