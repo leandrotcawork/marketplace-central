@@ -1,5 +1,5 @@
 # System Pulse — Marketplace Central
-> Last updated: 2026-04-04 | Session: #3
+> Last updated: 2026-04-04 | Session: #3 (final)
 
 ## Project Identity
 
@@ -117,15 +117,15 @@ Completed this phase:
 - Migrations 0006–0007 applied to mpc schema (12 tables verified)
 
 Still pending:
-- Migration runner (cmd/migrate/main.go — still a stub)
-- Smoke test remaining pages: Marketplace Settings, Pricing Simulator, VTEX Publisher publish flow
+- Migration runner (cmd/migrate/main.go — still a stub, low priority)
+- Smoke test remaining pages in browser: Marketplace Settings forms, Pricing Simulator, VTEX Publisher publish flow
 
 **Recent completed work (from git):**
+- Fix: marketplaces adapter ON CONFLICT targets and default_shipping_amount column name
 - Fix: CORS middleware added — browser can now reach the API from localhost:5173
 - Fix: EAN/reference queries drop is_primary filter (pn_interno is primary in MS, not EAN)
 - Fix: shopping_price_latest_snapshot joins on product_id not sku
-- Product integration rework: catalog, classifications, enrichments, ProductPicker, SDK
-- Server verified live: 3,858 products, 100 taxonomy nodes, all endpoints healthy
+- Server verified live: 3,858 products, 100 taxonomy nodes, accounts/policies/simulation all working
 
 ---
 
@@ -172,4 +172,4 @@ Note: No `0002` file exists — was merged/removed as part of Phase 0 cleanup.
 - Connectors module is partially implemented (appears in modules list but phase 3 planning)
 - Marketplace Settings, Pricing Simulator, VTEX Publisher publish flow not smoke-tested end-to-end
 - Migration runner cmd/migrate/main.go is still a stub — migrations run manually via psql for now
-- 3 bug fixes uncommitted (CORS, EAN is_primary, shopping snapshot join)
+- VTEX Publisher publish flow (batch → pipeline → VTEX API) not tested end-to-end
