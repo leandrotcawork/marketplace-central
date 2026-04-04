@@ -60,5 +60,5 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(connectorsRepo, vtexAdapter, cfg.DefaultTenantID)
 	connectorstransport.NewHandler(connectorsOrch).Register(mux)
 
-	return mux
+	return httpx.CORSMiddleware(mux)
 }
