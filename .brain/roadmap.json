@@ -1,11 +1,11 @@
 {
   "project": "marketplace-central",
-  "last_updated": "2026-04-04T14:00:00Z",
+  "last_updated": "2026-04-04T17:00:00Z",
   "current_phase_id": "phase-1",
   "summary": {
     "completed_phases": 1,
-    "completed_tasks": 4,
-    "total_tasks": 16
+    "completed_tasks": 5,
+    "total_tasks": 17
   },
   "phases": [
     {
@@ -48,6 +48,13 @@
           "subtasks": [
             "Implement real migration runner in cmd/migrate/main.go (read SQL files, track applied migrations)"
           ]
+        },
+        {
+          "id": "1.6",
+          "name": "VTEX credential validation endpoint",
+          "status": "done",
+          "completed_at": "2026-04-04T17:00:00Z",
+          "notes": "POST /connectors/vtex/validate-connection — full hexagonal stack. VTEX account tfcvgo returns 200 in ~762ms. Integration test verified."
         },
         {
           "id": "1.5",

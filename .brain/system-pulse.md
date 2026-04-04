@@ -1,5 +1,5 @@
 # System Pulse — Marketplace Central
-> Last updated: 2026-04-04 | Session: #3 (final)
+> Last updated: 2026-04-04 | Session: #4
 
 ## Project Identity
 
@@ -121,11 +121,11 @@ Still pending:
 - Smoke test remaining pages in browser: Marketplace Settings forms, Pricing Simulator, VTEX Publisher publish flow
 
 **Recent completed work (from git):**
+- Feat: POST /connectors/vtex/validate-connection — full hexagonal stack, integration-tested, live VTEX 200 confirmed
+- Fix: VTEX validation endpoint path corrected (catalog_system/pub, not catalog/pvt)
+- Fix: .claude/settings.local.json untracked from git
 - Fix: marketplaces adapter ON CONFLICT targets and default_shipping_amount column name
 - Fix: CORS middleware added — browser can now reach the API from localhost:5173
-- Fix: EAN/reference queries drop is_primary filter (pn_interno is primary in MS, not EAN)
-- Fix: shopping_price_latest_snapshot joins on product_id not sku
-- Server verified live: 3,858 products, 100 taxonomy nodes, accounts/policies/simulation all working
 
 ---
 
@@ -169,7 +169,7 @@ Note: No `0002` file exists — was merged/removed as part of Phase 0 cleanup.
 - `zero_commit_rate` is 38.9% (sessions where no commits were made) — many sessions end without a commit
 - Migration `0002` is missing from sequence (was cleaned up) — not a bug, just a gap
 - `server.exe` is untracked in git (compiled binary checked into working dir)
-- Connectors module is partially implemented (appears in modules list but phase 3 planning)
+- Connectors module: validate-connection done; full publish flow (batch → pipeline → VTEX API) not yet smoke-tested via UI
 - Marketplace Settings, Pricing Simulator, VTEX Publisher publish flow not smoke-tested end-to-end
 - Migration runner cmd/migrate/main.go is still a stub — migrations run manually via psql for now
-- VTEX Publisher publish flow (batch → pipeline → VTEX API) not tested end-to-end
+- VTEX credential validation confirmed working (account tfcvgo, ~762ms); VTEX_ACCOUNT=tfcvgo in local .env (gitignored)
