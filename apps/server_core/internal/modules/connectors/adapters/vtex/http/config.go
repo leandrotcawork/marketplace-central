@@ -26,4 +26,5 @@ var retryConfigs = map[string]RetryConfig{
 	"GetSKU":               {MaxAttempts: 3, BaseDelay: 1 * time.Second, JitterPct: 0.25, AllowNetworkRetry: true},
 	"GetCategory":          {MaxAttempts: 3, BaseDelay: 1 * time.Second, JitterPct: 0.25, AllowNetworkRetry: true},
 	"GetBrand":             {MaxAttempts: 3, BaseDelay: 1 * time.Second, JitterPct: 0.25, AllowNetworkRetry: true},
+	"ValidateConnection":   {MaxAttempts: 1, BaseDelay: 0, JitterPct: 0, AllowNetworkRetry: false},
 }
