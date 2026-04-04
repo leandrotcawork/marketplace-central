@@ -152,7 +152,7 @@ func TestValidateConnectionReturnsNilOn200(t *testing.T) {
 				if req.Method != gohttp.MethodGet {
 					t.Fatalf("expected GET, got %s", req.Method)
 				}
-				if req.URL.Path != "/api/catalog/pvt/category/tree/1" {
+				if req.URL.Path != "/api/catalog_system/pub/category/tree/1" {
 					t.Fatalf("expected category tree path, got %s", req.URL.Path)
 				}
 				return jsonResponse(gohttp.StatusOK, `[]`), nil

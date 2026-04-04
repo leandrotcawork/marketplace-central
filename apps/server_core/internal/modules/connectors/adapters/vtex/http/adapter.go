@@ -240,7 +240,7 @@ func (a *Adapter) GetBrand(ctx context.Context, vtexAccount, vtexID string) (por
 func (a *Adapter) ValidateConnection(ctx context.Context, vtexAccount string) error {
 	start := time.Now()
 
-	_, _, err := a.client.Get(ctx, vtexAccount, "/api/catalog/pvt/category/tree/1", retryConfigs["ValidateConnection"])
+	_, _, err := a.client.Get(ctx, vtexAccount, "/api/catalog_system/pub/category/tree/1", retryConfigs["ValidateConnection"])
 	slog.Info("vtex_api_call", "action", "ValidateConnection", "result", resultStr(err), "vtex_account", vtexAccount, "duration_ms", time.Since(start).Milliseconds())
 	return err
 }
