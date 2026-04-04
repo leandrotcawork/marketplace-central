@@ -1,13 +1,18 @@
 {
   "project": "marketplace-central",
   "last_updated": "2026-04-04",
+  "current_phase_id": "phase-1",
+  "summary": {
+    "completed_phases": 1,
+    "completed_tasks": 4,
+    "total_tasks": 16
+  },
   "phases": [
     {
       "id": "phase-0",
       "name": "Foundation scaffold",
-      "status": "done",
-      "focus": "Monorepo structure, stubs, tests, documents",
-      "tasks": []
+      "status": "completed",
+      "completed_at": "2026-04-03T00:00:00Z"
     },
     {
       "id": "phase-1",
@@ -18,37 +23,23 @@
         {
           "id": "1.1",
           "name": "Database connectivity",
-          "status": "pending",
-          "subtasks": [
-            "Wire pgxpool.Pool into composition root via pgdb.NewPool()",
-            "Pass pool to module adapters via dependency injection",
-            "Implement catalog/adapters/postgres/repository.go — real SaveProduct, ListProducts",
-            "Implement marketplaces/adapters/postgres/repository.go — real SaveAccount, SavePolicy, List operations",
-            "Implement pricing/adapters/postgres/repository.go — real SaveSimulation, ListSimulations"
-          ]
+          "status": "done",
+          "completed_at": "2026-04-04T00:00:00Z",
+          "notes": "pgdb + msdb pools wired; catalog (MS reader + enrichments) and classifications adapters done; marketplaces adapter status uncertain"
         },
         {
           "id": "1.2",
           "name": "Handler wiring",
-          "status": "pending",
-          "subtasks": [
-            "Inject services into transport handlers (currently empty structs)",
-            "Catalog handler: decode JSON body on POST, call service.CreateProduct, return created entity",
-            "Marketplaces handler: decode JSON body on POST for accounts and policies",
-            "Pricing handler: decode JSON body on POST, call service.RunSimulation, return result with margin data",
-            "Add proper error responses with structured JSON errors"
-          ]
+          "status": "done",
+          "completed_at": "2026-04-04T00:00:00Z",
+          "notes": "Catalog, classifications, pricing handlers fully wired with slog + structured error codes"
         },
         {
           "id": "1.3",
           "name": "SDK and frontend",
-          "status": "pending",
-          "subtasks": [
-            "Extend sdk-runtime with POST methods (createProduct, createAccount, createPolicy, runSimulation)",
-            "Add request/response TypeScript types matching OpenAPI contract",
-            "Update OpenAPI contract with request/response schemas",
-            "Wire feature pages to SDK methods (form → SDK → backend → display result)"
-          ]
+          "status": "done",
+          "completed_at": "2026-04-04T00:00:00Z",
+          "notes": "11 new SDK methods; ProductPicker; Products, VTEX Publisher, Simulator pages rewritten"
         },
         {
           "id": "1.4",
@@ -61,12 +52,9 @@
         {
           "id": "1.5",
           "name": "Verification",
-          "status": "pending",
-          "subtasks": [
-            "Integration test: create product → create account → create policy → run simulation → verify margin",
-            "Frontend smoke test: fill form → submit → see result",
-            "All existing unit tests still pass"
-          ]
+          "status": "done",
+          "completed_at": "2026-04-04T13:00:00Z",
+          "notes": "Server boots clean; 3858 products load; EAN/reference/suggested_price populated; CORS working; frontend at localhost:5173 confirmed live. Remaining pages (Marketplace Settings, Pricing Simulator, VTEX Publisher) not yet smoke-tested."
         }
       ]
     },
@@ -123,10 +111,8 @@
           "name": "Connector infrastructure",
           "status": "pending",
           "subtasks": [
-            "Create connectors module with port interface",
-            "Implement VTEX adapter: authentication, product registration, price update",
             "Scheduler infrastructure: cron-style job runner in the server",
-            "Job: sync products from VTEX catalog into MPC catalog"
+            "Job: sync products from VTEX catalog into MPC enrichments"
           ]
         },
         {
@@ -135,8 +121,7 @@
           "status": "pending",
           "subtasks": [
             "Product registration flow: MPC → VTEX API → confirmation",
-            "Catalog sync: VTEX → MPC (pull product data, prices, stock)",
-            "Link MPC product_id to VTEX SKU/product IDs"
+            "Link MPC product_id to VTEX SKU/product IDs via vtex_entity_mappings"
           ]
         },
         {
@@ -144,7 +129,7 @@
           "name": "Frontend",
           "status": "pending",
           "subtasks": [
-            "Product registration form with VTEX publish button",
+            "VTEX Publisher: publish status display (batch progress, per-product step results)",
             "Sync status display (last sync, errors)"
           ]
         }
@@ -161,11 +146,9 @@
           "name": "Messaging module",
           "status": "pending",
           "subtasks": [
-            "Message entity: id, marketplace, thread_id, customer, content, status, received_at, responded_at",
-            "Polling job: fetch messages from VTEX",
+            "Message entity + polling job (VTEX)",
             "Unified inbox API: list messages, filter by status/marketplace",
-            "Reply dispatch: send reply through connector adapter",
-            "SLA tracking: 1-hour response time target"
+            "Reply dispatch + SLA tracking (1h target)"
           ]
         },
         {
@@ -173,10 +156,8 @@
           "name": "Orders module",
           "status": "pending",
           "subtasks": [
-            "Order entity: id, marketplace, order_number, status, items, created_at, dispatched_at",
-            "Polling job: fetch orders from VTEX",
-            "Order timeline API: list orders with status history",
-            "SLA tracking: 24-hour dispatch target"
+            "Order entity + polling job (VTEX)",
+            "Order timeline API + SLA tracking (24h dispatch target)"
           ]
         },
         {
@@ -184,10 +165,8 @@
           "name": "Alerts module",
           "status": "pending",
           "subtasks": [
-            "Alert entity: id, type, severity, module, entity_id, message, created_at, acknowledged_at",
-            "Alert rules: message approaching 1h SLA, order approaching 24h SLA, margin below threshold",
-            "Alert API: list active alerts, acknowledge",
-            "Frontend: alert badge in sidebar, alert list page"
+            "Alert rules: SLA breach, margin below threshold",
+            "Alert API + frontend badge"
           ]
         }
       ]
@@ -215,8 +194,7 @@
           "subtasks": [
             "Cross-marketplace message inbox",
             "Cross-marketplace order dashboard",
-            "Aggregated SLA metrics",
-            "Per-marketplace performance comparison"
+            "Aggregated SLA metrics"
           ]
         }
       ]

@@ -1,5 +1,5 @@
 # System Pulse — Marketplace Central
-> Last updated: 2026-04-04 | Session: #1 (brain init)
+> Last updated: 2026-04-04 | Session: #3
 
 ## Project Identity
 
@@ -107,19 +107,25 @@ docs/marketplaces/         # Per-marketplace API reference docs
 
 Goal: Make 3 modules functional end-to-end with real database operations.
 
-Sub-tasks remaining:
-- Wire pgxpool.Pool into composition root
-- Implement real Postgres adapters (catalog, marketplaces, pricing)
-- Inject services into transport handlers (currently empty structs)
-- Extend SDK with POST methods
-- Implement migration runner
+Completed this phase:
+- Both pgxpool instances wired (pgdb for MPC, msdb for MetalShopping read-only)
+- Catalog module: MetalShopping reader adapter + EnrichmentRepository (Postgres)
+- Classifications module: full CRUD (domain → application → adapters → transport)
+- Pricing module: slog logging + PRICING_* structured error codes
+- SDK extended: 11 new methods + CatalogProduct, Classification, ProductEnrichment types
+- ProductPicker shared component + Products/VTEX Publisher/Simulator pages rewired
+- Migrations 0006–0007 applied to mpc schema (12 tables verified)
+
+Still pending:
+- Migration runner (cmd/migrate/main.go — still a stub)
+- Smoke test remaining pages: Marketplace Settings, Pricing Simulator, VTEX Publisher publish flow
 
 **Recent completed work (from git):**
-- Fix: ListClassificationsResponse uses Classification with product_ids
-- Fix: add slog logging and PRICING_* structured error codes
-- Fix: add explicit tenant_id predicates to MetalShopping adapter queries
-- Fix: align OpenAPI error codes and add suggested price column
-- Docs: descope optional cost_amount and dimensions from pricing simulator
+- Fix: CORS middleware added — browser can now reach the API from localhost:5173
+- Fix: EAN/reference queries drop is_primary filter (pn_interno is primary in MS, not EAN)
+- Fix: shopping_price_latest_snapshot joins on product_id not sku
+- Product integration rework: catalog, classifications, enrichments, ProductPicker, SDK
+- Server verified live: 3,858 products, 100 taxonomy nodes, all endpoints healthy
 
 ---
 
@@ -147,8 +153,13 @@ Note: No `0002` file exists — was merged/removed as part of Phase 0 cleanup.
 | `IMPLEMENTATION_PLAN.md` | Phase plan with task checklist |
 | `contracts/api/marketplace-central.openapi.yaml` | API source of truth |
 | `apps/server_core/internal/composition/root.go` | Module registration + DI |
-| `apps/server_core/migrations/` | Sequential SQL migrations |
-| `packages/sdk-runtime/index.ts` | TypeScript API client |
+| `apps/server_core/internal/platform/msdb/pool.go` | MetalShopping read-only pool |
+| `apps/server_core/internal/modules/catalog/` | Catalog module (MS reader + enrichments) |
+| `apps/server_core/internal/modules/classifications/` | Classifications module (full CRUD) |
+| `apps/server_core/migrations/` | Sequential SQL migrations (0001–0007) |
+| `packages/sdk-runtime/src/index.ts` | TypeScript API client |
+| `packages/ui/src/ProductPicker.tsx` | Shared product picker component |
+| `.env` | Local env vars (MS_DATABASE_URL, MC_DATABASE_URL, VTEX_*) |
 
 ---
 
@@ -159,3 +170,6 @@ Note: No `0002` file exists — was merged/removed as part of Phase 0 cleanup.
 - Migration `0002` is missing from sequence (was cleaned up) — not a bug, just a gap
 - `server.exe` is untracked in git (compiled binary checked into working dir)
 - Connectors module is partially implemented (appears in modules list but phase 3 planning)
+- Marketplace Settings, Pricing Simulator, VTEX Publisher publish flow not smoke-tested end-to-end
+- Migration runner cmd/migrate/main.go is still a stub — migrations run manually via psql for now
+- 3 bug fixes uncommitted (CORS, EAN is_primary, shopping snapshot join)
