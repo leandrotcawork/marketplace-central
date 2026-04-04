@@ -28,6 +28,7 @@ func NewHandler(orchestrator *app.BatchOrchestrator) *Handler {
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/connectors/vtex/publish", h.handlePublish)
 	mux.HandleFunc("/connectors/vtex/publish/batch/", h.handleBatchRoutes)
+	mux.HandleFunc("/connectors/vtex/validate-connection", h.handleValidateConnection)
 }
 
 // ---- request / response types ----
@@ -289,4 +290,51 @@ func (h *Handler) handleRetry(w http.ResponseWriter, r *http.Request, batchID st
 		"rejections":     rejections,
 	})
 	slog.Info("connectors.retry", "action", "retry_batch", "result", "200", "batch_id", batchID, "validated", result.Validated, "duration_ms", time.Since(start).Milliseconds())
+}
+
+// ---- POST /connectors/vtex/validate-connection ----
+
+type validateConnectionRequest struct {
+	VTEXAccount string `json:"vtex_account"`
+}
+
+func (h *Handler) handleValidateConnection(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeConnectorsError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		slog.Info("connectors.validate_connection", "action", "reject_method", "result", "405", "duration_ms", time.Since(start).Milliseconds())
+		return
+	}
+
+	var req validateConnectionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeConnectorsError(w, http.StatusBadRequest, "CONNECTORS_VALIDATE_INVALID_BODY", "malformed request body")
+		slog.Info("connectors.validate_connection", "action", "decode_body", "result", "400", "duration_ms", time.Since(start).Milliseconds())
+		return
+	}
+
+	if req.VTEXAccount == "" {
+		writeConnectorsError(w, http.StatusBadRequest, "CONNECTORS_VALIDATE_MISSING_ACCOUNT", "vtex_account is required")
+		slog.Info("connectors.validate_connection", "action", "validate_account", "result", "400", "duration_ms", time.Since(start).Milliseconds())
+		return
+	}
+
+	if err := h.orchestrator.ValidateConnection(r.Context(), req.VTEXAccount); err != nil {
+		if errors.Is(err, domain.ErrVTEXAuth) {
+			writeConnectorsError(w, http.StatusUnauthorized, "CONNECTORS_VTEX_AUTH_INVALID", "VTEX credentials are invalid or expired")
+			slog.Info("connectors.validate_connection", "action", "validate", "result", "401", "vtex_account", req.VTEXAccount, "duration_ms", time.Since(start).Milliseconds())
+			return
+		}
+		writeConnectorsError(w, http.StatusBadGateway, "CONNECTORS_VTEX_TRANSIENT", "VTEX API is unreachable")
+		slog.Error("connectors.validate_connection", "action", "validate", "result", "502", "vtex_account", req.VTEXAccount, "error", err.Error(), "duration_ms", time.Since(start).Milliseconds())
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"status":       "connected",
+		"vtex_account": req.VTEXAccount,
+	})
+	slog.Info("connectors.validate_connection", "action", "validate", "result", "200", "vtex_account", req.VTEXAccount, "duration_ms", time.Since(start).Milliseconds())
 }
