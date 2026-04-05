@@ -6,3 +6,5 @@ export { ProductPicker } from "./ProductPicker";
 export type { ProductPickerProps, CatalogProduct, TaxonomyNode, Classification } from "./ProductPicker";
 export { PaginatedTable } from "./PaginatedTable";
 export type { PaginatedTableProps } from "./PaginatedTable";
+export { DetailPanel } from "./DetailPanel";
+export type { DetailPanelProps } from "./DetailPanel";
