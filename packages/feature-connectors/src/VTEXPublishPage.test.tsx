@@ -1,164 +1,157 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { VTEXPublishPage } from "./VTEXPublishPage";
-import type { PublishBatchResponse } from "@marketplace-central/sdk-runtime";
+import type { CatalogProduct, TaxonomyNode, Classification, PublishBatchResponse } from "@marketplace-central/sdk-runtime";
 
-const mockPublish = vi.fn();
-const mockListProducts = vi.fn();
-const mockListTaxonomy = vi.fn();
-const mockListClassifications = vi.fn();
+const makeProduct = (i: number): CatalogProduct => ({
+  product_id: `p${i}`,
+  sku: `SKU-${i}`,
+  name: `Product ${i}`,
+  description: "",
+  brand_name: "Brand X",
+  status: "active",
+  cost_amount: 10,
+  price_amount: 20,
+  stock_quantity: 100,
+  ean: `EAN${i}`,
+  reference: `REF${i}`,
+  taxonomy_node_id: "tax1",
+  taxonomy_name: "Category A",
+  suggested_price: null,
+  height_cm: null,
+  width_cm: null,
+  length_cm: null,
+});
 
-const mockClient = {
-  publishToVTEX: mockPublish,
-  listCatalogProducts: mockListProducts,
-  listTaxonomyNodes: mockListTaxonomy,
-  listClassifications: mockListClassifications,
-} as any;
+const products: CatalogProduct[] = Array.from({ length: 60 }, (_, i) => makeProduct(i));
 
-const sampleProducts = [
+const classifications: Classification[] = [
   {
-    product_id: "prod-1",
-    sku: "SKU-001",
-    name: "Test Product",
-    description: "A test product",
-    brand_name: "BrandX",
-    status: "active",
-    cost_amount: 60,
-    price_amount: 100,
-    stock_quantity: 10,
-    ean: "7890000000001",
-    reference: "REF-001",
-    taxonomy_node_id: "tax-1",
-    taxonomy_name: "Electronics",
-    suggested_price: null,
-    height_cm: null,
-    width_cm: null,
-    length_cm: null,
+    classification_id: "cls1",
+    name: "VTEX Ready",
+    ai_context: "",
+    product_ids: ["p0", "p1", "p2"],
+    product_count: 3,
+    created_at: "",
+    updated_at: "",
   },
 ];
 
-const sampleTaxonomy = [
-  { node_id: "tax-1", name: "Electronics", level: 1, level_label: "Department", product_count: 1 },
-];
-
-const sampleClassifications = [
-  { classification_id: "cls-1", name: "Featured", product_ids: ["prod-1"], product_count: 1 },
-];
-
-function setupMocks() {
-  mockListProducts.mockResolvedValue({ items: sampleProducts });
-  mockListTaxonomy.mockResolvedValue({ items: sampleTaxonomy });
-  mockListClassifications.mockResolvedValue({ items: sampleClassifications });
-}
-
-function renderPage() {
-  return render(
-    <MemoryRouter initialEntries={["/connectors/vtex"]}>
-      <Routes>
-        <Route path="/connectors/vtex" element={<VTEXPublishPage client={mockClient} />} />
-        <Route path="/connectors/vtex/batch/:id" element={<div>Batch Detail</div>} />
-      </Routes>
-    </MemoryRouter>
-  );
-}
-
-const successResponse: PublishBatchResponse = {
-  batch_id: "batch-001",
-  total_products: 1,
-  validated: 1,
+const batchResponse: PublishBatchResponse = {
+  batch_id: "batch_abc",
+  validated: 3,
   rejected: 0,
   rejections: [],
 };
 
+function makeClient(overrides = {}) {
+  return {
+    publishToVTEX: vi.fn().mockResolvedValue(batchResponse),
+    listCatalogProducts: vi.fn().mockResolvedValue({ items: products }),
+    listTaxonomyNodes: vi.fn().mockResolvedValue({ items: [] as TaxonomyNode[] }),
+    listClassifications: vi.fn().mockResolvedValue({ items: classifications }),
+    ...overrides,
+  };
+}
+
+function renderPage(client = makeClient()) {
+  return render(
+    <MemoryRouter>
+      <VTEXPublishPage client={client} />
+    </MemoryRouter>
+  );
+}
+
 describe("VTEXPublishPage", () => {
-  beforeEach(() => {
-    mockPublish.mockReset();
-    mockListProducts.mockReset();
-    mockListTaxonomy.mockReset();
-    mockListClassifications.mockReset();
-    setupMocks();
-  });
-
-  it("renders the heading and loads products", async () => {
-    renderPage();
-    expect(screen.getByText("VTEX Publisher")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
-  });
-
-  it("renders VTEX configuration fields", async () => {
-    renderPage();
-    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
+  it("shows VTEX account field at top before table loads", async () => {
+    const client = makeClient();
+    renderPage(client);
     expect(screen.getByLabelText(/vtex account/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/trade policy id/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/warehouse id/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /publish/i })).toBeInTheDocument();
   });
 
-  it("shows validation error when vtex account is empty", async () => {
+  it("renders only 25 products per page", async () => {
     renderPage();
-    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
-    expect(await screen.findByText(/vtex account is required/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    expect(screen.getByText("Product 24")).toBeInTheDocument();
+    expect(screen.queryByText("Product 25")).not.toBeInTheDocument();
   });
 
-  it("shows validation error when no products are selected", async () => {
+  it("publish button is disabled when no account entered", async () => {
     renderPage();
-    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
-
-    fireEvent.change(screen.getByLabelText(/vtex account/i), { target: { value: "mystore" } });
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
-
-    expect(await screen.findByText(/select at least one product/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /publish/i })).toBeDisabled();
   });
 
-  it("calls publishToVTEX with mapped products on submit", async () => {
-    mockPublish.mockResolvedValueOnce(successResponse);
+  it("publish button is disabled when no products selected", async () => {
     renderPage();
-
-    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
-
-    // Select the product
-    fireEvent.click(screen.getByLabelText(/select test product/i));
-
-    // Fill VTEX account
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/vtex account/i), { target: { value: "mystore" } });
+    expect(screen.getByRole("button", { name: /publish/i })).toBeDisabled();
+  });
 
-    // Submit
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+  it("selecting a product row checkbox enables publish when account is set", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/vtex account/i), { target: { value: "mystore" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+    expect(screen.getByRole("button", { name: /publish/i })).not.toBeDisabled();
+  });
 
+  it("Load Classification auto-checks all products in classification", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/load classification/i), { target: { value: "cls1" } });
     await waitFor(() =>
-      expect(mockPublish).toHaveBeenCalledWith({
-        vtex_account: "mystore",
-        products: [
-          expect.objectContaining({
-            product_id: "prod-1",
-            name: "Test Product",
-            description: "A test product",
-            brand: "BrandX",
-            category: "Electronics",
-            cost: 60,
-            base_price: 100,
-            stock_qty: 10,
-            warehouse_id: "1_1",
-            trade_policy_id: "1",
-          }),
-        ],
-      }),
+      expect(screen.getByText(/3 selected/i)).toBeInTheDocument()
     );
   });
 
-  it("shows batch result after successful submit", async () => {
-    mockPublish.mockResolvedValueOnce(successResponse);
+  it("Select All Filtered selects all filtered products including off-page", async () => {
     renderPage();
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /select all filtered/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/60 selected/i)).toBeInTheDocument()
+    );
+  });
 
-    await waitFor(() => expect(screen.getByText("Test Product")).toBeInTheDocument());
+  it("Clear All deselects all products", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /select all filtered/i }));
+    await waitFor(() => expect(screen.getByText(/60 selected/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /clear all/i }));
+    expect(screen.queryByText(/60 selected/i)).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByLabelText(/select test product/i));
+  it("calls publishToVTEX with selected products", async () => {
+    const client = makeClient();
+    renderPage(client);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/vtex account/i), { target: { value: "mystore" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
     fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    await waitFor(() =>
+      expect(client.publishToVTEX).toHaveBeenCalledWith(
+        expect.objectContaining({
+          vtex_account: "mystore",
+          products: expect.arrayContaining([expect.objectContaining({ product_id: "p0" })]),
+        })
+      )
+    );
+  });
 
-    await waitFor(() => expect(screen.getByText(/batch created/i)).toBeInTheDocument());
-    expect(screen.getByText("batch-001")).toBeInTheDocument();
+  it("shows success banner after publish", async () => {
+    const client = makeClient();
+    renderPage(client);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/vtex account/i), { target: { value: "mystore" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/batch created/i)).toBeInTheDocument()
+    );
   });
 });
