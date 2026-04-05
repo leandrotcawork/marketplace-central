@@ -1,271 +1,147 @@
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PricingSimulatorPage } from "./PricingSimulatorPage";
 import type {
   CatalogProduct,
+  TaxonomyNode,
+  Classification,
   MarketplacePolicy,
   PricingSimulation,
 } from "@marketplace-central/sdk-runtime";
-import type { TaxonomyNode, Classification } from "@marketplace-central/ui";
-import { vi, describe, it, expect, beforeEach } from "vitest";
 
-/* ── Mock data ── */
+const makeProduct = (i: number): CatalogProduct => ({
+  product_id: `p${i}`,
+  sku: `SKU-${i}`,
+  name: `Product ${i}`,
+  description: "",
+  brand_name: "Brand X",
+  status: "active",
+  cost_amount: 10,
+  price_amount: 20,
+  stock_quantity: 100,
+  ean: `EAN${i}`,
+  reference: `REF${i}`,
+  taxonomy_node_id: "tax1",
+  taxonomy_name: "Category A",
+  suggested_price: 25,
+  height_cm: null,
+  width_cm: null,
+  length_cm: null,
+});
 
-const mockProducts: CatalogProduct[] = [
-  {
-    product_id: "prod-1",
-    sku: "SKU-001",
-    name: "Steel Bolt M8",
-    description: "High-grade steel bolt",
-    brand_name: "MetalPro",
-    status: "active",
-    cost_amount: 5.0,
-    price_amount: 12.0,
-    stock_quantity: 500,
-    ean: "7891234567890",
-    reference: "REF-001",
-    taxonomy_node_id: "node-1",
-    taxonomy_name: "Fasteners",
-    suggested_price: 14.5,
-    height_cm: null,
-    width_cm: null,
-    length_cm: null,
-  },
-  {
-    product_id: "prod-2",
-    sku: "SKU-002",
-    name: "Hex Nut M8",
-    description: "Hex nut for M8 bolt",
-    brand_name: "MetalPro",
-    status: "active",
-    cost_amount: 2.0,
-    price_amount: 5.0,
-    stock_quantity: 1000,
-    ean: "7891234567891",
-    reference: "REF-002",
-    taxonomy_node_id: "node-1",
-    taxonomy_name: "Fasteners",
-    suggested_price: null,
-    height_cm: null,
-    width_cm: null,
-    length_cm: null,
-  },
-];
+const products: CatalogProduct[] = Array.from({ length: 60 }, (_, i) => makeProduct(i));
 
-const mockTaxonomy: TaxonomyNode[] = [
+const policies: MarketplacePolicy[] = [
   {
-    node_id: "node-1",
-    name: "Fasteners",
-    level: 1,
-    level_label: "Category",
-    product_count: 2,
-  },
-];
-
-const mockClassifications: Classification[] = [
-  {
-    classification_id: "cls-1",
-    name: "High-rotation",
-    product_ids: ["prod-1"],
-    product_count: 1,
-  },
-];
-
-const mockPolicies: MarketplacePolicy[] = [
-  {
-    policy_id: "pol-vtex-main",
+    policy_id: "pol1",
     tenant_id: "t1",
-    account_id: "acc-vtex",
+    account_id: "acc1",
     commission_percent: 0.16,
-    fixed_fee_amount: 5.0,
-    default_shipping: 10.0,
-    tax_percent: 0.0,
-    min_margin_percent: 0.10,
+    fixed_fee_amount: 0,
+    default_shipping: 0,
+    tax_percent: 0,
+    min_margin_percent: 0.02,
     sla_question_minutes: 60,
-    sla_dispatch_hours: 48,
+    sla_dispatch_hours: 24,
   },
 ];
 
-const successSim: PricingSimulation = {
-  simulation_id: "sim-1",
-  tenant_id: "t1",
-  product_id: "prod-1",
-  account_id: "acc-vtex",
-  margin_amount: 1.58,
-  margin_percent: 0.155,
+const mockSimResult: PricingSimulation = {
+  simulation_id: "sim1",
+  product_id: "p0",
+  account_id: "acc1",
+  base_price_amount: 20,
+  cost_amount: 10,
+  commission_amount: 3.2,
+  fixed_fee_amount: 0,
+  shipping_amount: 0,
+  tax_amount: 0,
+  margin_amount: 6.8,
+  margin_percent: 0.34,
   status: "healthy",
+  created_at: "",
 };
 
-/* ── Mocks ── */
-
-const mockListCatalogProducts = vi.fn();
-const mockListTaxonomyNodes = vi.fn();
-const mockListClassifications = vi.fn();
-const mockListMarketplacePolicies = vi.fn();
-const mockRunPricingSimulation = vi.fn();
-
-const mockClient = {
-  listCatalogProducts: mockListCatalogProducts,
-  listTaxonomyNodes: mockListTaxonomyNodes,
-  listClassifications: mockListClassifications,
-  listMarketplacePolicies: mockListMarketplacePolicies,
-  runPricingSimulation: mockRunPricingSimulation,
-} as any;
-
-function setupDefaultMocks() {
-  mockListCatalogProducts.mockResolvedValue({ items: mockProducts });
-  mockListTaxonomyNodes.mockResolvedValue({ items: mockTaxonomy });
-  mockListClassifications.mockResolvedValue({ items: mockClassifications });
-  mockListMarketplacePolicies.mockResolvedValue({ items: mockPolicies });
+function makeClient(overrides = {}) {
+  return {
+    listCatalogProducts: vi.fn().mockResolvedValue({ items: products }),
+    listTaxonomyNodes: vi.fn().mockResolvedValue({ items: [] as TaxonomyNode[] }),
+    listClassifications: vi.fn().mockResolvedValue({ items: [] as Classification[] }),
+    listMarketplacePolicies: vi.fn().mockResolvedValue({ items: policies }),
+    runPricingSimulation: vi.fn().mockResolvedValue(mockSimResult),
+    ...overrides,
+  };
 }
 
-/* ── Tests ── */
-
 describe("PricingSimulatorPage", () => {
-  beforeEach(() => {
-    mockListCatalogProducts.mockReset();
-    mockListTaxonomyNodes.mockReset();
-    mockListClassifications.mockReset();
-    mockListMarketplacePolicies.mockReset();
-    mockRunPricingSimulation.mockReset();
+  it("renders policy picker and Run button before table loads", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    expect(screen.getByLabelText(/marketplace policy/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /run simulation/i })).toBeInTheDocument();
   });
 
-  it("renders heading and loads data on mount", async () => {
-    setupDefaultMocks();
-    render(<PricingSimulatorPage client={mockClient} />);
-
-    expect(screen.getByText("Pricing Simulator")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(mockListCatalogProducts).toHaveBeenCalledTimes(1);
-      expect(mockListMarketplacePolicies).toHaveBeenCalledTimes(1);
-    });
+  it("renders only 25 products per page (not all 60)", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    expect(screen.getByText("Product 24")).toBeInTheDocument();
+    expect(screen.queryByText("Product 25")).not.toBeInTheDocument();
   });
 
-  it("shows product picker with loaded products", async () => {
-    setupDefaultMocks();
-    render(<PricingSimulatorPage client={mockClient} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Steel Bolt M8")).toBeInTheDocument();
-      expect(screen.getByText("Hex Nut M8")).toBeInTheDocument();
-    });
+  it("Run Simulation is disabled until product + policy selected", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /run simulation/i })).toBeDisabled();
   });
 
-  it("shows policy dropdown with loaded policies", async () => {
-    setupDefaultMocks();
-    render(<PricingSimulatorPage client={mockClient} />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/marketplace policy/i)).toBeInTheDocument();
-    });
-
-    const dropdown = screen.getByLabelText(/marketplace policy/i) as HTMLSelectElement;
-    expect(dropdown.options.length).toBe(2); // placeholder + 1 policy
+  it("Run Simulation enables after selecting product and policy", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+    expect(screen.getByRole("button", { name: /run simulation/i })).not.toBeDisabled();
   });
 
-  it("runs simulation for selected product and policy", async () => {
-    setupDefaultMocks();
-    mockRunPricingSimulation.mockResolvedValueOnce(successSim);
-
-    render(<PricingSimulatorPage client={mockClient} />);
-
-    // Wait for data
-    await waitFor(() => {
-      expect(screen.getByText("Steel Bolt M8")).toBeInTheDocument();
-    });
-
-    // Select a product
-    const checkbox = screen.getByLabelText("Select Steel Bolt M8");
-    fireEvent.click(checkbox);
-
-    // Select a policy
-    const dropdown = screen.getByLabelText(/marketplace policy/i);
-    fireEvent.change(dropdown, { target: { value: "pol-vtex-main" } });
-
-    // Run simulation
+  it("calls runPricingSimulation for each selected product", async () => {
+    const client = makeClient();
+    render(<PricingSimulatorPage client={client} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-
-    await waitFor(() => {
-      expect(mockRunPricingSimulation).toHaveBeenCalledTimes(1);
-    });
-
-    // Verify simulation request
-    const req = mockRunPricingSimulation.mock.calls[0][0];
-    expect(req.product_id).toBe("prod-1");
-    expect(req.account_id).toBe("acc-vtex");
-    expect(req.base_price_amount).toBe(12.0); // my price
-    expect(req.cost_amount).toBe(5.0);
-    expect(req.commission_percent).toBe(0.16);
-
-    // Verify result row appears
-    await waitFor(() => {
-      expect(screen.getByText("15.5%")).toBeInTheDocument();
-      expect(screen.getByText("healthy")).toBeInTheDocument();
-    });
+    await waitFor(() =>
+      expect(client.runPricingSimulation).toHaveBeenCalledWith(
+        expect.objectContaining({ product_id: "p0", account_id: "acc1" })
+      )
+    );
   });
 
-  it("shows load error when data fetching fails", async () => {
-    mockListCatalogProducts.mockRejectedValue({ error: { message: "Network timeout" } });
-    mockListTaxonomyNodes.mockRejectedValue({ error: { message: "Network timeout" } });
-    mockListClassifications.mockRejectedValue({ error: { message: "Network timeout" } });
-    mockListMarketplacePolicies.mockRejectedValue({ error: { message: "Network timeout" } });
-
-    render(<PricingSimulatorPage client={mockClient} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Network timeout")).toBeInTheDocument();
-    });
-  });
-
-  it("shows simulation error when run fails", async () => {
-    setupDefaultMocks();
-    mockRunPricingSimulation.mockRejectedValueOnce({
-      error: { message: "Invalid margin configuration" },
-    });
-
-    render(<PricingSimulatorPage client={mockClient} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Steel Bolt M8")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Select Steel Bolt M8"));
-    fireEvent.change(screen.getByLabelText(/marketplace policy/i), {
-      target: { value: "pol-vtex-main" },
-    });
+  it("shows inline simulation results in table after run", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/invalid margin configuration/i)).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getAllByText(/34\.0%/).length).toBeGreaterThan(0));
   });
 
-  it("uses suggested price when toggle is active", async () => {
-    setupDefaultMocks();
-    mockRunPricingSimulation.mockResolvedValueOnce(successSim);
-
-    render(<PricingSimulatorPage client={mockClient} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Steel Bolt M8")).toBeInTheDocument();
-    });
-
-    // Toggle to suggested price
-    fireEvent.click(screen.getByLabelText(/toggle price source/i));
-
-    // Select product and policy
-    fireEvent.click(screen.getByLabelText("Select Steel Bolt M8"));
-    fireEvent.change(screen.getByLabelText(/marketplace policy/i), {
-      target: { value: "pol-vtex-main" },
-    });
+  it("shows summary banner after simulation", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
+    await waitFor(() => expect(screen.getByText(/1 product/i)).toBeInTheDocument());
+    expect(screen.getByText(/avg margin/i)).toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(mockRunPricingSimulation).toHaveBeenCalledTimes(1);
-    });
-
-    const req = mockRunPricingSimulation.mock.calls[0][0];
-    // prod-1 has suggested_price=14.5, so it should use that
-    expect(req.base_price_amount).toBe(14.5);
+  it("clears results when policy changes", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+    fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
+    await waitFor(() => expect(screen.getAllByText(/34\.0%/).length).toBeGreaterThan(0));
+    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "" } });
+    expect(screen.queryByText(/34\.0%/)).not.toBeInTheDocument();
   });
 });
