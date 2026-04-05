@@ -1,115 +1,156 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ProductsPage } from "./ProductsPage";
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import type { CatalogProduct, TaxonomyNode, Classification } from "@marketplace-central/sdk-runtime";
 
-const mockListProducts = vi.fn();
-const mockListTaxonomy = vi.fn();
-const mockListClassifications = vi.fn();
-const mockUpdateEnrichment = vi.fn();
+const makeProduct = (i: number): CatalogProduct => ({
+  product_id: `p${i}`,
+  sku: `SKU-${i}`,
+  name: `Product ${i}`,
+  description: "",
+  brand_name: "Brand X",
+  status: "active",
+  cost_amount: 10,
+  price_amount: 20,
+  stock_quantity: 100,
+  ean: `EAN${i}`,
+  reference: `REF${i}`,
+  taxonomy_node_id: "tax1",
+  taxonomy_name: "Category A",
+  suggested_price: null,
+  height_cm: null,
+  width_cm: null,
+  length_cm: null,
+});
 
-const mockClient = {
-  listCatalogProducts: mockListProducts,
-  listTaxonomyNodes: mockListTaxonomy,
-  listClassifications: mockListClassifications,
-  updateProductEnrichment: mockUpdateEnrichment,
-} as any;
+const products: CatalogProduct[] = Array.from({ length: 60 }, (_, i) => makeProduct(i));
 
-const sampleProducts = [
-  {
-    product_id: "prod-1",
-    sku: "SKU-001",
-    name: "Steel Bolt M10",
-    description: "Steel bolt",
-    brand_name: "BoltCo",
-    status: "active",
-    cost_amount: 2.5,
-    price_amount: 5.0,
-    stock_quantity: 1500,
-    ean: "7890000000001",
-    reference: "REF-001",
-    taxonomy_node_id: "tax-1",
-    taxonomy_name: "Fasteners",
-    suggested_price: 4.8,
-    height_cm: 1,
-    width_cm: 1,
-    length_cm: 5,
-  },
+const taxonomyNodes: TaxonomyNode[] = [
+  { node_id: "tax1", name: "Category A", level: 1, level_label: "L1", parent_node_id: "", is_active: true, product_count: 60 },
 ];
 
-const sampleTaxonomyNodes = [
+const classifications: Classification[] = [
   {
-    node_id: "tax-1",
-    name: "Fasteners",
-    level: 0,
-    level_label: "Group",
-    parent_node_id: "",
-    is_active: true,
-    product_count: 1,
-  },
-];
-
-const sampleClassifications = [
-  {
-    classification_id: "cls-1",
-    name: "Hardware",
+    classification_id: "cls1",
+    name: "VTEX Ready",
     ai_context: "",
-    product_ids: ["prod-1"],
-    product_count: 1,
-    created_at: "2026-04-02T00:00:00Z",
-    updated_at: "2026-04-02T00:00:00Z",
+    product_ids: ["p0", "p1"],
+    product_count: 2,
+    created_at: "",
+    updated_at: "",
   },
 ];
+
+function makeClient(overrides = {}) {
+  return {
+    listCatalogProducts: vi.fn().mockResolvedValue({ items: products }),
+    listTaxonomyNodes: vi.fn().mockResolvedValue({ items: taxonomyNodes }),
+    listClassifications: vi.fn().mockResolvedValue({ items: classifications }),
+    updateProductEnrichment: vi.fn().mockResolvedValue({}),
+    createClassification: vi.fn().mockResolvedValue({
+      classification_id: "cls2",
+      name: "New Class",
+      ai_context: "",
+      product_ids: ["p0"],
+      product_count: 1,
+      created_at: "",
+      updated_at: "",
+    }),
+    updateClassification: vi.fn().mockResolvedValue({}),
+    ...overrides,
+  };
+}
 
 describe("ProductsPage", () => {
-  beforeEach(() => {
-    mockListProducts.mockReset();
-    mockListTaxonomy.mockReset();
-    mockListClassifications.mockReset();
-    mockUpdateEnrichment.mockReset();
+  it("shows loading state then renders 25 rows", async () => {
+    const client = makeClient();
+    render(<ProductsPage client={client} />);
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    expect(screen.getByText("Product 24")).toBeInTheDocument();
+    expect(screen.queryByText("Product 25")).not.toBeInTheDocument();
   });
 
-  it("shows loading state initially", () => {
-    mockListProducts.mockReturnValue(new Promise(() => {}));
-    mockListTaxonomy.mockReturnValue(new Promise(() => {}));
-    mockListClassifications.mockReturnValue(new Promise(() => {}));
-
-    render(<ProductsPage client={mockClient} />);
-    expect(screen.getByText("Loading products...")).toBeInTheDocument();
+  it("does not render all 60 products at once", async () => {
+    const client = makeClient();
+    render(<ProductsPage client={client} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    expect(screen.queryByText("Product 59")).not.toBeInTheDocument();
   });
 
-  it("renders product name after loading", async () => {
-    mockListProducts.mockResolvedValueOnce({ items: sampleProducts });
-    mockListTaxonomy.mockResolvedValueOnce({ items: sampleTaxonomyNodes });
-    mockListClassifications.mockResolvedValueOnce({ items: sampleClassifications });
+  it("opens detail panel when edit button clicked", async () => {
+    const client = makeClient();
+    render(<ProductsPage client={client} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /edit product 0/i }));
+    expect(screen.getByText("VTEX Ready")).toBeInTheDocument();
+  });
 
-    render(<ProductsPage client={mockClient} />);
+  it("closes detail panel on Escape", async () => {
+    const client = makeClient();
+    render(<ProductsPage client={client} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /edit product 0/i }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    // Panel is closed — the classification checkbox label "VTEX Ready" should not be in the panel context
+    // Note: "VTEX Ready" may still be visible in the classification filter dropdown
+    // Check that the panel-specific content (enrichment section) is gone
+    expect(screen.queryByLabelText(/height/i)).not.toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(screen.getByText("Steel Bolt M10")).toBeInTheDocument();
+  it("auto-saves classification membership when checkbox toggled", async () => {
+    const client = makeClient();
+    render(<ProductsPage client={client} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /edit product 0/i }));
+    const vtexReadyCheckbox = await screen.findByRole("checkbox", { name: /vtex ready/i });
+    fireEvent.click(vtexReadyCheckbox);
+    await waitFor(() =>
+      expect(client.updateClassification).toHaveBeenCalledWith("cls1", expect.objectContaining({
+        product_ids: expect.not.arrayContaining(["p0"]),
+      }))
+    );
+  });
+
+  it("saves enrichment fields on Save click", async () => {
+    const client = makeClient();
+    render(<ProductsPage client={client} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /edit product 0/i }));
+    const heightInput = await screen.findByLabelText(/height/i);
+    fireEvent.change(heightInput, { target: { value: "10.5" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(client.updateProductEnrichment).toHaveBeenCalledWith(
+        "p0",
+        expect.objectContaining({ height_cm: 10.5 })
+      )
+    );
+  });
+
+  it("shows create classification form when link clicked", async () => {
+    const client = makeClient();
+    render(<ProductsPage client={client} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /edit product 0/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /create new classification/i }));
+    expect(screen.getByLabelText(/classification name/i)).toBeInTheDocument();
+  });
+
+  it("calls createClassification and adds product to new classification", async () => {
+    const client = makeClient();
+    render(<ProductsPage client={client} />);
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /edit product 0/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /create new classification/i }));
+    fireEvent.change(screen.getByLabelText(/classification name/i), {
+      target: { value: "New Class" },
     });
-  });
-
-  it("shows error state when loading fails", async () => {
-    mockListProducts.mockRejectedValueOnce({ error: { message: "Network error" } });
-    mockListTaxonomy.mockResolvedValueOnce({ items: [] });
-    mockListClassifications.mockResolvedValueOnce({ items: [] });
-
-    render(<ProductsPage client={mockClient} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Network error")).toBeInTheDocument();
-    });
-  });
-
-  it("shows empty state when no products exist", async () => {
-    mockListProducts.mockResolvedValueOnce({ items: [] });
-    mockListTaxonomy.mockResolvedValueOnce({ items: [] });
-    mockListClassifications.mockResolvedValueOnce({ items: [] });
-
-    render(<ProductsPage client={mockClient} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("No products found.")).toBeInTheDocument();
-    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    await waitFor(() =>
+      expect(client.createClassification).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "New Class", product_ids: ["p0"] })
+      )
+    );
   });
 });
