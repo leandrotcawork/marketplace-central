@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/domain"
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/ports"
@@ -61,9 +62,12 @@ func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (dom
 	if input.SLAQuestionMinutes <= 0 || input.SLADispatchHours <= 0 {
 		return domain.Policy{}, errors.New("MARKETPLACES_POLICY_INVALID")
 	}
-	shippingProvider := input.ShippingProvider
+	shippingProvider := strings.ToLower(strings.TrimSpace(input.ShippingProvider))
 	if shippingProvider == "" {
 		shippingProvider = "fixed"
+	}
+	if shippingProvider != "fixed" && shippingProvider != "melhor_envio" && shippingProvider != "marketplace" {
+		return domain.Policy{}, errors.New("MARKETPLACES_POLICY_INVALID")
 	}
 	policy := domain.Policy{
 		PolicyID:           input.PolicyID,

@@ -96,3 +96,53 @@ func TestCreateMarketplacePolicyDefaultsShippingProviderToFixed(t *testing.T) {
 		t.Fatalf("expected saved default shipping provider fixed, got %q", repo.policy.ShippingProvider)
 	}
 }
+
+func TestCreateMarketplacePolicyNormalizesShippingProvider(t *testing.T) {
+	repo := &marketplaceRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	policy, err := service.CreatePolicy(context.Background(), application.CreatePolicyInput{
+		PolicyID:           "policy-normalized-provider",
+		AccountID:          "mercado-livre-main",
+		CommissionPercent:  16,
+		FixedFeeAmount:     0,
+		DefaultShipping:    27.9,
+		MinMarginPercent:   12,
+		SLAQuestionMinutes: 60,
+		SLADispatchHours:   24,
+		ShippingProvider:   "  Melhor_Envio  ",
+	})
+	if err != nil {
+		t.Fatalf("unexpected policy error: %v", err)
+	}
+
+	if policy.ShippingProvider != "melhor_envio" {
+		t.Fatalf("expected normalized shipping provider melhor_envio, got %q", policy.ShippingProvider)
+	}
+	if repo.policy.ShippingProvider != "melhor_envio" {
+		t.Fatalf("expected saved normalized shipping provider melhor_envio, got %q", repo.policy.ShippingProvider)
+	}
+}
+
+func TestCreateMarketplacePolicyRejectsInvalidShippingProvider(t *testing.T) {
+	repo := &marketplaceRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	_, err := service.CreatePolicy(context.Background(), application.CreatePolicyInput{
+		PolicyID:           "policy-invalid-provider",
+		AccountID:          "mercado-livre-main",
+		CommissionPercent:  16,
+		FixedFeeAmount:     0,
+		DefaultShipping:    27.9,
+		MinMarginPercent:   12,
+		SLAQuestionMinutes: 60,
+		SLADispatchHours:   24,
+		ShippingProvider:   "correios",
+	})
+	if err == nil {
+		t.Fatal("expected policy error for invalid shipping provider")
+	}
+	if err.Error() != "MARKETPLACES_POLICY_INVALID" {
+		t.Fatalf("expected MARKETPLACES_POLICY_INVALID, got %v", err)
+	}
+}

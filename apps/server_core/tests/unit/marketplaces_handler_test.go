@@ -141,6 +141,28 @@ func TestMarketplacesPoliciesHandlerPostReturnsPolicy(t *testing.T) {
 	}
 }
 
+func TestMarketplacesPoliciesHandlerPostDefaultsShippingProviderToFixed(t *testing.T) {
+	mux := http.NewServeMux()
+	newMarketplacesHandler().Register(mux)
+
+	body := `{"policy_id":"pol-default","account_id":"acct-1","commission_percent":0.16,"fixed_fee_amount":5.0,"default_shipping":10.0,"min_margin_percent":0.10,"sla_question_minutes":60,"sla_dispatch_hours":24}`
+	req := httptest.NewRequest(http.MethodPost, "/marketplaces/policies", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var result map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if result["shipping_provider"] != "fixed" {
+		t.Fatalf("expected shipping_provider fixed, got %v", result["shipping_provider"])
+	}
+}
+
 func TestMarketplacesPoliciesHandlerAcceptsGet(t *testing.T) {
 	mux := http.NewServeMux()
 	newMarketplacesHandler().Register(mux)
