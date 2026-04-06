@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	pricingports "marketplace-central/apps/server_core/internal/modules/pricing/ports"
 )
 
 const (
 	defaultBaseURL = "https://melhorenvio.com.br/api/v2"
+	defaultTimeout = 10 * time.Second
 	userAgent      = "Marketplace Central"
 )
 
@@ -42,13 +44,17 @@ type Client struct {
 var _ pricingports.FreightQuoter = (*Client)(nil)
 
 func NewClient(tokens tokenGetter) *Client {
-	return NewClientWithBaseURL(tokens, defaultBaseURL)
+	return newClient(tokens, defaultBaseURL, &http.Client{Timeout: defaultTimeout})
 }
 
 func NewClientWithBaseURL(tokens tokenGetter, baseURL string) *Client {
+	return newClient(tokens, baseURL, &http.Client{})
+}
+
+func newClient(tokens tokenGetter, baseURL string, httpClient *http.Client) *Client {
 	return &Client{
 		tokens:     tokens,
-		httpClient: &http.Client{},
+		httpClient: httpClient,
 		baseURL:    baseURL,
 	}
 }
@@ -122,35 +128,39 @@ func (c *Client) QuoteFreight(ctx context.Context, req pricingports.FreightReque
 	}
 
 	var options []struct {
-		CustomPrice float64 `json:"custom_price"`
-		Price       float64 `json:"price"`
-		Error       any     `json:"error"`
+		CustomPrice float64         `json:"custom_price"`
+		Price       float64         `json:"price"`
+		Error       json.RawMessage `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&options); err != nil {
 		return nil, fmt.Errorf("melhorenvio decode response: %w", err)
 	}
 
-	lowestPrice := -1.0
+	lowestPrice := 0.0
+	foundQuote := false
 	for _, option := range options {
-		if option.Error != nil {
+		hasError, err := hasQuoteError(option.Error)
+		if err != nil {
+			return nil, fmt.Errorf("melhorenvio parse option error: %w", err)
+		}
+		if hasError {
 			continue
 		}
 
 		selectedPrice := option.CustomPrice
-		if selectedPrice == 0 {
+		if selectedPrice == 0 && option.Price > 0 {
 			selectedPrice = option.Price
 		}
-		if selectedPrice == 0 {
-			continue
-		}
-		if lowestPrice < 0 || selectedPrice < lowestPrice {
+
+		if !foundQuote || selectedPrice < lowestPrice {
 			lowestPrice = selectedPrice
+			foundQuote = true
 		}
 	}
 
 	results := make(map[string]pricingports.FreightResult, len(req.Products))
 	for _, product := range req.Products {
-		if lowestPrice < 0 {
+		if !foundQuote {
 			results[product.ProductID] = pricingports.FreightResult{Amount: 0, Source: "me_error"}
 			continue
 		}
@@ -168,4 +178,17 @@ func stripNonDigits(value string) string {
 		}
 	}
 	return string(buf)
+}
+
+func hasQuoteError(raw json.RawMessage) (bool, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return false, nil
+	}
+
+	var message string
+	if err := json.Unmarshal(raw, &message); err == nil {
+		return message != "", nil
+	}
+
+	return true, nil
 }
