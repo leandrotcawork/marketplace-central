@@ -1,5 +1,5 @@
 # System Pulse — Marketplace Central
-> Last updated: 2026-04-04 | Session: #4
+> Last updated: 2026-04-06 | Session: #5
 
 ## Project Identity
 
@@ -65,6 +65,7 @@ packages/
   feature-marketplaces/    # Marketplace settings page
   feature-products/        # Products page
   feature-simulator/       # Pricing simulator page
+  feature-classifications/ # Classifications management page
 
 contracts/api/             # OpenAPI spec (source of truth for HTTP)
 docs/marketplaces/         # Per-marketplace API reference docs
@@ -103,29 +104,29 @@ docs/marketplaces/         # Per-marketplace API reference docs
 
 ## Current Phase
 
-**Phase 1 — Foundation Wiring** (active)
+**Phase 1 — Foundation Wiring** (active, near complete)
 
 Goal: Make 3 modules functional end-to-end with real database operations.
 
 Completed this phase:
 - Both pgxpool instances wired (pgdb for MPC, msdb for MetalShopping read-only)
-- Catalog module: MetalShopping reader adapter + EnrichmentRepository (Postgres)
-- Classifications module: full CRUD (domain → application → adapters → transport)
-- Pricing module: slog logging + PRICING_* structured error codes
+- Catalog, Classifications, Pricing modules: full CRUD, slog, structured error codes
 - SDK extended: 11 new methods + CatalogProduct, Classification, ProductEnrichment types
-- ProductPicker shared component + Products/VTEX Publisher/Simulator pages rewired
-- Migrations 0006–0007 applied to mpc schema (12 tables verified)
+- UX redesign: PaginatedTable + DetailPanel shared primitives; full rewrites of Products, VTEX Publisher, Pricing Simulator pages (84/84 tests)
+- Classifications page (`/classifications`): two-column layout, full product table with checkboxes, create/delete — `packages/feature-classifications`
+- User's 3 active classifications: Ativos (27 products), Descontinuados (23), Encomenda (19) = 69 total
+- Windows dev tooling: `run-server.ps1`, `Makefile` (`make server`), `.vscode/tasks.json`
 
 Still pending:
 - Migration runner (cmd/migrate/main.go — still a stub, low priority)
-- Smoke test remaining pages in browser: Marketplace Settings forms, Pricing Simulator, VTEX Publisher publish flow
+- Smoke test in browser: Marketplace Settings forms, Pricing Simulator, VTEX Publisher end-to-end
 
 **Recent completed work (from git):**
-- Feat: POST /connectors/vtex/validate-connection — full hexagonal stack, integration-tested, live VTEX 200 confirmed
-- Fix: VTEX validation endpoint path corrected (catalog_system/pub, not catalog/pvt)
-- Fix: .claude/settings.local.json untracked from git
-- Fix: marketplaces adapter ON CONFLICT targets and default_shipping_amount column name
+- Feat: Classifications management page — new `feature-classifications` package, `/classifications` route
+- Feat: UX redesign (Plans 1–4) — PaginatedTable, DetailPanel, sticky bars, slide-over panels
+- Feat: POST /connectors/vtex/validate-connection — full hexagonal stack, live VTEX 200 confirmed
 - Fix: CORS middleware added — browser can now reach the API from localhost:5173
+- Fix: marketplaces adapter ON CONFLICT targets and default_shipping_amount column name
 
 ---
 
@@ -158,7 +159,10 @@ Note: No `0002` file exists — was merged/removed as part of Phase 0 cleanup.
 | `apps/server_core/internal/modules/classifications/` | Classifications module (full CRUD) |
 | `apps/server_core/migrations/` | Sequential SQL migrations (0001–0007) |
 | `packages/sdk-runtime/src/index.ts` | TypeScript API client |
-| `packages/ui/src/ProductPicker.tsx` | Shared product picker component |
+| `packages/ui/src/PaginatedTable.tsx` | Shared paginated table with render props |
+| `packages/ui/src/DetailPanel.tsx` | Shared slide-over panel |
+| `packages/feature-classifications/src/ClassificationsPage.tsx` | Classifications management UI |
+| `run-server.ps1` | PowerShell script — loads .env (CRLF-safe) + starts Go server |
 | `.env` | Local env vars (MS_DATABASE_URL, MC_DATABASE_URL, VTEX_*) |
 
 ---

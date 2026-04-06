@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Backend",
+      "type": "shell",
+      "command": ".\\run-server.ps1",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "Run Frontend",
+      "type": "shell",
+      "command": "npm run dev --workspace=apps/web",
+      "presentation": { "reveal": "always", "panel": "new" }
+    }
+  ]
+}
