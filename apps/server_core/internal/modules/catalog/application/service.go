@@ -86,6 +86,9 @@ func (s Service) applyEnrichments(ctx context.Context, products []domain.Product
 		if e.LengthCM != nil {
 			products[i].LengthCM = e.LengthCM
 		}
+		if e.WeightG != nil {
+			products[i].WeightG = e.WeightG
+		}
 		if e.SuggestedPriceAmount != nil {
 			products[i].SuggestedPrice = e.SuggestedPriceAmount
 		}
