@@ -24,6 +24,7 @@ type CreatePolicyInput struct {
 	MinMarginPercent   float64
 	SLAQuestionMinutes int
 	SLADispatchHours   int
+	ShippingProvider   string
 }
 
 type Service struct {
@@ -71,6 +72,7 @@ func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (dom
 		MinMarginPercent:   input.MinMarginPercent,
 		SLAQuestionMinutes: input.SLAQuestionMinutes,
 		SLADispatchHours:   input.SLADispatchHours,
+		ShippingProvider:   input.ShippingProvider,
 	}
 	return policy, s.repo.SavePolicy(ctx, policy)
 }

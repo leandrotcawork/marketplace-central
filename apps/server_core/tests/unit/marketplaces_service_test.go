@@ -31,7 +31,7 @@ func (s *marketplaceRepoStub) ListPolicies(context.Context) ([]domain.Policy, er
 	return nil, nil
 }
 
-func TestCreateMarketplacePolicyPersistsCommissionAndSla(t *testing.T) {
+func TestCreateMarketplacePolicyPersistsCommissionSlaAndShippingProvider(t *testing.T) {
 	repo := &marketplaceRepoStub{}
 	service := application.NewService(repo, "tenant_default")
 
@@ -54,6 +54,7 @@ func TestCreateMarketplacePolicyPersistsCommissionAndSla(t *testing.T) {
 		MinMarginPercent:   12,
 		SLAQuestionMinutes: 60,
 		SLADispatchHours:   24,
+		ShippingProvider:   "melhor_envio",
 	})
 	if err != nil {
 		t.Fatalf("unexpected policy error: %v", err)
@@ -61,5 +62,11 @@ func TestCreateMarketplacePolicyPersistsCommissionAndSla(t *testing.T) {
 
 	if policy.CommissionPercent != 16 {
 		t.Fatalf("expected 16, got %v", policy.CommissionPercent)
+	}
+	if policy.ShippingProvider != "melhor_envio" {
+		t.Fatalf("expected shipping provider melhor_envio, got %q", policy.ShippingProvider)
+	}
+	if repo.policy.ShippingProvider != "melhor_envio" {
+		t.Fatalf("expected saved shipping provider melhor_envio, got %q", repo.policy.ShippingProvider)
 	}
 }

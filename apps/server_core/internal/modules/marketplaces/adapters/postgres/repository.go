@@ -38,8 +38,8 @@ func (r *Repository) SavePolicy(ctx context.Context, policy domain.Policy) error
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO marketplace_pricing_policies (
 			tenant_id, policy_id, account_id, commission_percent, fixed_fee_amount,
-			default_shipping_amount, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			default_shipping_amount, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours, shipping_provider
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (policy_id) DO UPDATE SET
 			account_id = EXCLUDED.account_id,
 			commission_percent = EXCLUDED.commission_percent,
@@ -49,9 +49,10 @@ func (r *Repository) SavePolicy(ctx context.Context, policy domain.Policy) error
 			min_margin_percent = EXCLUDED.min_margin_percent,
 			sla_question_minutes = EXCLUDED.sla_question_minutes,
 			sla_dispatch_hours = EXCLUDED.sla_dispatch_hours,
+			shipping_provider = EXCLUDED.shipping_provider,
 			updated_at = now()
 	`, policy.TenantID, policy.PolicyID, policy.AccountID, policy.CommissionPercent, policy.FixedFeeAmount,
-		policy.DefaultShipping, policy.TaxPercent, policy.MinMarginPercent, policy.SLAQuestionMinutes, policy.SLADispatchHours)
+		policy.DefaultShipping, policy.TaxPercent, policy.MinMarginPercent, policy.SLAQuestionMinutes, policy.SLADispatchHours, policy.ShippingProvider)
 	return err
 }
 
@@ -81,7 +82,7 @@ func (r *Repository) ListAccounts(ctx context.Context) ([]domain.Account, error)
 func (r *Repository) ListPolicies(ctx context.Context) ([]domain.Policy, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT tenant_id, policy_id, account_id, commission_percent, fixed_fee_amount,
-		       default_shipping_amount, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours
+		       default_shipping_amount, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours, shipping_provider
 		FROM marketplace_pricing_policies
 		WHERE tenant_id = $1
 		ORDER BY policy_id
@@ -95,7 +96,7 @@ func (r *Repository) ListPolicies(ctx context.Context) ([]domain.Policy, error) 
 	for rows.Next() {
 		var p domain.Policy
 		if err := rows.Scan(&p.TenantID, &p.PolicyID, &p.AccountID, &p.CommissionPercent, &p.FixedFeeAmount,
-			&p.DefaultShipping, &p.TaxPercent, &p.MinMarginPercent, &p.SLAQuestionMinutes, &p.SLADispatchHours); err != nil {
+			&p.DefaultShipping, &p.TaxPercent, &p.MinMarginPercent, &p.SLAQuestionMinutes, &p.SLADispatchHours, &p.ShippingProvider); err != nil {
 			return nil, err
 		}
 		policies = append(policies, p)

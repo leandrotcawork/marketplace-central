@@ -120,7 +120,7 @@ func TestMarketplacesPoliciesHandlerPostReturnsPolicy(t *testing.T) {
 	mux := http.NewServeMux()
 	newMarketplacesHandler().Register(mux)
 
-	body := `{"policy_id":"pol-1","account_id":"acct-1","commission_percent":0.16,"fixed_fee_amount":5.0,"default_shipping":10.0,"min_margin_percent":0.10,"sla_question_minutes":60,"sla_dispatch_hours":24}`
+	body := `{"policy_id":"pol-1","account_id":"acct-1","commission_percent":0.16,"fixed_fee_amount":5.0,"default_shipping":10.0,"min_margin_percent":0.10,"sla_question_minutes":60,"sla_dispatch_hours":24,"shipping_provider":"marketplace"}`
 	req := httptest.NewRequest(http.MethodPost, "/marketplaces/policies", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -135,6 +135,9 @@ func TestMarketplacesPoliciesHandlerPostReturnsPolicy(t *testing.T) {
 	}
 	if result["policy_id"] != "pol-1" {
 		t.Fatalf("expected policy_id pol-1, got %v", result["policy_id"])
+	}
+	if result["shipping_provider"] != "marketplace" {
+		t.Fatalf("expected shipping_provider marketplace, got %v", result["shipping_provider"])
 	}
 }
 
