@@ -61,6 +61,6 @@ type PolicyProvider interface {
 
 // FreightQuoter calculates freight costs via an external service.
 type FreightQuoter interface {
-	IsConnected(ctx context.Context) bool
+	IsConnected(ctx context.Context) (bool, error)
 	QuoteFreight(ctx context.Context, req FreightRequest) (map[string]FreightResult, error)
 }
