@@ -11,4 +11,5 @@ type Policy struct {
 	MinMarginPercent   float64 `json:"min_margin_percent"`
 	SLAQuestionMinutes int     `json:"sla_question_minutes"`
 	SLADispatchHours   int     `json:"sla_dispatch_hours"`
+	ShippingProvider   string  `json:"shipping_provider"` // "fixed" | "melhor_envio" | "marketplace"
 }
