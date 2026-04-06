@@ -76,6 +76,8 @@ export interface CreateMarketplaceAccountRequest {
   connection_mode: string;
 }
 
+export type ShippingProvider = "fixed" | "melhor_envio" | "marketplace";
+
 export interface MarketplacePolicy {
   policy_id: string;
   tenant_id: string;
@@ -87,6 +89,7 @@ export interface MarketplacePolicy {
   min_margin_percent: number;
   sla_question_minutes: number;
   sla_dispatch_hours: number;
+  shipping_provider: ShippingProvider;
 }
 
 export interface CreateMarketplacePolicyRequest {
@@ -98,6 +101,7 @@ export interface CreateMarketplacePolicyRequest {
   min_margin_percent: number;
   sla_question_minutes: number;
   sla_dispatch_hours: number;
+  shipping_provider?: ShippingProvider;
 }
 
 export interface PricingSimulation {

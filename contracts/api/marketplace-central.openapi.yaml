@@ -701,6 +701,7 @@ components:
         - min_margin_percent
         - sla_question_minutes
         - sla_dispatch_hours
+        - shipping_provider
       properties:
         policy_id:
           type: string
@@ -728,6 +729,11 @@ components:
           type: integer
         sla_dispatch_hours:
           type: integer
+        shipping_provider:
+          type: string
+          enum: [fixed, melhor_envio, marketplace]
+          default: fixed
+          description: "Normalized by the backend. Blank input defaults to fixed."
     CreateMarketplacePolicyRequest:
       type: object
       required:
@@ -760,6 +766,11 @@ components:
           type: integer
         sla_dispatch_hours:
           type: integer
+        shipping_provider:
+          type: string
+          enum: [fixed, melhor_envio, marketplace]
+          default: fixed
+          description: "Optional. The backend trims whitespace, lowercases the value, and defaults blank/omitted input to fixed."
     PricingSimulation:
       type: object
       required:
