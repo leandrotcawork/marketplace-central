@@ -1,0 +1,17 @@
+{
+  "name": "@marketplace-central/feature-classifications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@marketplace-central/ui": "*",
+    "@marketplace-central/sdk-runtime": "*",
+    "lucide-react": "*",
+    "react": "*"
+  },
+  "devDependencies": {
+    "@testing-library/react": "*",
+    "vitest": "*"
+  }
+}
