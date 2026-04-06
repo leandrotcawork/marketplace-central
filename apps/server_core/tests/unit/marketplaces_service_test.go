@@ -70,3 +70,29 @@ func TestCreateMarketplacePolicyPersistsCommissionSlaAndShippingProvider(t *test
 		t.Fatalf("expected saved shipping provider melhor_envio, got %q", repo.policy.ShippingProvider)
 	}
 }
+
+func TestCreateMarketplacePolicyDefaultsShippingProviderToFixed(t *testing.T) {
+	repo := &marketplaceRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	policy, err := service.CreatePolicy(context.Background(), application.CreatePolicyInput{
+		PolicyID:           "policy-fixed-default",
+		AccountID:          "mercado-livre-main",
+		CommissionPercent:  16,
+		FixedFeeAmount:     0,
+		DefaultShipping:    27.9,
+		MinMarginPercent:   12,
+		SLAQuestionMinutes: 60,
+		SLADispatchHours:   24,
+	})
+	if err != nil {
+		t.Fatalf("unexpected policy error: %v", err)
+	}
+
+	if policy.ShippingProvider != "fixed" {
+		t.Fatalf("expected default shipping provider fixed, got %q", policy.ShippingProvider)
+	}
+	if repo.policy.ShippingProvider != "fixed" {
+		t.Fatalf("expected saved default shipping provider fixed, got %q", repo.policy.ShippingProvider)
+	}
+}

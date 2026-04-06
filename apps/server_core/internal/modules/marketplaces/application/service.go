@@ -61,6 +61,10 @@ func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (dom
 	if input.SLAQuestionMinutes <= 0 || input.SLADispatchHours <= 0 {
 		return domain.Policy{}, errors.New("MARKETPLACES_POLICY_INVALID")
 	}
+	shippingProvider := input.ShippingProvider
+	if shippingProvider == "" {
+		shippingProvider = "fixed"
+	}
 	policy := domain.Policy{
 		PolicyID:           input.PolicyID,
 		TenantID:           s.tenantID,
@@ -72,7 +76,7 @@ func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (dom
 		MinMarginPercent:   input.MinMarginPercent,
 		SLAQuestionMinutes: input.SLAQuestionMinutes,
 		SLADispatchHours:   input.SLADispatchHours,
-		ShippingProvider:   input.ShippingProvider,
+		ShippingProvider:   shippingProvider,
 	}
 	return policy, s.repo.SavePolicy(ctx, policy)
 }
