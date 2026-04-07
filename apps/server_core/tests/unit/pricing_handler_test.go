@@ -147,3 +147,38 @@ func TestPricingBatchEndpointReturnsResults(t *testing.T) {
 		t.Fatalf("expected 1 item, got %d", len(resp.Items))
 	}
 }
+
+func TestPricingBatchEndpointRejectsEmptyProductIDs(t *testing.T) {
+	stubProducts := &stubProductProvider{products: []pricingports.BatchProduct{}}
+	stubPolicies := &stubPolicyProvider{policies: []pricingports.BatchPolicy{}}
+	stubFreight := &stubFreightQuoter{connected: false}
+	batch := application.NewBatchOrchestrator(stubProducts, stubPolicies, stubFreight, "t1")
+
+	repo := &pricingRepoStub{}
+	svc := application.NewService(repo, "t1")
+	handler := transport.NewHandler(svc, batch)
+
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	body := `{"product_ids":[],"policy_ids":["pol1"],"origin_cep":"01310100","destination_cep":"30140071","price_source":"my_price"}`
+	req := httptest.NewRequest(http.MethodPost, "/pricing/simulations/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var bodyResp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&bodyResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	errObj, ok := bodyResp["error"].(map[string]any)
+	if !ok {
+		t.Fatal("expected error object in response")
+	}
+	if errObj["code"] != "PRICING_REQUEST_INVALID" {
+		t.Fatalf("expected PRICING_REQUEST_INVALID, got %v", errObj["code"])
+	}
+}

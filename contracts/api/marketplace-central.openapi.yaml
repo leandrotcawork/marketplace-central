@@ -378,6 +378,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /pricing/simulations/batch:
+    post:
+      summary: Run batch pricing simulation
+      operationId: runPricingBatchSimulation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunPricingBatchRequest'
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPricingBatchResponse'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /connectors/vtex/validate-connection:
     post:
       summary: Validate VTEX API credentials
@@ -888,6 +917,52 @@ components:
           format: double
         status:
           type: string
+    BatchSimulationItem:
+      type: object
+      required:
+        - product_id
+        - policy_id
+        - selling_price
+        - cost_amount
+        - commission_amount
+        - freight_amount
+        - fixed_fee_amount
+        - margin_amount
+        - margin_percent
+        - status
+        - freight_source
+      properties:
+        product_id:
+          type: string
+        policy_id:
+          type: string
+        selling_price:
+          type: number
+          format: double
+        cost_amount:
+          type: number
+          format: double
+        commission_amount:
+          type: number
+          format: double
+        freight_amount:
+          type: number
+          format: double
+        fixed_fee_amount:
+          type: number
+          format: double
+        margin_amount:
+          type: number
+          format: double
+        margin_percent:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [healthy, warning, critical]
+        freight_source:
+          type: string
+          enum: [melhor_envio, fixed, no_dimensions, me_error, me_not_connected]
     RunPricingSimulationRequest:
       type: object
       required:
@@ -925,6 +1000,45 @@ components:
         min_margin_percent:
           type: number
           format: double
+    RunPricingBatchRequest:
+      type: object
+      required:
+        - product_ids
+        - policy_ids
+        - origin_cep
+        - destination_cep
+        - price_source
+      properties:
+        product_ids:
+          type: array
+          items:
+            type: string
+        policy_ids:
+          type: array
+          items:
+            type: string
+        origin_cep:
+          type: string
+        destination_cep:
+          type: string
+        price_source:
+          type: string
+          enum: [my_price, suggested_price]
+        price_overrides:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: "Optional. Map of productID::policyID to override price."
+    RunPricingBatchResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchSimulationItem'
     ListCatalogProductsResponse:
       type: object
       required:

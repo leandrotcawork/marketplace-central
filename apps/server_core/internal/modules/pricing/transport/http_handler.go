@@ -136,6 +136,11 @@ func (h Handler) handleBatch(w http.ResponseWriter, r *http.Request) {
 		writePricingError(w, http.StatusBadRequest, "PRICING_REQUEST_INVALID", "malformed request body")
 		return
 	}
+	if len(req.ProductIDs) == 0 {
+		slog.Info("pricing.batch", "action", "validate", "result", "400", "duration_ms", time.Since(start).Milliseconds())
+		writePricingError(w, http.StatusBadRequest, "PRICING_REQUEST_INVALID", "product_ids must not be empty")
+		return
+	}
 	if req.PriceSource == "" {
 		req.PriceSource = "my_price"
 	}
