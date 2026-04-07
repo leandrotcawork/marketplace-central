@@ -1,147 +1,148 @@
-import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PricingSimulatorPage } from "./PricingSimulatorPage";
-import type {
-  CatalogProduct,
-  TaxonomyNode,
-  Classification,
-  MarketplacePolicy,
-  PricingSimulation,
-} from "@marketplace-central/sdk-runtime";
+import type { SimulatorClient } from "./PricingSimulatorPage";
 
-const makeProduct = (i: number): CatalogProduct => ({
-  product_id: `p${i}`,
-  sku: `SKU-${i}`,
-  name: `Product ${i}`,
-  description: "",
-  brand_name: "Brand X",
-  status: "active",
-  cost_amount: 10,
-  price_amount: 20,
-  stock_quantity: 100,
-  ean: `EAN${i}`,
-  reference: `REF${i}`,
-  taxonomy_node_id: "tax1",
-  taxonomy_name: "Category A",
-  suggested_price: 25,
-  height_cm: null,
-  width_cm: null,
-  length_cm: null,
+const makeProduct = (id: string, sku: string) => ({
+  product_id: id, sku, name: `Product ${sku}`,
+  description: "", brand_name: "", status: "active",
+  cost_amount: 80, price_amount: 150, stock_quantity: 10,
+  ean: "", reference: "", taxonomy_node_id: "t1", taxonomy_name: "Category",
+  suggested_price: null, height_cm: 10, width_cm: 15, length_cm: 20, weight_g: 500,
 });
 
-const products: CatalogProduct[] = Array.from({ length: 60 }, (_, i) => makeProduct(i));
+const makePolicy = (id: string) => ({
+  policy_id: id, tenant_id: "t1", account_id: "acc1",
+  commission_percent: 0.16, fixed_fee_amount: 0,
+  default_shipping: 20, tax_percent: 0, min_margin_percent: 0.10,
+  sla_question_minutes: 60, sla_dispatch_hours: 24, shipping_provider: "fixed",
+});
 
-const policies: MarketplacePolicy[] = [
-  {
-    policy_id: "pol1",
-    tenant_id: "t1",
-    account_id: "acc1",
-    commission_percent: 0.16,
-    fixed_fee_amount: 0,
-    default_shipping: 0,
-    tax_percent: 0,
-    min_margin_percent: 0.02,
-    sla_question_minutes: 60,
-    sla_dispatch_hours: 24,
-  },
-];
+const makeClassification = (id: string, name: string, productIds: string[]) => ({
+  classification_id: id, tenant_id: "t1", name,
+  ai_context: "", product_ids: productIds, product_count: productIds.length,
+  created_at: "", updated_at: "",
+});
 
-const mockSimResult: PricingSimulation = {
-  simulation_id: "sim1",
-  product_id: "p0",
-  account_id: "acc1",
-  base_price_amount: 20,
-  cost_amount: 10,
-  commission_amount: 3.2,
-  fixed_fee_amount: 0,
-  shipping_amount: 0,
-  tax_amount: 0,
-  margin_amount: 6.8,
-  margin_percent: 0.34,
-  status: "healthy",
-  created_at: "",
-};
+const makeBatchItem = (productId: string, policyId: string) => ({
+  product_id: productId, policy_id: policyId,
+  selling_price: 150, cost_amount: 80, commission_amount: 24,
+  freight_amount: 20, fixed_fee_amount: 0,
+  margin_amount: 26, margin_percent: 0.1733, status: "healthy",
+  freight_source: "fixed",
+});
 
-function makeClient(overrides = {}) {
+function makeClient(overrides: Partial<SimulatorClient> = {}): SimulatorClient {
   return {
-    listCatalogProducts: vi.fn().mockResolvedValue({ items: products }),
-    listTaxonomyNodes: vi.fn().mockResolvedValue({ items: [] as TaxonomyNode[] }),
-    listClassifications: vi.fn().mockResolvedValue({ items: [] as Classification[] }),
-    listMarketplacePolicies: vi.fn().mockResolvedValue({ items: policies }),
-    runPricingSimulation: vi.fn().mockResolvedValue(mockSimResult),
+    listCatalogProducts: vi.fn().mockResolvedValue({ items: [makeProduct("p1", "SKU-001"), makeProduct("p2", "SKU-002")] }),
+    listClassifications: vi.fn().mockResolvedValue({ items: [makeClassification("cls1", "Ativos", ["p1", "p2"])] }),
+    listMarketplacePolicies: vi.fn().mockResolvedValue({ items: [makePolicy("pol1")] }),
+    listTaxonomyNodes: vi.fn().mockResolvedValue({ items: [] }),
+    runBatchSimulation: vi.fn().mockResolvedValue({ items: [makeBatchItem("p1", "pol1"), makeBatchItem("p2", "pol1")] }),
+    getMelhorEnvioStatus: vi.fn().mockResolvedValue({ connected: false }),
     ...overrides,
   };
 }
 
 describe("PricingSimulatorPage", () => {
-  it("renders policy picker and Run button before table loads", async () => {
+  it("renders command bar with CEP inputs and Run button disabled initially", async () => {
     render(<PricingSimulatorPage client={makeClient()} />);
-    expect(screen.getByLabelText(/marketplace policy/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /run simulation/i })).toBeInTheDocument();
-  });
-
-  it("renders only 25 products per page (not all 60)", async () => {
-    render(<PricingSimulatorPage client={makeClient()} />);
-    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
-    expect(screen.getByText("Product 24")).toBeInTheDocument();
-    expect(screen.queryByText("Product 25")).not.toBeInTheDocument();
-  });
-
-  it("Run Simulation is disabled until product + policy selected", async () => {
-    render(<PricingSimulatorPage client={makeClient()} />);
-    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
+    await screen.findByText("Product SKU-001");
+    expect(screen.getByLabelText(/origin cep/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/destination cep/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /run simulation/i })).toBeDisabled();
   });
 
-  it("Run Simulation enables after selecting product and policy", async () => {
+  it("Run button stays disabled when no products are selected", async () => {
     render(<PricingSimulatorPage client={makeClient()} />);
-    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    expect(screen.getByRole("button", { name: /run simulation/i })).toBeDisabled();
+  });
+
+  it("Run button enables when products selected and CEPs filled", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-001/i }));
     expect(screen.getByRole("button", { name: /run simulation/i })).not.toBeDisabled();
   });
 
-  it("calls runPricingSimulation for each selected product", async () => {
+  it("clicking a classification pill selects all its products", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await screen.findByText("Ativos");
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    expect(screen.getByText(/2 selected/i)).toBeInTheDocument();
+  });
+
+  it("clicking classification pill twice deselects all its products", async () => {
+    render(<PricingSimulatorPage client={makeClient()} />);
+    await screen.findByText("Ativos");
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    expect(screen.queryByText(/2 selected/i)).not.toBeInTheDocument();
+  });
+
+  it("running simulation renders results and summary banner", async () => {
     const client = makeClient();
     render(<PricingSimulatorPage client={client} />);
-    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-    await waitFor(() =>
-      expect(client.runPricingSimulation).toHaveBeenCalledWith(
-        expect.objectContaining({ product_id: "p0", account_id: "acc1" })
-      )
-    );
+    await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
+    expect(await screen.findByText(/avg/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^Healthy:/i)).toBeInTheDocument();
   });
 
-  it("shows inline simulation results in table after run", async () => {
-    render(<PricingSimulatorPage client={makeClient()} />);
-    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+  it("results show collapsed policy columns by default", async () => {
+    const client = makeClient();
+    render(<PricingSimulatorPage client={client} />);
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-    await waitFor(() => expect(screen.getAllByText(/34\.0%/).length).toBeGreaterThan(0));
+    await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
+    await screen.findByText("pol1");
+    expect(screen.queryByText(/commission/i)).not.toBeInTheDocument();
   });
 
-  it("shows summary banner after simulation", async () => {
-    render(<PricingSimulatorPage client={makeClient()} />);
-    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+  it("expanding a policy column reveals detail columns", async () => {
+    const client = makeClient();
+    render(<PricingSimulatorPage client={client} />);
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-    await waitFor(() => expect(screen.getByText(/1 product/i)).toBeInTheDocument());
-    expect(screen.getByText(/avg margin/i)).toBeInTheDocument();
+    await screen.findByText("pol1");
+    fireEvent.click(screen.getByRole("button", { name: /expand pol1/i }));
+    expect(await screen.findByText(/commission/i)).toBeInTheDocument();
+    expect(screen.getByText(/freight/i)).toBeInTheDocument();
   });
 
-  it("clears results when policy changes", async () => {
-    render(<PricingSimulatorPage client={makeClient()} />);
-    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "pol1" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /select product 0/i }));
+  it("shows load error when data fetch fails", async () => {
+    const client = makeClient({
+      listCatalogProducts: vi.fn().mockRejectedValue(new Error("network error")),
+    });
+    render(<PricingSimulatorPage client={client} />);
+    expect(await screen.findByText(/failed to load/i)).toBeInTheDocument();
+  });
+
+  it("shows run error when batch simulation fails", async () => {
+    const client = makeClient({
+      runBatchSimulation: vi.fn().mockRejectedValue({ error: { message: "batch failed" } }),
+    });
+    render(<PricingSimulatorPage client={client} />);
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-    await waitFor(() => expect(screen.getAllByText(/34\.0%/).length).toBeGreaterThan(0));
-    fireEvent.change(screen.getByLabelText(/marketplace policy/i), { target: { value: "" } });
-    expect(screen.queryByText(/34\.0%/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/batch failed/i)).toBeInTheDocument();
   });
 });
