@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,11 +12,11 @@ import (
 )
 
 type oauthTestStore struct {
-	token      string
-	getErr     error
-	saveErr    error
-	saveCtx    context.Context
-	saveToken  string
+	token       string
+	getErr      error
+	saveErr     error
+	saveCtx     context.Context
+	saveToken   string
 	saveRefresh string
 }
 
@@ -269,7 +268,7 @@ func TestOAuthHandlerHandleStatusSurfacesStoreError(t *testing.T) {
 	store := &oauthTestStore{getErr: errors.New("db unavailable")}
 	h := newOAuthHandlerForTest(store, &http.Client{})
 
-	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/auth/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/status", nil)
 	rec := httptest.NewRecorder()
 
 	h.HandleStatus(rec, req)
@@ -282,3 +281,91 @@ func TestOAuthHandlerHandleStatusSurfacesStoreError(t *testing.T) {
 	}
 }
 
+func TestOAuthHandlerHandleStatusReturnsFalseWhenServiceCheckFails(t *testing.T) {
+	store := &oauthTestStore{token: "token-123"}
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Body:       ioNopCloser{Reader: bytes.NewReader([]byte(`{}`))},
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	h := newOAuthHandlerForTest(store, client)
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/status", nil)
+	rec := httptest.NewRecorder()
+
+	h.HandleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var payload map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["connected"] {
+		t.Fatal("expected connected=false")
+	}
+}
+
+func TestOAuthHandlerHandleStatusReturnsTrueWhenServiceCheckSucceeds(t *testing.T) {
+	store := &oauthTestStore{token: "token-123"}
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/api/v2/me/shipment/services" {
+			t.Fatalf("expected services path, got %q", req.URL.Path)
+		}
+		if got := req.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected bearer token header, got %q", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       ioNopCloser{Reader: bytes.NewReader([]byte(`{}`))},
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	h := newOAuthHandlerForTest(store, client)
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/status", nil)
+	rec := httptest.NewRecorder()
+
+	h.HandleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var payload map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !payload["connected"] {
+		t.Fatal("expected connected=true")
+	}
+}
+
+func TestOAuthHandlerHandleCallbackSurfacesTokenExchangeFailure(t *testing.T) {
+	store := &oauthTestStore{}
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusBadGateway,
+				Body:       ioNopCloser{Reader: bytes.NewReader([]byte(`{"error":"bad_gateway"}`))},
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	h := newOAuthHandlerForTest(store, client)
+
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/auth/callback?code=abc&state=expected", nil)
+	req.AddCookie(&http.Cookie{Name: meOAuthStateCookieName, Value: "expected"})
+	rec := httptest.NewRecorder()
+
+	h.HandleCallback(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
+	}
+	if code := errorCodeFromResponse(t, rec.Body); code != "CONNECTORS_ME_TOKEN_EXCHANGE_FAILED" {
+		t.Fatalf("expected CONNECTORS_ME_TOKEN_EXCHANGE_FAILED, got %q", code)
+	}
+}

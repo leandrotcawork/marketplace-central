@@ -44,6 +44,18 @@ func (r stubCatalogReader) ListTaxonomyNodes(_ context.Context) ([]catalogdomain
 	return nil, nil
 }
 
+func (r stubCatalogReader) ListProductsByIDs(_ context.Context, productIDs []string) ([]catalogdomain.Product, error) {
+	result := make([]catalogdomain.Product, 0, len(productIDs))
+	seen := make(map[string]struct{}, len(productIDs))
+	for _, id := range productIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+	}
+	return result, nil
+}
+
 // stubCatalogEnrichments satisfies catalog ports.EnrichmentStore with in-memory no-ops.
 type stubCatalogEnrichments struct{}
 
@@ -73,6 +85,18 @@ func (r stubMarketplacesRepo) ListAccounts(_ context.Context) ([]marketplacesdom
 }
 func (r stubMarketplacesRepo) ListPolicies(_ context.Context) ([]marketplacesdomain.Policy, error) {
 	return nil, nil
+}
+
+func (r stubMarketplacesRepo) ListPoliciesByIDs(_ context.Context, policyIDs []string) ([]marketplacesdomain.Policy, error) {
+	result := make([]marketplacesdomain.Policy, 0, len(policyIDs))
+	seen := make(map[string]struct{}, len(policyIDs))
+	for _, id := range policyIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+	}
+	return result, nil
 }
 
 // stubPricingRepo satisfies pricing ports.Repository with in-memory no-ops.
@@ -199,6 +223,8 @@ func (a stubVTEXAdapter) ValidateConnection(_ context.Context, _ string) error {
 func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 	t.Setenv("VTEX_APP_KEY", "test-key")
 	t.Setenv("VTEX_APP_TOKEN", "test-token")
+	t.Setenv("ME_CLIENT_ID", "test-client")
+	t.Setenv("ME_CLIENT_SECRET", "test-secret")
 
 	mux := http.NewServeMux()
 
@@ -220,11 +246,11 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 
 	// /pricing/simulations
 	pricingSvc := pricingapp.NewService(stubPricingRepo{}, "tenant_default")
-	pricingtransport.NewHandler(pricingSvc).Register(mux)
+	pricingtransport.NewHandler(pricingSvc, nil).Register(mux)
 
 	// /connectors/vtex/publish, /connectors/vtex/publish/batch/...
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(stubConnectorsRepo{}, stubVTEXAdapter{}, "tenant_default")
-	connectorstransport.NewHandler(connectorsOrch).Register(mux)
+	connectorstransport.NewHandler(connectorsOrch, nil).Register(mux)
 
 	cases := []string{
 		"/healthz",
@@ -233,9 +259,13 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 		"/marketplaces/accounts",
 		"/marketplaces/policies",
 		"/pricing/simulations",
+		"/pricing/simulations/batch",
 		"/connectors/vtex/publish",
 		"/connectors/vtex/publish/batch/test_batch_123",
 		"/connectors/vtex/validate-connection",
+		"/connectors/melhor-envio/auth/start",
+		"/connectors/melhor-envio/auth/callback",
+		"/connectors/melhor-envio/status",
 	}
 
 	for _, path := range cases {

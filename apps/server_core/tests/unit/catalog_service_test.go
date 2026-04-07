@@ -32,6 +32,27 @@ func (s *productReaderStub) ListTaxonomyNodes(_ context.Context) ([]domain.Taxon
 	return s.taxonomy, s.err
 }
 
+func (s *productReaderStub) ListProductsByIDs(_ context.Context, productIDs []string) ([]domain.Product, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	result := make([]domain.Product, 0, len(productIDs))
+	seen := make(map[string]struct{}, len(productIDs))
+	for _, id := range productIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		for _, p := range s.products {
+			if p.ProductID == id {
+				result = append(result, p)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 // enrichmentStoreStub implements ports.EnrichmentStore for testing.
 type enrichmentStoreStub struct {
 	enrichments map[string]domain.ProductEnrichment
@@ -133,6 +154,35 @@ func TestCatalogServiceAppliesEnrichmentOverlay(t *testing.T) {
 	}
 }
 
+func TestApplyEnrichmentsSetsWeightG(t *testing.T) {
+	reader := &productReaderStub{
+		products: []domain.Product{
+			{ProductID: "p-1", SKU: "SKU-001", Name: "Cuba Inox"},
+		},
+	}
+	manualWeight := 1250.0
+	enrichments := &enrichmentStoreStub{
+		enrichments: map[string]domain.ProductEnrichment{
+			"p-1": {
+				ProductID: "p-1",
+				TenantID:  "tnt_test",
+				WeightG:   &manualWeight,
+			},
+		},
+	}
+	service := application.NewService(reader, enrichments, "tnt_test")
+
+	products, err := service.ListProducts(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(products))
+	}
+	if products[0].WeightG == nil || *products[0].WeightG != manualWeight {
+		t.Fatalf("expected weight_g %v, got %v", manualWeight, products[0].WeightG)
+	}
+}
 
 func TestCatalogServiceFallsBackToShoppingSuggestedPrice(t *testing.T) {
 	shoppingPrice := 150.00

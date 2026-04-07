@@ -123,6 +123,7 @@ func (h Handler) handleUpsertEnrichment(w http.ResponseWriter, r *http.Request) 
 		HeightCM             *float64 `json:"height_cm"`
 		WidthCM              *float64 `json:"width_cm"`
 		LengthCM             *float64 `json:"length_cm"`
+		WeightG              *float64 `json:"weight_g"`
 		SuggestedPriceAmount *float64 `json:"suggested_price_amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -135,6 +136,7 @@ func (h Handler) handleUpsertEnrichment(w http.ResponseWriter, r *http.Request) 
 		HeightCM:             req.HeightCM,
 		WidthCM:              req.WidthCM,
 		LengthCM:             req.LengthCM,
+		WeightG:              req.WeightG,
 		SuggestedPriceAmount: req.SuggestedPriceAmount,
 	}
 	if err := h.Service.UpsertEnrichment(r.Context(), enrichment); err != nil {

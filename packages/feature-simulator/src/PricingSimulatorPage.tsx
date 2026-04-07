@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+﻿import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button, PaginatedTable } from "@marketplace-central/ui";
 import { ToggleLeft, ToggleRight, ChevronRight, ChevronDown } from "lucide-react";
 import type {
@@ -279,7 +279,7 @@ export function PricingSimulatorPage({ client }: Props) {
           <span className="font-medium text-slate-700">
             Avg margin <span className={marginColor(avgMargin)}>{(avgMargin * 100).toFixed(1)}%</span>
           </span>
-          <span className="text-emerald-700">Good: {healthyCount}</span>
+          <span className="text-emerald-700">Healthy: {healthyCount}</span>
           <span className="text-amber-700">Warning: {warningCount}</span>
           {criticalCount > 0 && <span className="text-red-700">Critical: {criticalCount}</span>}
           <button onClick={() => setResults([])} className="ml-auto text-xs text-slate-500 hover:text-slate-700 cursor-pointer">
@@ -451,3 +451,4 @@ export function PricingSimulatorPage({ client }: Props) {
     </div>
   );
 }
+

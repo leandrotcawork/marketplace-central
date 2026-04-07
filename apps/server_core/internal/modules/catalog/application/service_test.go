@@ -19,7 +19,9 @@ func (f *fakeProductReader) ListProducts(context.Context) ([]domain.Product, err
 func (f *fakeProductReader) GetProduct(context.Context, string) (domain.Product, error) {
 	return domain.Product{}, nil
 }
-func (f *fakeProductReader) SearchProducts(context.Context, string) ([]domain.Product, error) { return nil, nil }
+func (f *fakeProductReader) SearchProducts(context.Context, string) ([]domain.Product, error) {
+	return nil, nil
+}
 func (f *fakeProductReader) ListTaxonomyNodes(context.Context) ([]domain.TaxonomyNode, error) {
 	return nil, nil
 }
@@ -48,7 +50,9 @@ type fakeEnrichmentStore struct {
 func (f *fakeEnrichmentStore) GetEnrichment(context.Context, string) (domain.ProductEnrichment, error) {
 	return domain.ProductEnrichment{}, nil
 }
-func (f *fakeEnrichmentStore) UpsertEnrichment(context.Context, domain.ProductEnrichment) error { return nil }
+func (f *fakeEnrichmentStore) UpsertEnrichment(context.Context, domain.ProductEnrichment) error {
+	return nil
+}
 func (f *fakeEnrichmentStore) ListEnrichments(_ context.Context, productIDs []string) (map[string]domain.ProductEnrichment, error) {
 	f.listEnrichmentsCalls++
 	f.listEnrichmentsIDs = append(f.listEnrichmentsIDs, append([]string(nil), productIDs...))

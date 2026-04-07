@@ -33,6 +33,24 @@ func (r *marketplacesRepoStub) ListPolicies(_ context.Context) ([]domain.Policy,
 	return r.policies, nil
 }
 
+func (r *marketplacesRepoStub) ListPoliciesByIDs(_ context.Context, policyIDs []string) ([]domain.Policy, error) {
+	result := make([]domain.Policy, 0, len(policyIDs))
+	seen := make(map[string]struct{}, len(policyIDs))
+	for _, id := range policyIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		for _, p := range r.policies {
+			if p.PolicyID == id {
+				result = append(result, p)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 func newMarketplacesHandler() transport.Handler {
 	repo := &marketplacesRepoStub{}
 	svc := application.NewService(repo, "tenant_default")
@@ -120,7 +138,7 @@ func TestMarketplacesPoliciesHandlerPostReturnsPolicy(t *testing.T) {
 	mux := http.NewServeMux()
 	newMarketplacesHandler().Register(mux)
 
-	body := `{"policy_id":"pol-1","account_id":"acct-1","commission_percent":0.16,"fixed_fee_amount":5.0,"default_shipping":10.0,"min_margin_percent":0.10,"sla_question_minutes":60,"sla_dispatch_hours":24}`
+	body := `{"policy_id":"pol-1","account_id":"acct-1","commission_percent":0.16,"fixed_fee_amount":5.0,"default_shipping":10.0,"min_margin_percent":0.10,"sla_question_minutes":60,"sla_dispatch_hours":24,"shipping_provider":"marketplace"}`
 	req := httptest.NewRequest(http.MethodPost, "/marketplaces/policies", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -135,6 +153,31 @@ func TestMarketplacesPoliciesHandlerPostReturnsPolicy(t *testing.T) {
 	}
 	if result["policy_id"] != "pol-1" {
 		t.Fatalf("expected policy_id pol-1, got %v", result["policy_id"])
+	}
+	if result["shipping_provider"] != "marketplace" {
+		t.Fatalf("expected shipping_provider marketplace, got %v", result["shipping_provider"])
+	}
+}
+
+func TestMarketplacesPoliciesHandlerPostDefaultsShippingProviderToFixed(t *testing.T) {
+	mux := http.NewServeMux()
+	newMarketplacesHandler().Register(mux)
+
+	body := `{"policy_id":"pol-default","account_id":"acct-1","commission_percent":0.16,"fixed_fee_amount":5.0,"default_shipping":10.0,"min_margin_percent":0.10,"sla_question_minutes":60,"sla_dispatch_hours":24}`
+	req := httptest.NewRequest(http.MethodPost, "/marketplaces/policies", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var result map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if result["shipping_provider"] != "fixed" {
+		t.Fatalf("expected shipping_provider fixed, got %v", result["shipping_provider"])
 	}
 }
 

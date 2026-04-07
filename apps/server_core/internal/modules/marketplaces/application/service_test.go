@@ -15,10 +15,10 @@ type fakeRepository struct {
 	policiesByID           map[string]domain.Policy
 }
 
-func (f *fakeRepository) SaveAccount(context.Context, domain.Account) error { return nil }
-func (f *fakeRepository) SavePolicy(context.Context, domain.Policy) error { return nil }
+func (f *fakeRepository) SaveAccount(context.Context, domain.Account) error      { return nil }
+func (f *fakeRepository) SavePolicy(context.Context, domain.Policy) error        { return nil }
 func (f *fakeRepository) ListAccounts(context.Context) ([]domain.Account, error) { return nil, nil }
-func (f *fakeRepository) ListPolicies(context.Context) ([]domain.Policy, error) { return nil, nil }
+func (f *fakeRepository) ListPolicies(context.Context) ([]domain.Policy, error)  { return nil, nil }
 func (f *fakeRepository) ListPoliciesByIDs(_ context.Context, ids []string) ([]domain.Policy, error) {
 	f.listPoliciesByIDsCalls++
 	f.listPoliciesByIDsIDs = append(f.listPoliciesByIDsIDs, append([]string(nil), ids...))

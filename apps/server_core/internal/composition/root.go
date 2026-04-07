@@ -11,6 +11,7 @@ import (
 	classpostgres "marketplace-central/apps/server_core/internal/modules/classifications/adapters/postgres"
 	classapp "marketplace-central/apps/server_core/internal/modules/classifications/application"
 	classtransport "marketplace-central/apps/server_core/internal/modules/classifications/transport"
+	melhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
 	connectorspostgres "marketplace-central/apps/server_core/internal/modules/connectors/adapters/postgres"
 	connectorshttp "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/http"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
@@ -18,6 +19,8 @@ import (
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
 	marketplacestransport "marketplace-central/apps/server_core/internal/modules/marketplaces/transport"
+	pricingcatalog "marketplace-central/apps/server_core/internal/modules/pricing/adapters/catalog"
+	pricingmarket "marketplace-central/apps/server_core/internal/modules/pricing/adapters/marketplace"
 	pricingpostgres "marketplace-central/apps/server_core/internal/modules/pricing/adapters/postgres"
 	pricingapp "marketplace-central/apps/server_core/internal/modules/pricing/application"
 	pricingtransport "marketplace-central/apps/server_core/internal/modules/pricing/transport"
@@ -48,17 +51,27 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 
 	pricingRepo := pricingpostgres.NewRepository(pool, cfg.DefaultTenantID)
 	pricingSvc := pricingapp.NewService(pricingRepo, cfg.DefaultTenantID)
-	pricingtransport.NewHandler(pricingSvc).Register(mux)
 
+	// Melhor Envio
+	meTokenStore := melhorenvio.NewTokenStore(pool, cfg.DefaultTenantID)
+	meClient := melhorenvio.NewClient(meTokenStore)
+	meOAuth := melhorenvio.NewOAuthHandlerFromEnv(meTokenStore) // nil if ME_CLIENT_ID unset
+
+	// Pricing batch orchestrator
+	prodReader := pricingcatalog.NewReader(catalogSvc)
+	polReader := pricingmarket.NewReader(marketSvc)
+	batchOrch := pricingapp.NewBatchOrchestrator(prodReader, polReader, meClient, cfg.DefaultTenantID)
+	pricingtransport.NewHandler(pricingSvc, batchOrch).Register(mux)
+
+	// Connectors (VTEX + ME auth)
 	vtexCredentials, err := connectorshttp.NewEnvCredentialProvider()
 	if err != nil {
 		log.Fatalf("vtex credentials: %v", err)
 	}
-
 	connectorsRepo := connectorspostgres.NewRepository(pool, cfg.DefaultTenantID)
 	vtexAdapter := connectorshttp.NewAdapter(vtexCredentials)
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(connectorsRepo, vtexAdapter, cfg.DefaultTenantID)
-	connectorstransport.NewHandler(connectorsOrch).Register(mux)
+	connectorstransport.NewHandler(connectorsOrch, meOAuth).Register(mux)
 
 	return httpx.CORSMiddleware(mux)
 }

@@ -9,6 +9,7 @@ import (
 // ProductReader reads product data from MetalShopping (read-only).
 type ProductReader interface {
 	ListProducts(ctx context.Context) ([]domain.Product, error)
+	ListProductsByIDs(ctx context.Context, productIDs []string) ([]domain.Product, error)
 	GetProduct(ctx context.Context, productID string) (domain.Product, error)
 	SearchProducts(ctx context.Context, query string) ([]domain.Product, error)
 	ListTaxonomyNodes(ctx context.Context) ([]domain.TaxonomyNode, error)

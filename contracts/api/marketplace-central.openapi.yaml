@@ -378,6 +378,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /pricing/simulations/batch:
+    post:
+      summary: Run batch pricing simulation
+      operationId: runPricingBatchSimulation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunPricingBatchRequest'
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPricingBatchResponse'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: Batch simulation unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /connectors/vtex/validate-connection:
     post:
       summary: Validate VTEX API credentials
@@ -431,6 +472,96 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  /connectors/melhor-envio/auth/start:
+    get:
+      summary: Start Melhor Envio OAuth flow
+      operationId: startMelhorEnvioOAuth
+      responses:
+        "302":
+          description: Redirect to Melhor Envio authorization page
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "500":
+          description: Failed to create OAuth state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+
+  /connectors/melhor-envio/auth/callback:
+    get:
+      summary: Handle Melhor Envio OAuth callback
+      operationId: handleMelhorEnvioOAuthCallback
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: OAuth exchange successful
+        "400":
+          description: Missing code or state mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "500":
+          description: Failed to save token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "502":
+          description: Token exchange failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+
+  /connectors/melhor-envio/status:
+    get:
+      summary: Check Melhor Envio OAuth status
+      operationId: getMelhorEnvioOAuthStatus
+      responses:
+        "200":
+          description: OAuth connection status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "500":
+          description: Failed to read token state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
 
   /connectors/vtex/publish:
     post:
@@ -707,6 +838,7 @@ components:
         - min_margin_percent
         - sla_question_minutes
         - sla_dispatch_hours
+        - shipping_provider
       properties:
         policy_id:
           type: string
@@ -734,6 +866,11 @@ components:
           type: integer
         sla_dispatch_hours:
           type: integer
+        shipping_provider:
+          type: string
+          enum: [fixed, melhor_envio, marketplace]
+          default: fixed
+          description: "Normalized by the backend. Blank input defaults to fixed."
     CreateMarketplacePolicyRequest:
       type: object
       required:
@@ -766,6 +903,11 @@ components:
           type: integer
         sla_dispatch_hours:
           type: integer
+        shipping_provider:
+          type: string
+          enum: [fixed, melhor_envio, marketplace]
+          default: fixed
+          description: "Optional. The backend trims whitespace, lowercases the value, and defaults blank/omitted input to fixed."
     PricingSimulation:
       type: object
       required:
@@ -793,6 +935,52 @@ components:
           format: double
         status:
           type: string
+    BatchSimulationItem:
+      type: object
+      required:
+        - product_id
+        - policy_id
+        - selling_price
+        - cost_amount
+        - commission_amount
+        - freight_amount
+        - fixed_fee_amount
+        - margin_amount
+        - margin_percent
+        - status
+        - freight_source
+      properties:
+        product_id:
+          type: string
+        policy_id:
+          type: string
+        selling_price:
+          type: number
+          format: double
+        cost_amount:
+          type: number
+          format: double
+        commission_amount:
+          type: number
+          format: double
+        freight_amount:
+          type: number
+          format: double
+        fixed_fee_amount:
+          type: number
+          format: double
+        margin_amount:
+          type: number
+          format: double
+        margin_percent:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [healthy, warning, critical]
+        freight_source:
+          type: string
+          enum: [melhor_envio, fixed, no_dimensions, me_error, me_not_connected]
     RunPricingSimulationRequest:
       type: object
       required:
@@ -830,6 +1018,44 @@ components:
         min_margin_percent:
           type: number
           format: double
+    RunPricingBatchRequest:
+      type: object
+      required:
+        - product_ids
+        - policy_ids
+        - origin_cep
+        - destination_cep
+      properties:
+        product_ids:
+          type: array
+          items:
+            type: string
+        policy_ids:
+          type: array
+          items:
+            type: string
+        origin_cep:
+          type: string
+        destination_cep:
+          type: string
+        price_source:
+          type: string
+          enum: [my_price, suggested_price]
+        price_overrides:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: "Optional. Map of productID::policyID to override price."
+    RunPricingBatchResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchSimulationItem'
     ListCatalogProductsResponse:
       type: object
       required:
@@ -1061,6 +1287,14 @@ components:
                     - CONNECTORS_VTEX_NOT_FOUND
                     - CONNECTORS_VTEX_TRANSIENT
                     - CONNECTORS_VTEX_AUTH
+                    - CONNECTORS_ME_METHOD_NOT_ALLOWED
+                    - CONNECTORS_ME_STATE_GENERATION_FAILED
+                    - CONNECTORS_ME_STATE_MISSING
+                    - CONNECTORS_ME_STATE_MISMATCH
+                    - CONNECTORS_ME_CODE_MISSING
+                    - CONNECTORS_ME_TOKEN_EXCHANGE_FAILED
+                    - CONNECTORS_ME_TOKEN_SAVE_FAILED
+                    - CONNECTORS_ME_STATUS_STORE_FAILED
                     - CONNECTORS_EXECUTOR_INTERNAL
                     - CONNECTORS_RETRY_MISSING_PRODUCT
                     - CONNECTORS_BATCH_NOT_FOUND

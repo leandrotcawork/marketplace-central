@@ -99,6 +99,7 @@ func (h Handler) Register(mux *http.ServeMux) {
 				MinMarginPercent   float64 `json:"min_margin_percent"`
 				SLAQuestionMinutes int     `json:"sla_question_minutes"`
 				SLADispatchHours   int     `json:"sla_dispatch_hours"`
+				ShippingProvider   string  `json:"shipping_provider"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeMarketplacesError(w, http.StatusBadRequest, "invalid_request", "malformed request body")
@@ -113,6 +114,7 @@ func (h Handler) Register(mux *http.ServeMux) {
 				MinMarginPercent:   req.MinMarginPercent,
 				SLAQuestionMinutes: req.SLAQuestionMinutes,
 				SLADispatchHours:   req.SLADispatchHours,
+				ShippingProvider:   req.ShippingProvider,
 			})
 			if err != nil {
 				status, code := mapMarketplacesError(err.Error())

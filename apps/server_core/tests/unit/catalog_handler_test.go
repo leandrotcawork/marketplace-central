@@ -44,6 +44,24 @@ func (r *catalogHandlerReaderStub) ListTaxonomyNodes(_ context.Context) ([]catal
 	return nil, nil
 }
 
+func (r *catalogHandlerReaderStub) ListProductsByIDs(_ context.Context, productIDs []string) ([]catalogdomain.Product, error) {
+	result := make([]catalogdomain.Product, 0, len(productIDs))
+	seen := make(map[string]struct{}, len(productIDs))
+	for _, id := range productIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		for _, p := range r.products {
+			if p.ProductID == id {
+				result = append(result, p)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 type catalogHandlerEnrichmentStub struct{}
 
 func (s catalogHandlerEnrichmentStub) GetEnrichment(_ context.Context, productID string) (catalogdomain.ProductEnrichment, error) {

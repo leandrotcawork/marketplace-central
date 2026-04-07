@@ -36,6 +36,8 @@ func TestNewRootRouterRequiresVTEXCredentials(t *testing.T) {
 func TestNewRootRouterBuildsWhenVTEXCredentialsArePresent(t *testing.T) {
 	t.Setenv("VTEX_APP_KEY", "test-key")
 	t.Setenv("VTEX_APP_TOKEN", "test-token")
+	t.Setenv("ME_CLIENT_ID", "test-client")
+	t.Setenv("ME_CLIENT_SECRET", "test-secret")
 
 	router := composition.NewRootRouter(nil, nil, pgdb.Config{DefaultTenantID: "tenant_default"})
 
@@ -45,6 +47,13 @@ func TestNewRootRouterBuildsWhenVTEXCredentialsArePresent(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected /healthz to return 200, got %d", rec.Code)
+	}
+
+	startReq := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/auth/start", nil)
+	startRec := httptest.NewRecorder()
+	router.ServeHTTP(startRec, startReq)
+	if startRec.Code == http.StatusNotFound {
+		t.Fatal("expected Melhor Envio auth route to be registered")
 	}
 }
 

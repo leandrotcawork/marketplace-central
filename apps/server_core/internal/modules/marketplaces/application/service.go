@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/domain"
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/ports"
@@ -24,6 +25,7 @@ type CreatePolicyInput struct {
 	MinMarginPercent   float64
 	SLAQuestionMinutes int
 	SLADispatchHours   int
+	ShippingProvider   string
 }
 
 type Service struct {
@@ -60,6 +62,13 @@ func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (dom
 	if input.SLAQuestionMinutes <= 0 || input.SLADispatchHours <= 0 {
 		return domain.Policy{}, errors.New("MARKETPLACES_POLICY_INVALID")
 	}
+	shippingProvider := strings.ToLower(strings.TrimSpace(input.ShippingProvider))
+	if shippingProvider == "" {
+		shippingProvider = "fixed"
+	}
+	if shippingProvider != "fixed" && shippingProvider != "melhor_envio" && shippingProvider != "marketplace" {
+		return domain.Policy{}, errors.New("MARKETPLACES_POLICY_INVALID")
+	}
 	policy := domain.Policy{
 		PolicyID:           input.PolicyID,
 		TenantID:           s.tenantID,
@@ -71,6 +80,7 @@ func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (dom
 		MinMarginPercent:   input.MinMarginPercent,
 		SLAQuestionMinutes: input.SLAQuestionMinutes,
 		SLADispatchHours:   input.SLADispatchHours,
+		ShippingProvider:   shippingProvider,
 	}
 	return policy, s.repo.SavePolicy(ctx, policy)
 }
@@ -81,4 +91,11 @@ func (s Service) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 
 func (s Service) ListPolicies(ctx context.Context) ([]domain.Policy, error) {
 	return s.repo.ListPolicies(ctx)
+}
+
+func (s Service) ListPoliciesByIDs(ctx context.Context, policyIDs []string) ([]domain.Policy, error) {
+	if len(policyIDs) == 0 {
+		return []domain.Policy{}, nil
+	}
+	return s.repo.ListPoliciesByIDs(ctx, policyIDs)
 }

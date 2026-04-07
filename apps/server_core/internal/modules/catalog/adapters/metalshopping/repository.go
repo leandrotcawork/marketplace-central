@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"marketplace-central/apps/server_core/internal/modules/catalog/domain"
 	"marketplace-central/apps/server_core/internal/modules/catalog/ports"
@@ -11,19 +12,24 @@ import (
 
 var _ ports.ProductReader = (*Repository)(nil)
 
+type queryer interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 type Repository struct {
-	pool *pgxpool.Pool
+	db queryer
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool}
+	return &Repository{db: pool}
 }
 
 type filterKind int
 
 const (
-	filterNone     filterKind = iota
+	filterNone filterKind = iota
 	filterByID
+	filterByIDs
 	filterBySearch
 )
 
@@ -31,6 +37,8 @@ func filterSQL(kind filterKind) string {
 	switch kind {
 	case filterByID:
 		return "AND p.product_id = $1"
+	case filterByIDs:
+		return "AND p.product_id = ANY($1)"
 	case filterBySearch:
 		return "AND (p.name ILIKE $1 OR p.sku ILIKE $1 OR ean.identifier_value ILIKE $1 OR ref.identifier_value ILIKE $1)"
 	default:
@@ -40,6 +48,13 @@ func filterSQL(kind filterKind) string {
 
 func (r *Repository) ListProducts(ctx context.Context) ([]domain.Product, error) {
 	return r.queryProducts(ctx, filterNone)
+}
+
+func (r *Repository) ListProductsByIDs(ctx context.Context, productIDs []string) ([]domain.Product, error) {
+	if len(productIDs) == 0 {
+		return []domain.Product{}, nil
+	}
+	return r.queryProducts(ctx, filterByIDs, productIDs)
 }
 
 func (r *Repository) GetProduct(ctx context.Context, productID string) (domain.Product, error) {
@@ -59,25 +74,25 @@ func (r *Repository) SearchProducts(ctx context.Context, query string) ([]domain
 }
 
 func (r *Repository) ListTaxonomyNodes(ctx context.Context) ([]domain.TaxonomyNode, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT
-			tn.taxonomy_node_id,
-			tn.name,
-			tn.level,
-			COALESCE(ld.label, ''),
-			COALESCE(tn.parent_taxonomy_node_id, ''),
-			tn.is_active,
-			COUNT(p.product_id)::int
-		FROM catalog_taxonomy_nodes tn
-		LEFT JOIN catalog_taxonomy_level_defs ld
-			ON ld.tenant_id = tn.tenant_id AND ld.level = tn.level
-		LEFT JOIN catalog_products p
-			ON p.primary_taxonomy_node_id = tn.taxonomy_node_id
-			AND p.tenant_id = tn.tenant_id AND p.status = 'active'
-		WHERE tn.tenant_id = current_setting('app.tenant_id') AND tn.is_active = true
-		GROUP BY tn.taxonomy_node_id, tn.name, tn.level, ld.label, tn.parent_taxonomy_node_id, tn.is_active
-		ORDER BY tn.level, tn.name
-	`)
+	rows, err := r.db.Query(ctx, `
+        SELECT
+            tn.taxonomy_node_id,
+            tn.name,
+            tn.level,
+            COALESCE(ld.label, ''),
+            COALESCE(tn.parent_taxonomy_node_id, ''),
+            tn.is_active,
+            COUNT(p.product_id)::int
+        FROM catalog_taxonomy_nodes tn
+        LEFT JOIN catalog_taxonomy_level_defs ld
+            ON ld.tenant_id = tn.tenant_id AND ld.level = tn.level
+        LEFT JOIN catalog_products p
+            ON p.primary_taxonomy_node_id = tn.taxonomy_node_id
+            AND p.tenant_id = tn.tenant_id AND p.status = 'active'
+        WHERE tn.tenant_id = current_setting('app.tenant_id') AND tn.is_active = true
+        GROUP BY tn.taxonomy_node_id, tn.name, tn.level, ld.label, tn.parent_taxonomy_node_id, tn.is_active
+        ORDER BY tn.level, tn.name
+    `)
 	if err != nil {
 		return nil, fmt.Errorf("list taxonomy: %w", err)
 	}
@@ -96,50 +111,50 @@ func (r *Repository) ListTaxonomyNodes(ctx context.Context) ([]domain.TaxonomyNo
 
 func (r *Repository) queryProducts(ctx context.Context, kind filterKind, args ...any) ([]domain.Product, error) {
 	query := `
-		SELECT
-			p.product_id,
-			p.sku,
-			p.name,
-			COALESCE(p.description, ''),
-			COALESCE(p.brand_name, ''),
-			p.status,
-			COALESCE(pr.replacement_cost_amount, 0),
-			COALESCE(pr.price_amount, 0),
-			COALESCE(inv.on_hand_quantity, 0),
-			COALESCE(ean.identifier_value, ''),
-			COALESCE(ref.identifier_value, ''),
-			COALESCE(p.primary_taxonomy_node_id, ''),
-			COALESCE(tn.name, ''),
-			sp.observed_price
-		FROM catalog_products p
-		LEFT JOIN pricing_product_prices pr
-			ON pr.product_id = p.product_id AND pr.tenant_id = p.tenant_id
-			AND pr.pricing_status = 'active' AND pr.effective_to IS NULL
-		LEFT JOIN inventory_product_positions inv
-			ON inv.product_id = p.product_id AND inv.tenant_id = p.tenant_id
-			AND inv.position_status = 'active' AND inv.effective_to IS NULL
-		LEFT JOIN catalog_product_identifiers ean
-			ON ean.product_id = p.product_id AND ean.tenant_id = p.tenant_id
-			AND ean.identifier_type = 'ean'
-		LEFT JOIN catalog_product_identifiers ref
-			ON ref.product_id = p.product_id AND ref.tenant_id = p.tenant_id
-			AND ref.identifier_type = 'reference'
-		LEFT JOIN catalog_taxonomy_nodes tn
-			ON tn.taxonomy_node_id = p.primary_taxonomy_node_id AND tn.tenant_id = p.tenant_id
-		LEFT JOIN LATERAL (
-			-- shopping_price_latest_snapshot has no tenant_id column.
-			-- Tenant isolation is enforced by the outer p.tenant_id predicate.
-			SELECT sp2.observed_price
-			FROM shopping_price_latest_snapshot sp2
-			WHERE sp2.product_id = p.product_id
-			ORDER BY sp2.observed_at DESC
-			LIMIT 1
-		) sp ON true
-		WHERE p.tenant_id = current_setting('app.tenant_id') AND p.status = 'active' ` + filterSQL(kind) + `
-		ORDER BY p.name
-	`
+        SELECT
+            p.product_id,
+            p.sku,
+            p.name,
+            COALESCE(p.description, ''),
+            COALESCE(p.brand_name, ''),
+            p.status,
+            COALESCE(pr.replacement_cost_amount, 0),
+            COALESCE(pr.price_amount, 0),
+            COALESCE(inv.on_hand_quantity, 0),
+            COALESCE(ean.identifier_value, ''),
+            COALESCE(ref.identifier_value, ''),
+            COALESCE(p.primary_taxonomy_node_id, ''),
+            COALESCE(tn.name, ''),
+            sp.observed_price
+        FROM catalog_products p
+        LEFT JOIN pricing_product_prices pr
+            ON pr.product_id = p.product_id AND pr.tenant_id = p.tenant_id
+            AND pr.pricing_status = 'active' AND pr.effective_to IS NULL
+        LEFT JOIN inventory_product_positions inv
+            ON inv.product_id = p.product_id AND inv.tenant_id = p.tenant_id
+            AND inv.position_status = 'active' AND inv.effective_to IS NULL
+        LEFT JOIN catalog_product_identifiers ean
+            ON ean.product_id = p.product_id AND ean.tenant_id = p.tenant_id
+            AND ean.identifier_type = 'ean'
+        LEFT JOIN catalog_product_identifiers ref
+            ON ref.product_id = p.product_id AND ref.tenant_id = p.tenant_id
+            AND ref.identifier_type = 'reference'
+        LEFT JOIN catalog_taxonomy_nodes tn
+            ON tn.taxonomy_node_id = p.primary_taxonomy_node_id AND tn.tenant_id = p.tenant_id
+        LEFT JOIN LATERAL (
+            -- shopping_price_latest_snapshot has no tenant_id column.
+            -- Tenant isolation is enforced by the outer p.tenant_id predicate.
+            SELECT sp2.observed_price
+            FROM shopping_price_latest_snapshot sp2
+            WHERE sp2.product_id = p.product_id
+            ORDER BY sp2.observed_at DESC
+            LIMIT 1
+        ) sp ON true
+        WHERE p.tenant_id = current_setting('app.tenant_id') AND p.status = 'active' ` + filterSQL(kind) + `
+        ORDER BY p.name
+    `
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query products: %w", err)
 	}

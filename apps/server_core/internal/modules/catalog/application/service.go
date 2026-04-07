@@ -25,6 +25,17 @@ func (s Service) ListProducts(ctx context.Context) ([]domain.Product, error) {
 	return s.applyEnrichments(ctx, products)
 }
 
+func (s Service) ListProductsByIDs(ctx context.Context, productIDs []string) ([]domain.Product, error) {
+	if len(productIDs) == 0 {
+		return []domain.Product{}, nil
+	}
+	products, err := s.reader.ListProductsByIDs(ctx, productIDs)
+	if err != nil {
+		return nil, err
+	}
+	return s.applyEnrichments(ctx, products)
+}
+
 func (s Service) GetProduct(ctx context.Context, productID string) (domain.Product, error) {
 	product, err := s.reader.GetProduct(ctx, productID)
 	if err != nil {
@@ -85,6 +96,9 @@ func (s Service) applyEnrichments(ctx context.Context, products []domain.Product
 		}
 		if e.LengthCM != nil {
 			products[i].LengthCM = e.LengthCM
+		}
+		if e.WeightG != nil {
+			products[i].WeightG = e.WeightG
 		}
 		if e.SuggestedPriceAmount != nil {
 			products[i].SuggestedPrice = e.SuggestedPriceAmount

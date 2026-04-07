@@ -31,7 +31,22 @@ func (s *marketplaceRepoStub) ListPolicies(context.Context) ([]domain.Policy, er
 	return nil, nil
 }
 
-func TestCreateMarketplacePolicyPersistsCommissionAndSla(t *testing.T) {
+func (s *marketplaceRepoStub) ListPoliciesByIDs(_ context.Context, policyIDs []string) ([]domain.Policy, error) {
+	result := make([]domain.Policy, 0, len(policyIDs))
+	seen := make(map[string]struct{}, len(policyIDs))
+	for _, id := range policyIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		if s.policy.PolicyID == id {
+			result = append(result, s.policy)
+		}
+	}
+	return result, nil
+}
+
+func TestCreateMarketplacePolicyPersistsCommissionSlaAndShippingProvider(t *testing.T) {
 	repo := &marketplaceRepoStub{}
 	service := application.NewService(repo, "tenant_default")
 
@@ -54,6 +69,7 @@ func TestCreateMarketplacePolicyPersistsCommissionAndSla(t *testing.T) {
 		MinMarginPercent:   12,
 		SLAQuestionMinutes: 60,
 		SLADispatchHours:   24,
+		ShippingProvider:   "melhor_envio",
 	})
 	if err != nil {
 		t.Fatalf("unexpected policy error: %v", err)
@@ -61,5 +77,87 @@ func TestCreateMarketplacePolicyPersistsCommissionAndSla(t *testing.T) {
 
 	if policy.CommissionPercent != 16 {
 		t.Fatalf("expected 16, got %v", policy.CommissionPercent)
+	}
+	if policy.ShippingProvider != "melhor_envio" {
+		t.Fatalf("expected shipping provider melhor_envio, got %q", policy.ShippingProvider)
+	}
+	if repo.policy.ShippingProvider != "melhor_envio" {
+		t.Fatalf("expected saved shipping provider melhor_envio, got %q", repo.policy.ShippingProvider)
+	}
+}
+
+func TestCreateMarketplacePolicyDefaultsShippingProviderToFixed(t *testing.T) {
+	repo := &marketplaceRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	policy, err := service.CreatePolicy(context.Background(), application.CreatePolicyInput{
+		PolicyID:           "policy-fixed-default",
+		AccountID:          "mercado-livre-main",
+		CommissionPercent:  16,
+		FixedFeeAmount:     0,
+		DefaultShipping:    27.9,
+		MinMarginPercent:   12,
+		SLAQuestionMinutes: 60,
+		SLADispatchHours:   24,
+	})
+	if err != nil {
+		t.Fatalf("unexpected policy error: %v", err)
+	}
+
+	if policy.ShippingProvider != "fixed" {
+		t.Fatalf("expected default shipping provider fixed, got %q", policy.ShippingProvider)
+	}
+	if repo.policy.ShippingProvider != "fixed" {
+		t.Fatalf("expected saved default shipping provider fixed, got %q", repo.policy.ShippingProvider)
+	}
+}
+
+func TestCreateMarketplacePolicyNormalizesShippingProvider(t *testing.T) {
+	repo := &marketplaceRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	policy, err := service.CreatePolicy(context.Background(), application.CreatePolicyInput{
+		PolicyID:           "policy-normalized-provider",
+		AccountID:          "mercado-livre-main",
+		CommissionPercent:  16,
+		FixedFeeAmount:     0,
+		DefaultShipping:    27.9,
+		MinMarginPercent:   12,
+		SLAQuestionMinutes: 60,
+		SLADispatchHours:   24,
+		ShippingProvider:   "  Melhor_Envio  ",
+	})
+	if err != nil {
+		t.Fatalf("unexpected policy error: %v", err)
+	}
+
+	if policy.ShippingProvider != "melhor_envio" {
+		t.Fatalf("expected normalized shipping provider melhor_envio, got %q", policy.ShippingProvider)
+	}
+	if repo.policy.ShippingProvider != "melhor_envio" {
+		t.Fatalf("expected saved normalized shipping provider melhor_envio, got %q", repo.policy.ShippingProvider)
+	}
+}
+
+func TestCreateMarketplacePolicyRejectsInvalidShippingProvider(t *testing.T) {
+	repo := &marketplaceRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	_, err := service.CreatePolicy(context.Background(), application.CreatePolicyInput{
+		PolicyID:           "policy-invalid-provider",
+		AccountID:          "mercado-livre-main",
+		CommissionPercent:  16,
+		FixedFeeAmount:     0,
+		DefaultShipping:    27.9,
+		MinMarginPercent:   12,
+		SLAQuestionMinutes: 60,
+		SLADispatchHours:   24,
+		ShippingProvider:   "correios",
+	})
+	if err == nil {
+		t.Fatal("expected policy error for invalid shipping provider")
+	}
+	if err.Error() != "MARKETPLACES_POLICY_INVALID" {
+		t.Fatalf("expected MARKETPLACES_POLICY_INVALID, got %v", err)
 	}
 }
