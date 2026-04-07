@@ -1,10 +1,10 @@
-# System Pulse â€” Marketplace Central
-> Last updated: 2026-04-06 | Session: #5
+# System Pulse — Marketplace Central
+> Last updated: 2026-04-07 | Session: #6
 
 ## Project Identity
 
 **Name:** Marketplace Central (MPC)
-**Purpose:** Intelligence and control surface for marketplace operations â€” pricing simulation, message centralization, order monitoring, SLA guardrails.
+**Purpose:** Intelligence and control surface for marketplace operations — pricing simulation, message centralization, order monitoring, SLA guardrails.
 **Target:** Brazilian marketplace sellers using VTEX, Mercado Livre, Magalu, Amazon.
 **Future:** Designed to merge into MetalShopping as a module (MetalShopping_Final on GitHub).
 
@@ -44,14 +44,14 @@ apps/server_core/          # Go backend
       catalog/             # Products, SKUs, taxonomy, enrichments
       classifications/     # Product classification data
       marketplaces/        # Accounts + pricing policies
-      pricing/             # Price simulation engine
+      pricing/             # Price simulation engine + batch orchestrator
       connectors/          # [early] Marketplace API adapters (VTEX etc.)
     platform/
       config/              # Env config loading
       httpx/               # JSON writer, router
       logging/             # Structured logger (slog)
       pgdb/                # Postgres pool + tenant helpers
-  migrations/              # Sequential SQL: 0001â€“0007
+  migrations/              # Sequential SQL: 0001–0007
 
 apps/web/                  # React client (thin)
   src/
@@ -79,7 +79,7 @@ docs/marketplaces/         # Per-marketplace API reference docs
 |---|---|---|
 | `catalog` | Foundation done | Products, SKU/EAN, cost tracking, taxonomy, enrichments, classifications |
 | `marketplaces` | Foundation done | Accounts, pricing policies (commission, fees, freight, SLA) |
-| `pricing` | Foundation done | Simulation engine, margin calc, snapshots, manual overrides, suggested price |
+| `pricing` | Foundation done | Simulation engine, batch orchestrator, snapshots, manual overrides, suggested price |
 | `connectors` | Early/partial | VTEX adapter (in progress) |
 | `messaging` | Planned (Phase 4) | Unified inbox, SLA tracking |
 | `orders` | Planned (Phase 4) | Order monitoring, dispatch SLA |
@@ -95,38 +95,34 @@ docs/marketplaces/         # Per-marketplace API reference docs
 - **Database:** All queries include `tenant_id` predicate; `pgxpool.Pool` only
 - **Money:** `float64` in domain, `numeric(14,2)` in Postgres
 - **Transport layer:** Validates, delegates to application service, returns JSON
-- **Frontend:** No direct fetch â€” all via `sdk-runtime`
+- **Frontend:** No direct fetch — all via `sdk-runtime`
 - **Commits:** `<type>(<scope>): <what>` (feat | fix | docs | chore | refactor | test)
-- **Migrations:** Sequential `NNNN_description.sql`, forward-only (0001â€“0007 exist)
+- **Migrations:** Sequential `NNNN_description.sql`, forward-only (0001–0007 exist)
 - **Commissions:** Stored as decimal (e.g., 0.16 = 16%); frontend multiplies by 100 for display
 
 ---
 
 ## Current Phase
 
-**Phase 1 â€” Foundation Wiring** (active, near complete)
+**Phase 2 — Pricing simulator** (active, now in progress)
 
-Goal: Make 3 modules functional end-to-end with real database operations.
+Goal: Full simulation engine with backend batch runs and the matching frontend UI.
 
 Completed this phase:
-- Both pgxpool instances wired (pgdb for MPC, msdb for MetalShopping read-only)
-- Catalog, Classifications, Pricing modules: full CRUD, slog, structured error codes
-- SDK extended: 11 new methods + CatalogProduct, Classification, ProductEnrichment types
-- UX redesign: PaginatedTable + DetailPanel shared primitives; full rewrites of Products, VTEX Publisher, Pricing Simulator pages (84/84 tests)
-- Classifications page (`/classifications`): two-column layout, full product table with checkboxes, create/delete â€” `packages/feature-classifications`
-- User's 3 active classifications: Ativos (27 products), Descontinuados (23), Encomenda (19) = 69 total
-- Windows dev tooling: `run-server.ps1`, `Makefile` (`make server`), `.vscode/tasks.json`
+- Batch orchestrator implemented in `pricing/application/batch_orchestrator.go` for product x policy batch runs
+- `pricing_service_test.go` now covers standard pricing and suggested-price batch scenarios
+- Freight connectivity contract updated to `IsConnected(ctx) (bool, error)` in the pricing ports
 
 Still pending:
-- Migration runner (cmd/migrate/main.go â€” still a stub, low priority)
-- Smoke test in browser: Marketplace Settings forms, Pricing Simulator, VTEX Publisher end-to-end
+- Pricing batch HTTP transport handler
+- SDK batch method + frontend batch UI
 
 **Recent completed work (from git):**
-- Feat: Classifications management page â€” new `feature-classifications` package, `/classifications` route
-- Feat: UX redesign (Plans 1â€“4) â€” PaginatedTable, DetailPanel, sticky bars, slide-over panels
-- Feat: POST /connectors/vtex/validate-connection â€” full hexagonal stack, live VTEX 200 confirmed
-- Fix: CORS middleware added â€” browser can now reach the API from localhost:5173
-- Fix: marketplaces adapter ON CONFLICT targets and default_shipping_amount column name
+- Feat: Pricing batch orchestrator (Task 10) — batch engine + unit tests in worktree `fbd3b0a`
+- Feat: Classifications management page — new `feature-classifications` package, `/classifications` route
+- Feat: UX redesign (Plans 1–4) — PaginatedTable, DetailPanel, sticky bars, slide-over panels
+- Feat: POST /connectors/vtex/validate-connection — full hexagonal stack, live VTEX 200 confirmed
+- Fix: CORS middleware added — browser can now reach the API from localhost:5173
 
 ---
 
@@ -141,7 +137,7 @@ Still pending:
 | `0006_product_enrichments.sql` | Product enrichments (dimensions, suggested price) |
 | `0007_classifications.sql` | Product classifications |
 
-Note: No `0002` file exists â€” was merged/removed as part of Phase 0 cleanup.
+Note: No `0002` file exists — was merged/removed as part of Phase 0 cleanup.
 
 ---
 
@@ -149,7 +145,7 @@ Note: No `0002` file exists â€” was merged/removed as part of Phase 0 cleanup.
 
 | File | Purpose |
 |---|---|
-| `AGENTS.md` | Engineering rules (absolute â€” read on every session) |
+| `AGENTS.md` | Engineering rules (absolute — read on every session) |
 | `ARCHITECTURE.md` | Frozen architectural decisions |
 | `IMPLEMENTATION_PLAN.md` | Phase plan with task checklist |
 | `contracts/api/marketplace-central.openapi.yaml` | API source of truth |
@@ -157,23 +153,24 @@ Note: No `0002` file exists â€” was merged/removed as part of Phase 0 cleanup.
 | `apps/server_core/internal/platform/msdb/pool.go` | MetalShopping read-only pool |
 | `apps/server_core/internal/modules/catalog/` | Catalog module (MS reader + enrichments) |
 | `apps/server_core/internal/modules/classifications/` | Classifications module (full CRUD) |
-| `apps/server_core/migrations/` | Sequential SQL migrations (0001â€“0007) |
+| `apps/server_core/internal/modules/pricing/application/batch_orchestrator.go` | Pricing batch engine |
+| `apps/server_core/migrations/` | Sequential SQL migrations (0001–0007) |
 | `packages/sdk-runtime/src/index.ts` | TypeScript API client |
 | `packages/ui/src/PaginatedTable.tsx` | Shared paginated table with render props |
 | `packages/ui/src/DetailPanel.tsx` | Shared slide-over panel |
 | `packages/feature-classifications/src/ClassificationsPage.tsx` | Classifications management UI |
-| `run-server.ps1` | PowerShell script â€” loads .env (CRLF-safe) + starts Go server |
+| `run-server.ps1` | PowerShell script — loads .env (CRLF-safe) + starts Go server |
 | `.env` | Local env vars (MS_DATABASE_URL, MC_DATABASE_URL, VTEX_*) |
 
 ---
 
 ## Known Risks
 
-- `.brain/` is in `.gitignore` â€” brain files won't be committed unless removed from gitignore
-- `zero_commit_rate` is 38.9% (sessions where no commits were made) â€” many sessions end without a commit
-- Migration `0002` is missing from sequence (was cleaned up) â€” not a bug, just a gap
+- `.brain/` is in `.gitignore` — brain files won't be committed unless removed from gitignore
+- `zero_commit_rate` is 38.9% (sessions where no commits were made) — many sessions end without a commit
+- Migration `0002` is missing from sequence (was cleaned up) — not a bug, just a gap
 - `server.exe` is untracked in git (compiled binary checked into working dir)
-- Connectors module: validate-connection done; full publish flow (batch â†’ pipeline â†’ VTEX API) not yet smoke-tested via UI
+- Pricing batch transport and SDK work still pending after the batch orchestrator
 - Marketplace Settings, Pricing Simulator, VTEX Publisher publish flow not smoke-tested end-to-end
-- Migration runner cmd/migrate/main.go is still a stub â€” migrations run manually via psql for now
+- Migration runner cmd/migrate/main.go is still a stub — migrations run manually via psql for now
 - VTEX credential validation confirmed working (account tfcvgo, ~762ms); VTEX_ACCOUNT=tfcvgo in local .env (gitignored)
