@@ -95,7 +95,53 @@ describe("PricingSimulatorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
     expect(await screen.findByText(/avg/i)).toBeInTheDocument();
-    expect(await screen.findByText(/healthy/i)).toBeInTheDocument();
+    expect(await screen.findByText(/healthy:\s*2/i)).toBeInTheDocument();
+  });
+
+  it("renders marketplace comparison cards after simulation run", async () => {
+    const client = makeClient();
+    render(<PricingSimulatorPage client={client} />);
+
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
+
+    await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
+    expect(await screen.findByText(/marketplace cost/i)).toBeInTheDocument();
+    expect(screen.getByText(/shipping/i)).toBeInTheDocument();
+    expect(screen.getByText(/margin before shipping/i)).toBeInTheDocument();
+    expect(screen.getByText(/final margin/i)).toBeInTheDocument();
+  });
+
+  it("shows grouped marketplace cost with commission rate", async () => {
+    const client = makeClient();
+    render(<PricingSimulatorPage client={client} />);
+
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
+
+    await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
+    expect(await screen.findByText(/marketplace cost: r\$ .* \(16%\)/i)).toBeInTheDocument();
+  });
+
+  it("clears results when price reference switch changes after a run", async () => {
+    const client = makeClient();
+    render(<PricingSimulatorPage client={client} />);
+
+    await screen.findByText("Product SKU-001");
+    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
+    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
+    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
+
+    await screen.findByText(/avg margin/i);
+    fireEvent.click(screen.getByRole("button", { name: /toggle price source/i }));
+    expect(screen.queryByText(/avg margin/i)).not.toBeInTheDocument();
   });
 
   it("results show collapsed policy columns by default", async () => {
