@@ -42,6 +42,7 @@ export function PricingSimulatorPage({ client }: Props) {
   const [taxonomyNodes, setTaxonomyNodes] = useState<TaxonomyNode[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [melhorEnvioConnected, setMelhorEnvioConnected] = useState<boolean | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [originCep, setOriginCep] = useState("");
@@ -62,17 +63,19 @@ export function PricingSimulatorPage({ client }: Props) {
     let cancelled = false;
     async function load() {
       try {
-        const [prodRes, clsRes, polRes, taxRes] = await Promise.all([
+        const [prodRes, clsRes, polRes, taxRes, melhorEnvioRes] = await Promise.all([
           client.listCatalogProducts(),
           client.listClassifications(),
           client.listMarketplacePolicies(),
           client.listTaxonomyNodes(),
+          client.getMelhorEnvioStatus(),
         ]);
         if (cancelled) return;
         setProducts(prodRes.items);
         setClassifications(clsRes.items);
         setPolicies(polRes.items);
         setTaxonomyNodes(taxRes.items);
+        setMelhorEnvioConnected(melhorEnvioRes.connected);
       } catch {
         if (!cancelled) setLoadError("Failed to load data.");
       } finally {
@@ -170,17 +173,6 @@ export function PricingSimulatorPage({ client }: Props) {
     if (!isFinite(val) || val <= 0) return;
     const key = `${productId}::${policyId}`;
     setPriceOverrides((prev) => ({ ...prev, [key]: val }));
-    // Recalculate this cell locally.
-    setResults((prev) => prev.map((item) => {
-      if (item.product_id !== productId || item.policy_id !== policyId) return item;
-      const policy = policies.find((p) => p.policy_id === policyId);
-      if (!policy) return item;
-      const commissionAmt = val * policy.commission_percent;
-      const marginAmt = val - item.cost_amount - commissionAmt - item.fixed_fee_amount - item.freight_amount;
-      const marginPct = val > 0 ? marginAmt / val : 0;
-      const status = marginPct >= policy.min_margin_percent ? "healthy" : "warning";
-      return { ...item, selling_price: val, commission_amount: commissionAmt, margin_amount: marginAmt, margin_percent: marginPct, status };
-    }));
   }
 
   // Summary stats
@@ -244,10 +236,15 @@ export function PricingSimulatorPage({ client }: Props) {
             </Button>
           </div>
         </div>
-        {runError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{runError}</div>
-        )}
-      </div>
+      {runError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{runError}</div>
+      )}
+      {melhorEnvioConnected !== null && (
+        <div className="text-xs text-slate-500">
+          Melhor Envios: {melhorEnvioConnected ? "connected" : "disconnected"}
+        </div>
+      )}
+    </div>
 
       {/* Classification pills (scope selector) */}
       {classifications.length > 0 && (
@@ -317,7 +314,7 @@ export function PricingSimulatorPage({ client }: Props) {
             className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Health</option>
-            <option value="healthy">Passing</option>
+            <option value="healthy">Good</option>
             <option value="warning">Warning</option>
             <option value="critical">Critical</option>
           </select>
