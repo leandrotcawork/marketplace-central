@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -23,7 +24,24 @@ type Handler struct {
 
 // NewHandler constructs a Handler.
 func NewHandler(orchestrator *app.BatchOrchestrator, meAuth connectorports.MEAuthPort) *Handler {
+	meAuth = normalizeMEAuth(meAuth)
 	return &Handler{orchestrator: orchestrator, meAuth: meAuth}
+}
+
+func normalizeMEAuth(meAuth connectorports.MEAuthPort) connectorports.MEAuthPort {
+	if meAuth == nil {
+		return nil
+	}
+
+	v := reflect.ValueOf(meAuth)
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		if v.IsNil() {
+			return nil
+		}
+	}
+
+	return meAuth
 }
 
 // Register wires the handler's routes onto mux.

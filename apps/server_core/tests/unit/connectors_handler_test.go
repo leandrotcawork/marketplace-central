@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	app "marketplace-central/apps/server_core/internal/modules/connectors/application"
+	connectorports "marketplace-central/apps/server_core/internal/modules/connectors/ports"
 	transport "marketplace-central/apps/server_core/internal/modules/connectors/transport"
 )
 
@@ -183,7 +184,36 @@ func TestConnectorsMEStatusDelegatesToAuthPort(t *testing.T) {
 	}
 }
 
+func TestConnectorsMEStatusTreatsTypedNilAuthAsDisabled(t *testing.T) {
+	orch := newTestOrchestrator()
+	var p *nilMEAuth = nil
+	var auth connectorports.MEAuthPort = p
+
+	h := transport.NewHandler(orch, auth)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/status", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if connected, ok := resp["connected"].(bool); !ok || connected {
+		t.Fatalf("expected connected=false, got %v", resp["connected"])
+	}
+}
+
 type meAuthStub struct{ called bool }
+
+type nilMEAuth struct{}
 
 func (m *meAuthStub) HandleStart(http.ResponseWriter, *http.Request)    {}
 func (m *meAuthStub) HandleCallback(http.ResponseWriter, *http.Request) {}
@@ -191,3 +221,7 @@ func (m *meAuthStub) HandleStatus(w http.ResponseWriter, _ *http.Request) {
 	m.called = true
 	w.WriteHeader(http.StatusOK)
 }
+
+func (m *nilMEAuth) HandleStart(http.ResponseWriter, *http.Request)    {}
+func (m *nilMEAuth) HandleCallback(http.ResponseWriter, *http.Request) {}
+func (m *nilMEAuth) HandleStatus(http.ResponseWriter, *http.Request)   {}
