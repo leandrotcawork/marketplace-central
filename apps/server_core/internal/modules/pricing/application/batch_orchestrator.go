@@ -67,45 +67,68 @@ func (o *BatchOrchestrator) RunBatch(ctx context.Context, req BatchRunRequest) (
 		return BatchRunResult{}, fmt.Errorf("PRICING_BATCH_LOAD_POLICIES: %w", err)
 	}
 
-	meConnected, connErr := o.freight.IsConnected(ctx)
-	if connErr != nil {
-		meConnected = false
+	needsME := false
+	for _, pol := range pols {
+		if pol.ShippingProvider == "melhor_envio" {
+			needsME = true
+			break
+		}
 	}
 
-	freightResults := make(map[string]ports.FreightResult)
-	quoteErr := error(nil)
-	if meConnected {
-		needsME := false
-		for _, pol := range pols {
-			if pol.ShippingProvider == "melhor_envio" {
-				needsME = true
-				break
-			}
+	meConnected := false
+	if needsME {
+		connConnected, connErr := o.freight.IsConnected(ctx)
+		if connErr == nil {
+			meConnected = connConnected
 		}
-		if needsME {
-			freightReq := ports.FreightRequest{OriginCEP: req.OriginCEP, DestCEP: req.DestCEP}
-			for _, p := range prods {
-				if p.HeightCM == nil || p.WidthCM == nil || p.LengthCM == nil || p.WeightG == nil {
-					continue
-				}
-				freightReq.Products = append(freightReq.Products, ports.FreightProduct{
-					ProductID: p.ProductID,
-					HeightCM:  *p.HeightCM,
-					WidthCM:   *p.WidthCM,
-					LengthCM:  *p.LengthCM,
-					WeightKg:  *p.WeightG / 1000,
-					Value:     p.PriceAmount,
-				})
+	}
+
+	type freightState struct {
+		amount    float64
+		source    string
+		available bool
+	}
+
+	freightResults := make(map[string]freightState)
+	if needsME && meConnected {
+		for _, p := range prods {
+			if p.HeightCM == nil || p.WidthCM == nil || p.LengthCM == nil || p.WeightG == nil {
+				continue
 			}
-			if len(freightReq.Products) > 0 {
-				quoted, err := o.freight.QuoteFreight(ctx, freightReq)
-				if err != nil {
-					quoteErr = err
-				} else {
-					for k, v := range quoted {
-						freightResults[k] = v
-					}
-				}
+
+			quoted, err := o.freight.QuoteFreight(ctx, ports.FreightRequest{
+				OriginCEP: req.OriginCEP,
+				DestCEP:   req.DestCEP,
+				Products: []ports.FreightProduct{
+					{
+						ProductID: p.ProductID,
+						HeightCM:  *p.HeightCM,
+						WidthCM:   *p.WidthCM,
+						LengthCM:  *p.LengthCM,
+						WeightKg:  *p.WeightG / 1000,
+						Value:     p.PriceAmount,
+					},
+				},
+			})
+			if err != nil {
+				freightResults[p.ProductID] = freightState{source: "me_error"}
+				continue
+			}
+
+			result, ok := quoted[p.ProductID]
+			if !ok {
+				freightResults[p.ProductID] = freightState{source: "me_error"}
+				continue
+			}
+
+			source := result.Source
+			if source == "" {
+				source = "me_error"
+			}
+			freightResults[p.ProductID] = freightState{
+				amount:    result.Amount,
+				source:    source,
+				available: source == "melhor_envio",
 			}
 		}
 	}
@@ -125,27 +148,30 @@ func (o *BatchOrchestrator) RunBatch(ctx context.Context, req BatchRunRequest) (
 
 			freightAmt := pol.DefaultShipping
 			freightSource := "fixed"
+			freightAvailable := true
 			switch pol.ShippingProvider {
 			case "melhor_envio":
 				freightAmt = 0
+				freightAvailable = false
 				if prod.HeightCM == nil || prod.WidthCM == nil || prod.LengthCM == nil || prod.WeightG == nil {
 					freightSource = "no_dimensions"
 				} else if !meConnected {
 					freightSource = "me_not_connected"
-				} else if quoteErr != nil {
-					freightSource = "me_error"
 				} else if fr, ok := freightResults[prod.ProductID]; ok {
-					freightAmt = fr.Amount
-					freightSource = fr.Source
+					freightAmt = fr.amount
+					freightSource = fr.source
+					freightAvailable = fr.available
 				} else {
 					freightSource = "me_error"
 				}
 			case "marketplace":
 				freightAmt = pol.DefaultShipping
 				freightSource = "marketplace"
+				freightAvailable = true
 			default:
 				freightAmt = pol.DefaultShipping
 				freightSource = "fixed"
+				freightAvailable = true
 			}
 
 			commissionAmt := sellingPrice * pol.CommissionPercent
@@ -154,10 +180,7 @@ func (o *BatchOrchestrator) RunBatch(ctx context.Context, req BatchRunRequest) (
 			if sellingPrice > 0 {
 				marginPct = marginAmt / sellingPrice
 			}
-			status := "healthy"
-			if marginPct < pol.MinMarginPercent {
-				status = "warning"
-			}
+			status := simulationStatus(marginPct, freightAvailable)
 
 			items = append(items, BatchSimulationItem{
 				ProductID:        prod.ProductID,

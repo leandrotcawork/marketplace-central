@@ -69,16 +69,35 @@ func (s *stubPolicyProvider) GetPoliciesForBatch(_ context.Context, _ []string) 
 }
 
 type stubFreightQuoter struct {
-	connected bool
-	results   map[string]pricingports.FreightResult
+	connected        bool
+	quoteErr         error
+	resultsByProduct map[string]pricingports.FreightResult
+	quoteCalls       []pricingports.FreightRequest
 }
 
 func (s *stubFreightQuoter) IsConnected(_ context.Context) (bool, error) {
 	return s.connected, nil
 }
 
-func (s *stubFreightQuoter) QuoteFreight(_ context.Context, _ pricingports.FreightRequest) (map[string]pricingports.FreightResult, error) {
-	return s.results, nil
+func (s *stubFreightQuoter) QuoteFreight(_ context.Context, req pricingports.FreightRequest) (map[string]pricingports.FreightResult, error) {
+	s.quoteCalls = append(s.quoteCalls, req)
+	if s.quoteErr != nil {
+		return nil, s.quoteErr
+	}
+	if len(req.Products) == 0 {
+		return map[string]pricingports.FreightResult{}, nil
+	}
+
+	productID := req.Products[0].ProductID
+	if s.resultsByProduct != nil {
+		if result, ok := s.resultsByProduct[productID]; ok {
+			return map[string]pricingports.FreightResult{productID: result}, nil
+		}
+	}
+
+	return map[string]pricingports.FreightResult{
+		productID: {Amount: 0, Source: "me_error"},
+	}, nil
 }
 
 func TestBatchOrchestratorCalculatesMarginForAllProductsAndPolicies(t *testing.T) {
@@ -124,8 +143,8 @@ func TestBatchOrchestratorCalculatesMarginForAllProductsAndPolicies(t *testing.T
 	if p1Result.MarginAmount != expectedMarginAmt {
 		t.Fatalf("expected margin %v, got %v", expectedMarginAmt, p1Result.MarginAmount)
 	}
-	if p1Result.Status != "healthy" {
-		t.Fatalf("expected healthy, got %q", p1Result.Status)
+	if p1Result.Status != "warning" {
+		t.Fatalf("expected warning, got %q", p1Result.Status)
 	}
 }
 
@@ -156,4 +175,273 @@ func TestBatchOrchestratorUsesSuggestedPriceWhenRequested(t *testing.T) {
 	if result.Items[0].SellingPrice != 200.0 {
 		t.Fatalf("expected selling price 200 (suggested), got %v", result.Items[0].SellingPrice)
 	}
+}
+
+func TestBatchOrchestratorQuotesFreightPerProductAndUsesReturnedAmounts(t *testing.T) {
+	products := []pricingports.BatchProduct{
+		{
+			ProductID:   "p1",
+			CostAmount:  80,
+			PriceAmount: 150,
+			HeightCM:    floatPtr(10),
+			WidthCM:     floatPtr(20),
+			LengthCM:    floatPtr(30),
+			WeightG:     floatPtr(1000),
+		},
+		{
+			ProductID:   "p2",
+			CostAmount:  60,
+			PriceAmount: 140,
+			HeightCM:    floatPtr(12),
+			WidthCM:     floatPtr(22),
+			LengthCM:    floatPtr(32),
+			WeightG:     floatPtr(1200),
+		},
+	}
+	policies := []pricingports.BatchPolicy{
+		{PolicyID: "pol-me", CommissionPercent: 0.16, FixedFeeAmount: 0, DefaultShipping: 0, MinMarginPercent: 0.10, ShippingProvider: "melhor_envio"},
+	}
+	freight := &stubFreightQuoter{
+		connected: true,
+		resultsByProduct: map[string]pricingports.FreightResult{
+			"p1": {Amount: 5.50, Source: "melhor_envio"},
+			"p2": {Amount: 12.75, Source: "melhor_envio"},
+		},
+	}
+
+	orch := application.NewBatchOrchestrator(
+		&stubProductProvider{products: products},
+		&stubPolicyProvider{policies: policies},
+		freight,
+		"tenant_default",
+	)
+
+	result, err := orch.RunBatch(context.Background(), application.BatchRunRequest{
+		ProductIDs:  []string{"p1", "p2"},
+		PolicyIDs:   []string{"pol-me"},
+		OriginCEP:   "01310100",
+		DestCEP:     "30140071",
+		PriceSource: "my_price",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(freight.quoteCalls) != 2 {
+		t.Fatalf("expected 2 freight quote calls, got %d", len(freight.quoteCalls))
+	}
+
+	p1 := batchItemByIDs(t, result.Items, "p1", "pol-me")
+	p2 := batchItemByIDs(t, result.Items, "p2", "pol-me")
+
+	if p1.FreightAmount != 5.50 {
+		t.Fatalf("expected p1 freight 5.50, got %v", p1.FreightAmount)
+	}
+	if p2.FreightAmount != 12.75 {
+		t.Fatalf("expected p2 freight 12.75, got %v", p2.FreightAmount)
+	}
+	if p1.FreightAmount == p2.FreightAmount {
+		t.Fatalf("expected different freight amounts per product, got %v and %v", p1.FreightAmount, p2.FreightAmount)
+	}
+}
+
+func TestBatchOrchestratorMarksMELoadIssuesAsCritical(t *testing.T) {
+	products := []pricingports.BatchProduct{
+		{
+			ProductID:   "p1",
+			CostAmount:  20,
+			PriceAmount: 100,
+			HeightCM:    floatPtr(10),
+			WidthCM:     floatPtr(20),
+			LengthCM:    floatPtr(30),
+			WeightG:     floatPtr(1000),
+		},
+	}
+	policies := []pricingports.BatchPolicy{
+		{PolicyID: "pol-me", CommissionPercent: 0.10, FixedFeeAmount: 0, DefaultShipping: 0, MinMarginPercent: 0.10, ShippingProvider: "melhor_envio"},
+	}
+	freight := &stubFreightQuoter{connected: false}
+
+	orch := application.NewBatchOrchestrator(
+		&stubProductProvider{products: products},
+		&stubPolicyProvider{policies: policies},
+		freight,
+		"tenant_default",
+	)
+
+	result, err := orch.RunBatch(context.Background(), application.BatchRunRequest{
+		ProductIDs:  []string{"p1"},
+		PolicyIDs:   []string{"pol-me"},
+		OriginCEP:   "01310100",
+		DestCEP:     "30140071",
+		PriceSource: "my_price",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(freight.quoteCalls) != 0 {
+		t.Fatalf("expected no freight quote calls when disconnected, got %d", len(freight.quoteCalls))
+	}
+
+	item := batchItemByIDs(t, result.Items, "p1", "pol-me")
+	if item.FreightSource != "me_not_connected" {
+		t.Fatalf("expected me_not_connected, got %q", item.FreightSource)
+	}
+	if item.Status != "critical" {
+		t.Fatalf("expected critical status, got %q", item.Status)
+	}
+}
+
+func TestBatchOrchestratorMarksMEQuoteErrorsAsCritical(t *testing.T) {
+	products := []pricingports.BatchProduct{
+		{
+			ProductID:   "p1",
+			CostAmount:  20,
+			PriceAmount: 100,
+			HeightCM:    floatPtr(10),
+			WidthCM:     floatPtr(20),
+			LengthCM:    floatPtr(30),
+			WeightG:     floatPtr(1000),
+		},
+	}
+	policies := []pricingports.BatchPolicy{
+		{PolicyID: "pol-me", CommissionPercent: 0.10, FixedFeeAmount: 0, DefaultShipping: 0, MinMarginPercent: 0.10, ShippingProvider: "melhor_envio"},
+	}
+	freight := &stubFreightQuoter{
+		connected: true,
+		quoteErr:  context.Canceled,
+	}
+
+	orch := application.NewBatchOrchestrator(
+		&stubProductProvider{products: products},
+		&stubPolicyProvider{policies: policies},
+		freight,
+		"tenant_default",
+	)
+
+	result, err := orch.RunBatch(context.Background(), application.BatchRunRequest{
+		ProductIDs:  []string{"p1"},
+		PolicyIDs:   []string{"pol-me"},
+		OriginCEP:   "01310100",
+		DestCEP:     "30140071",
+		PriceSource: "my_price",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	item := batchItemByIDs(t, result.Items, "p1", "pol-me")
+	if item.FreightSource != "me_error" {
+		t.Fatalf("expected me_error, got %q", item.FreightSource)
+	}
+	if item.Status != "critical" {
+		t.Fatalf("expected critical status, got %q", item.Status)
+	}
+}
+
+func TestBatchOrchestratorMarksMissingDimensionsAsCritical(t *testing.T) {
+	products := []pricingports.BatchProduct{
+		{
+			ProductID:   "p1",
+			CostAmount:  20,
+			PriceAmount: 100,
+			HeightCM:    floatPtr(10),
+			WidthCM:     floatPtr(20),
+			LengthCM:    floatPtr(30),
+			WeightG:     nil,
+		},
+	}
+	policies := []pricingports.BatchPolicy{
+		{PolicyID: "pol-me", CommissionPercent: 0.10, FixedFeeAmount: 0, DefaultShipping: 0, MinMarginPercent: 0.10, ShippingProvider: "melhor_envio"},
+	}
+	freight := &stubFreightQuoter{connected: true}
+
+	orch := application.NewBatchOrchestrator(
+		&stubProductProvider{products: products},
+		&stubPolicyProvider{policies: policies},
+		freight,
+		"tenant_default",
+	)
+
+	result, err := orch.RunBatch(context.Background(), application.BatchRunRequest{
+		ProductIDs:  []string{"p1"},
+		PolicyIDs:   []string{"pol-me"},
+		OriginCEP:   "01310100",
+		DestCEP:     "30140071",
+		PriceSource: "my_price",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(freight.quoteCalls) != 0 {
+		t.Fatalf("expected no freight quote calls for missing dimensions, got %d", len(freight.quoteCalls))
+	}
+
+	item := batchItemByIDs(t, result.Items, "p1", "pol-me")
+	if item.FreightSource != "no_dimensions" {
+		t.Fatalf("expected no_dimensions, got %q", item.FreightSource)
+	}
+	if item.Status != "critical" {
+		t.Fatalf("expected critical status, got %q", item.Status)
+	}
+}
+
+func TestBatchOrchestratorMarksCriticalWhenFreightMissingEvenIfMarginIsHigh(t *testing.T) {
+	products := []pricingports.BatchProduct{
+		{
+			ProductID:   "p1",
+			CostAmount:  20,
+			PriceAmount: 100,
+			HeightCM:    floatPtr(10),
+			WidthCM:     floatPtr(20),
+			LengthCM:    floatPtr(30),
+			WeightG:     floatPtr(1000),
+		},
+	}
+	policies := []pricingports.BatchPolicy{
+		{PolicyID: "pol-me", CommissionPercent: 0.05, FixedFeeAmount: 0, DefaultShipping: 0, MinMarginPercent: 0.10, ShippingProvider: "melhor_envio"},
+	}
+	freight := &stubFreightQuoter{
+		connected: true,
+		quoteErr:  context.Canceled,
+	}
+
+	orch := application.NewBatchOrchestrator(
+		&stubProductProvider{products: products},
+		&stubPolicyProvider{policies: policies},
+		freight,
+		"tenant_default",
+	)
+
+	result, err := orch.RunBatch(context.Background(), application.BatchRunRequest{
+		ProductIDs:  []string{"p1"},
+		PolicyIDs:   []string{"pol-me"},
+		OriginCEP:   "01310100",
+		DestCEP:     "30140071",
+		PriceSource: "my_price",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	item := batchItemByIDs(t, result.Items, "p1", "pol-me")
+	if item.MarginPercent <= 0.10 {
+		t.Fatalf("test setup broken: expected margin above threshold, got %v", item.MarginPercent)
+	}
+	if item.Status != "critical" {
+		t.Fatalf("expected critical status when freight is missing, got %q", item.Status)
+	}
+}
+
+func batchItemByIDs(t *testing.T, items []application.BatchSimulationItem, productID, policyID string) application.BatchSimulationItem {
+	t.Helper()
+	for _, item := range items {
+		if item.ProductID == productID && item.PolicyID == policyID {
+			return item
+		}
+	}
+	t.Fatalf("missing item for product %s policy %s", productID, policyID)
+	return application.BatchSimulationItem{}
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
 }

@@ -35,6 +35,9 @@ func writePricingError(w http.ResponseWriter, status int, code, message string) 
 }
 
 func mapPricingError(msg string) (int, string) {
+	if strings.HasPrefix(msg, "PRICING_BATCH_LOAD_") || strings.HasPrefix(msg, "PRICING_INTERNAL_") {
+		return http.StatusInternalServerError, "PRICING_INTERNAL_ERROR"
+	}
 	if strings.HasPrefix(msg, "PRICING_") {
 		return http.StatusBadRequest, "PRICING_SIMULATION_INVALID"
 	}
