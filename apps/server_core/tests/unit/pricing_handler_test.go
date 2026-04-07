@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"marketplace-central/apps/server_core/internal/modules/pricing/application"
 	"marketplace-central/apps/server_core/internal/modules/pricing/domain"
+	pricingports "marketplace-central/apps/server_core/internal/modules/pricing/ports"
 	"marketplace-central/apps/server_core/internal/modules/pricing/transport"
 )
 
@@ -28,7 +30,7 @@ func (r *pricingRepoHandlerStub) ListSimulations(_ context.Context) ([]domain.Si
 func newPricingHandlerWithStub() (transport.Handler, *pricingRepoHandlerStub) {
 	repo := &pricingRepoHandlerStub{}
 	svc := application.NewService(repo, "tenant_default")
-	return transport.NewHandler(svc), repo
+	return transport.NewHandler(svc, nil), repo
 }
 
 func TestPricingHandlerPostReturnsSimulation(t *testing.T) {
@@ -106,5 +108,42 @@ func TestPricingHandlerRejectsOtherMethods(t *testing.T) {
 	}
 	if body["error"] == nil {
 		t.Fatal("expected error field in 405 response body")
+	}
+}
+
+func TestPricingBatchEndpointReturnsResults(t *testing.T) {
+	stubProducts := &stubProductProvider{products: []pricingports.BatchProduct{
+		{ProductID: "p1", CostAmount: 80, PriceAmount: 150},
+	}}
+	stubPolicies := &stubPolicyProvider{policies: []pricingports.BatchPolicy{
+		{PolicyID: "pol1", CommissionPercent: 0.16, DefaultShipping: 20, MinMarginPercent: 0.10, ShippingProvider: "fixed"},
+	}}
+	stubFreight := &stubFreightQuoter{connected: false}
+	batch := application.NewBatchOrchestrator(stubProducts, stubPolicies, stubFreight, "t1")
+
+	repo := &pricingRepoStub{}
+	svc := application.NewService(repo, "t1")
+	handler := transport.NewHandler(svc, batch)
+
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	body := `{"product_ids":["p1"],"policy_ids":["pol1"],"origin_cep":"01310100","destination_cep":"30140071","price_source":"my_price"}`
+	req := httptest.NewRequest(http.MethodPost, "/pricing/simulations/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(resp.Items))
 	}
 }

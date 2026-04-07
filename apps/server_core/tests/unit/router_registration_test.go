@@ -258,7 +258,7 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 
 	// /pricing/simulations
 	pricingSvc := pricingapp.NewService(stubPricingRepo{}, "tenant_default")
-	pricingtransport.NewHandler(pricingSvc).Register(mux)
+	pricingtransport.NewHandler(pricingSvc, nil).Register(mux)
 
 	// /connectors/vtex/publish, /connectors/vtex/publish/batch/...
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(stubConnectorsRepo{}, stubVTEXAdapter{}, "tenant_default")

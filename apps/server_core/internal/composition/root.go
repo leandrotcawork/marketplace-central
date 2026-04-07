@@ -19,6 +19,8 @@ import (
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
 	marketplacestransport "marketplace-central/apps/server_core/internal/modules/marketplaces/transport"
+	pricingcatalog "marketplace-central/apps/server_core/internal/modules/pricing/adapters/catalog"
+	pricingmarketplace "marketplace-central/apps/server_core/internal/modules/pricing/adapters/marketplace"
 	pricingpostgres "marketplace-central/apps/server_core/internal/modules/pricing/adapters/postgres"
 	pricingapp "marketplace-central/apps/server_core/internal/modules/pricing/application"
 	pricingtransport "marketplace-central/apps/server_core/internal/modules/pricing/transport"
@@ -49,19 +51,26 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 
 	pricingRepo := pricingpostgres.NewRepository(pool, cfg.DefaultTenantID)
 	pricingSvc := pricingapp.NewService(pricingRepo, cfg.DefaultTenantID)
-	pricingtransport.NewHandler(pricingSvc).Register(mux)
 
 	vtexCredentials, err := connectorshttp.NewEnvCredentialProvider()
 	if err != nil {
 		log.Fatalf("vtex credentials: %v", err)
 	}
 
+	meOAuthStore := connectorsmelhorenvio.NewTokenStore(pool, cfg.DefaultTenantID)
+	batchOrch := pricingapp.NewBatchOrchestrator(
+		pricingcatalog.NewReader(catalogSvc),
+		pricingmarketplace.NewReader(marketSvc),
+		connectorsmelhorenvio.NewClient(meOAuthStore),
+		cfg.DefaultTenantID,
+	)
+	pricingtransport.NewHandler(pricingSvc, batchOrch).Register(mux)
+
 	connectorsRepo := connectorspostgres.NewRepository(pool, cfg.DefaultTenantID)
 	vtexAdapter := connectorshttp.NewAdapter(vtexCredentials)
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(connectorsRepo, vtexAdapter, cfg.DefaultTenantID)
 	connectorstransport.NewHandler(connectorsOrch).Register(mux)
 
-	meOAuthStore := connectorsmelhorenvio.NewTokenStore(pool, cfg.DefaultTenantID)
 	if meOAuth := connectorsmelhorenvio.NewOAuthHandlerFromEnv(meOAuthStore); meOAuth != nil {
 		meOAuth.Register(mux)
 	}
