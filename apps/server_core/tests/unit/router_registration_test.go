@@ -45,6 +45,18 @@ func (r stubCatalogReader) ListTaxonomyNodes(_ context.Context) ([]catalogdomain
 	return nil, nil
 }
 
+func (r stubCatalogReader) ListProductsByIDs(_ context.Context, productIDs []string) ([]catalogdomain.Product, error) {
+	result := make([]catalogdomain.Product, 0, len(productIDs))
+	seen := make(map[string]struct{}, len(productIDs))
+	for _, id := range productIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+	}
+	return result, nil
+}
+
 // stubCatalogEnrichments satisfies catalog ports.EnrichmentStore with in-memory no-ops.
 type stubCatalogEnrichments struct{}
 
@@ -74,6 +86,18 @@ func (r stubMarketplacesRepo) ListAccounts(_ context.Context) ([]marketplacesdom
 }
 func (r stubMarketplacesRepo) ListPolicies(_ context.Context) ([]marketplacesdomain.Policy, error) {
 	return nil, nil
+}
+
+func (r stubMarketplacesRepo) ListPoliciesByIDs(_ context.Context, policyIDs []string) ([]marketplacesdomain.Policy, error) {
+	result := make([]marketplacesdomain.Policy, 0, len(policyIDs))
+	seen := make(map[string]struct{}, len(policyIDs))
+	for _, id := range policyIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+	}
+	return result, nil
 }
 
 // stubPricingRepo satisfies pricing ports.Repository with in-memory no-ops.

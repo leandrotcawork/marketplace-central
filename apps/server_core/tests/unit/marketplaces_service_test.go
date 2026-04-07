@@ -31,6 +31,21 @@ func (s *marketplaceRepoStub) ListPolicies(context.Context) ([]domain.Policy, er
 	return nil, nil
 }
 
+func (s *marketplaceRepoStub) ListPoliciesByIDs(_ context.Context, policyIDs []string) ([]domain.Policy, error) {
+	result := make([]domain.Policy, 0, len(policyIDs))
+	seen := make(map[string]struct{}, len(policyIDs))
+	for _, id := range policyIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		if s.policy.PolicyID == id {
+			result = append(result, s.policy)
+		}
+	}
+	return result, nil
+}
+
 func TestCreateMarketplacePolicyPersistsCommissionSlaAndShippingProvider(t *testing.T) {
 	repo := &marketplaceRepoStub{}
 	service := application.NewService(repo, "tenant_default")

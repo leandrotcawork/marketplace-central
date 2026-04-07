@@ -11,4 +11,5 @@ type Repository interface {
 	SavePolicy(ctx context.Context, policy domain.Policy) error
 	ListAccounts(ctx context.Context) ([]domain.Account, error)
 	ListPolicies(ctx context.Context) ([]domain.Policy, error)
+	ListPoliciesByIDs(ctx context.Context, policyIDs []string) ([]domain.Policy, error)
 }

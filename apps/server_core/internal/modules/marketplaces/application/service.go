@@ -92,3 +92,10 @@ func (s Service) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 func (s Service) ListPolicies(ctx context.Context) ([]domain.Policy, error) {
 	return s.repo.ListPolicies(ctx)
 }
+
+func (s Service) ListPoliciesByIDs(ctx context.Context, policyIDs []string) ([]domain.Policy, error) {
+	if len(policyIDs) == 0 {
+		return []domain.Policy{}, nil
+	}
+	return s.repo.ListPoliciesByIDs(ctx, policyIDs)
+}

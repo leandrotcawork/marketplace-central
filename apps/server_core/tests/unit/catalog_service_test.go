@@ -32,6 +32,27 @@ func (s *productReaderStub) ListTaxonomyNodes(_ context.Context) ([]domain.Taxon
 	return s.taxonomy, s.err
 }
 
+func (s *productReaderStub) ListProductsByIDs(_ context.Context, productIDs []string) ([]domain.Product, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	result := make([]domain.Product, 0, len(productIDs))
+	seen := make(map[string]struct{}, len(productIDs))
+	for _, id := range productIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		for _, p := range s.products {
+			if p.ProductID == id {
+				result = append(result, p)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 // enrichmentStoreStub implements ports.EnrichmentStore for testing.
 type enrichmentStoreStub struct {
 	enrichments map[string]domain.ProductEnrichment

@@ -33,6 +33,24 @@ func (r *marketplacesRepoStub) ListPolicies(_ context.Context) ([]domain.Policy,
 	return r.policies, nil
 }
 
+func (r *marketplacesRepoStub) ListPoliciesByIDs(_ context.Context, policyIDs []string) ([]domain.Policy, error) {
+	result := make([]domain.Policy, 0, len(policyIDs))
+	seen := make(map[string]struct{}, len(policyIDs))
+	for _, id := range policyIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		for _, p := range r.policies {
+			if p.PolicyID == id {
+				result = append(result, p)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 func newMarketplacesHandler() transport.Handler {
 	repo := &marketplacesRepoStub{}
 	svc := application.NewService(repo, "tenant_default")

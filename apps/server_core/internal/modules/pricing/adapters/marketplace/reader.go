@@ -8,34 +8,30 @@ import (
 	pricingports "marketplace-central/apps/server_core/internal/modules/pricing/ports"
 )
 
-// Reader wraps marketplaces.Service and implements pricing/ports.PolicyProvider.
-type Reader struct {
-	svc marketplacesapp.Service
+type policyLister interface {
+	ListPoliciesByIDs(ctx context.Context, policyIDs []string) ([]marketplacesdomain.Policy, error)
 }
 
-func NewReader(svc marketplacesapp.Service) *Reader { return &Reader{svc: svc} }
+// Reader wraps marketplaces.Service and implements pricing/ports.PolicyProvider.
+type Reader struct {
+	svc policyLister
+}
+
+func NewReader(svc policyLister) *Reader { return &Reader{svc: svc} }
+
+var _ policyLister = (marketplacesapp.Service{})
 
 func (r *Reader) GetPoliciesForBatch(ctx context.Context, policyIDs []string) ([]pricingports.BatchPolicy, error) {
-	all, err := r.svc.ListPolicies(ctx)
+	if len(policyIDs) == 0 {
+		return []pricingports.BatchPolicy{}, nil
+	}
+	policies, err := r.svc.ListPoliciesByIDs(ctx, policyIDs)
 	if err != nil {
 		return nil, err
 	}
-	if len(policyIDs) == 0 {
-		result := make([]pricingports.BatchPolicy, len(all))
-		for i, p := range all {
-			result[i] = fromDomain(p)
-		}
-		return result, nil
-	}
-	idSet := make(map[string]struct{}, len(policyIDs))
-	for _, id := range policyIDs {
-		idSet[id] = struct{}{}
-	}
-	result := make([]pricingports.BatchPolicy, 0, len(policyIDs))
-	for _, p := range all {
-		if _, ok := idSet[p.PolicyID]; ok {
-			result = append(result, fromDomain(p))
-		}
+	result := make([]pricingports.BatchPolicy, 0, len(policies))
+	for _, p := range policies {
+		result = append(result, fromDomain(p))
 	}
 	return result, nil
 }
