@@ -68,7 +68,11 @@ func (c *Client) IsConnected(ctx context.Context) (bool, error) {
 	if strings.TrimSpace(token) == "" {
 		return false, nil
 	}
-	return checkServices(ctx, c.httpClient, c.baseURL, token)
+	connected, err := checkServices(ctx, c.httpClient, c.baseURL, token)
+	if err != nil {
+		return false, nil
+	}
+	return connected, nil
 }
 
 func (c *Client) QuoteFreight(ctx context.Context, req pricingports.FreightRequest) (map[string]pricingports.FreightResult, error) {

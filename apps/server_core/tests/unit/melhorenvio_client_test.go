@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
+	melhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
 	pricingports "marketplace-central/apps/server_core/internal/modules/pricing/ports"
 )
 
@@ -263,6 +263,23 @@ func TestMEClientIsConnectedReturnsFalseOnNon200(t *testing.T) {
 	defer srv.Close()
 
 	client := melhorenvio.NewClientWithBaseURL(melhorenvio.NewInMemoryTokenStore("test-token"), srv.URL)
+	connected, err := client.IsConnected(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if connected {
+		t.Fatal("expected connected=false")
+	}
+}
+
+func TestMEClientIsConnectedReturnsFalseOnRequestError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("server should not be reached")
+	}))
+	srv.Close()
+
+	client := melhorenvio.NewClientWithBaseURL(melhorenvio.NewInMemoryTokenStore("test-token"), srv.URL)
+
 	connected, err := client.IsConnected(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
