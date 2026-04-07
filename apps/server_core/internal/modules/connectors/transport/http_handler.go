@@ -9,20 +9,20 @@ import (
 	"strings"
 	"time"
 
-	melhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
 	app "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	domain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
+	connectorports "marketplace-central/apps/server_core/internal/modules/connectors/ports"
 	"marketplace-central/apps/server_core/internal/platform/httpx"
 )
 
 // Handler exposes the VTEX publish pipeline over HTTP.
 type Handler struct {
 	orchestrator *app.BatchOrchestrator
-	meAuth       *melhorenvio.OAuthHandler // nil if ME_CLIENT_ID not set
+	meAuth       connectorports.MEAuthPort // nil if ME_CLIENT_ID not set
 }
 
 // NewHandler constructs a Handler.
-func NewHandler(orchestrator *app.BatchOrchestrator, meAuth *melhorenvio.OAuthHandler) *Handler {
+func NewHandler(orchestrator *app.BatchOrchestrator, meAuth connectorports.MEAuthPort) *Handler {
 	return &Handler{orchestrator: orchestrator, meAuth: meAuth}
 }
 
@@ -231,14 +231,14 @@ func (h *Handler) handleBatchStatus(w http.ResponseWriter, r *http.Request, batc
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"batch_id":    batch.BatchID,
+		"batch_id":     batch.BatchID,
 		"vtex_account": batch.VTEXAccount,
-		"status":      batch.Status,
-		"total":       batch.TotalProducts,
-		"succeeded":   batch.SucceededCount,
-		"failed":      batch.FailedCount,
-		"in_progress": inProgress,
-		"operations":  operations,
+		"status":       batch.Status,
+		"total":        batch.TotalProducts,
+		"succeeded":    batch.SucceededCount,
+		"failed":       batch.FailedCount,
+		"in_progress":  inProgress,
+		"operations":   operations,
 	})
 	slog.Info("connectors.batch_status", "action", "get_batch", "result", "200", "batch_id", batchID, "duration_ms", time.Since(start).Milliseconds())
 }

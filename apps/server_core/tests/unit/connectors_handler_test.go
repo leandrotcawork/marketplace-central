@@ -163,3 +163,31 @@ func TestConnectorsBatchStatusHandler(t *testing.T) {
 		t.Fatalf("expected batch_id %q, got %v", result.BatchID, resp["batch_id"])
 	}
 }
+
+func TestConnectorsMEStatusDelegatesToAuthPort(t *testing.T) {
+	orch := newTestOrchestrator()
+	stub := &meAuthStub{}
+	h := transport.NewHandler(orch, stub)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/status", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if !stub.called {
+		t.Fatal("expected ME auth port to be called")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+type meAuthStub struct{ called bool }
+
+func (m *meAuthStub) HandleStart(http.ResponseWriter, *http.Request)    {}
+func (m *meAuthStub) HandleCallback(http.ResponseWriter, *http.Request) {}
+func (m *meAuthStub) HandleStatus(w http.ResponseWriter, _ *http.Request) {
+	m.called = true
+	w.WriteHeader(http.StatusOK)
+}
