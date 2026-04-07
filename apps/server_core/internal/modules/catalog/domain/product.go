@@ -18,6 +18,7 @@ type Product struct {
 	HeightCM       *float64 `json:"height_cm"`
 	WidthCM        *float64 `json:"width_cm"`
 	LengthCM       *float64 `json:"length_cm"`
+	WeightG        *float64 `json:"weight_g"`
 }
 
 type TaxonomyNode struct {
@@ -36,5 +37,6 @@ type ProductEnrichment struct {
 	HeightCM             *float64 `json:"height_cm"`
 	WidthCM              *float64 `json:"width_cm"`
 	LengthCM             *float64 `json:"length_cm"`
+	WeightG              *float64 `json:"weight_g"`
 	SuggestedPriceAmount *float64 `json:"suggested_price_amount"`
 }

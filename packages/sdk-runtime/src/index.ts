@@ -16,6 +16,7 @@ export interface CatalogProduct {
   height_cm: number | null;
   width_cm: number | null;
   length_cm: number | null;
+  weight_g: number | null;
 }
 
 export interface TaxonomyNode {
@@ -34,6 +35,7 @@ export interface ProductEnrichment {
   height_cm: number | null;
   width_cm: number | null;
   length_cm: number | null;
+  weight_g: number | null;
   suggested_price_amount: number | null;
 }
 

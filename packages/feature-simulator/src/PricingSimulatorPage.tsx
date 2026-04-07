@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button, PaginatedTable } from "@marketplace-central/ui";
 import { ToggleLeft, ToggleRight, ChevronRight, ChevronDown } from "lucide-react";
 import type {
@@ -42,6 +42,7 @@ export function PricingSimulatorPage({ client }: Props) {
   const [taxonomyNodes, setTaxonomyNodes] = useState<TaxonomyNode[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [melhorEnvioConnected, setMelhorEnvioConnected] = useState<boolean | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [originCep, setOriginCep] = useState("");
@@ -56,22 +57,25 @@ export function PricingSimulatorPage({ client }: Props) {
 
   const [search, setSearch] = useState("");
   const [taxonomyFilter, setTaxonomyFilter] = useState("");
+  const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "warning" | "critical">("all");
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [prodRes, clsRes, polRes, taxRes] = await Promise.all([
+        const [prodRes, clsRes, polRes, taxRes, melhorEnvioRes] = await Promise.all([
           client.listCatalogProducts(),
           client.listClassifications(),
           client.listMarketplacePolicies(),
           client.listTaxonomyNodes(),
+          client.getMelhorEnvioStatus(),
         ]);
         if (cancelled) return;
         setProducts(prodRes.items);
         setClassifications(clsRes.items);
         setPolicies(polRes.items);
         setTaxonomyNodes(taxRes.items);
+        setMelhorEnvioConnected(melhorEnvioRes.connected);
       } catch {
         if (!cancelled) setLoadError("Failed to load data.");
       } finally {
@@ -99,8 +103,17 @@ export function PricingSimulatorPage({ client }: Props) {
       const matchTax = !taxonomyFilter || p.taxonomy_node_id === taxonomyFilter;
       return matchSearch && matchTax;
     });
+    if (hasResults && healthFilter !== "all") {
+      items = items.filter((p) => {
+        const statuses = policies.map((pol) => resultMap[`${p.product_id}::${pol.policy_id}`]?.status).filter(Boolean);
+        if (healthFilter === "healthy") return statuses.some((s) => s === "healthy");
+        if (healthFilter === "warning") return statuses.some((s) => s === "warning");
+        if (healthFilter === "critical") return statuses.some((s) => s !== "healthy" && s !== "warning");
+        return true;
+      });
+    }
     return items;
-  }, [products, search, taxonomyFilter]);
+  }, [products, search, taxonomyFilter, healthFilter, hasResults, policies, resultMap]);
 
   function toggleProduct(id: string) {
     setSelectedIds((prev) => {
@@ -160,17 +173,6 @@ export function PricingSimulatorPage({ client }: Props) {
     if (!isFinite(val) || val <= 0) return;
     const key = `${productId}::${policyId}`;
     setPriceOverrides((prev) => ({ ...prev, [key]: val }));
-    // Recalculate this cell locally.
-    setResults((prev) => prev.map((item) => {
-      if (item.product_id !== productId || item.policy_id !== policyId) return item;
-      const policy = policies.find((p) => p.policy_id === policyId);
-      if (!policy) return item;
-      const commissionAmt = val * policy.commission_percent;
-      const marginAmt = val - item.cost_amount - commissionAmt - item.fixed_fee_amount - item.freight_amount;
-      const marginPct = val > 0 ? marginAmt / val : 0;
-      const status = marginPct >= policy.min_margin_percent ? "healthy" : "warning";
-      return { ...item, selling_price: val, commission_amount: commissionAmt, margin_amount: marginAmt, margin_percent: marginPct, status };
-    }));
   }
 
   // Summary stats
@@ -234,10 +236,15 @@ export function PricingSimulatorPage({ client }: Props) {
             </Button>
           </div>
         </div>
-        {runError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{runError}</div>
-        )}
-      </div>
+      {runError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{runError}</div>
+      )}
+      {melhorEnvioConnected !== null && (
+        <div className="text-xs text-slate-500">
+          Melhor Envios: {melhorEnvioConnected ? "connected" : "disconnected"}
+        </div>
+      )}
+    </div>
 
       {/* Classification pills (scope selector) */}
       {classifications.length > 0 && (
@@ -248,7 +255,7 @@ export function PricingSimulatorPage({ client }: Props) {
               <button
                 key={cls.classification_id}
                 type="button"
-                aria-label={`${cls.name} Ã—${cls.product_count}`}
+                aria-label={`${cls.name} ×${cls.product_count}`}
                 onClick={() => toggleClassification(cls)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
                   allSelected
@@ -256,7 +263,7 @@ export function PricingSimulatorPage({ client }: Props) {
                     : "bg-white text-slate-700 border-slate-300 hover:border-blue-400"
                 }`}
               >
-                {cls.name} <span className="opacity-75">Ã—{cls.product_count}</span>
+                {cls.name} <span className="opacity-75">×{cls.product_count}</span>
               </button>
             );
           })}
@@ -272,7 +279,7 @@ export function PricingSimulatorPage({ client }: Props) {
           <span className="font-medium text-slate-700">
             Avg margin <span className={marginColor(avgMargin)}>{(avgMargin * 100).toFixed(1)}%</span>
           </span>
-          <span className="text-emerald-700">Healthy: {healthyCount}</span>
+          <span className="text-emerald-700">Good: {healthyCount}</span>
           <span className="text-amber-700">Warning: {warningCount}</span>
           {criticalCount > 0 && <span className="text-red-700">Critical: {criticalCount}</span>}
           <button onClick={() => setResults([])} className="ml-auto text-xs text-slate-500 hover:text-slate-700 cursor-pointer">
@@ -299,6 +306,19 @@ export function PricingSimulatorPage({ client }: Props) {
           <option value="">All Taxonomy</option>
           {taxonomyNodes.map((t) => <option key={t.node_id} value={t.node_id}>{t.name}</option>)}
         </select>
+        {hasResults && (
+          <select
+            value={healthFilter}
+            onChange={(e) => setHealthFilter(e.target.value as any)}
+            aria-label="Health filter"
+            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Health</option>
+            <option value="healthy">Healthy</option>
+            <option value="warning">Warning</option>
+            <option value="critical">Critical</option>
+          </select>
+        )}
       </div>
 
       {/* Product table */}

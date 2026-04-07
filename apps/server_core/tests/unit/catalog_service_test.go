@@ -133,6 +133,7 @@ func TestCatalogServiceAppliesEnrichmentOverlay(t *testing.T) {
 	}
 }
 
+
 func TestCatalogServiceFallsBackToShoppingSuggestedPrice(t *testing.T) {
 	shoppingPrice := 150.00
 	reader := &productReaderStub{

@@ -17,7 +17,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     dir: rootDir,
-    setupFiles: ["@testing-library/jest-dom/vitest"],
+    setupFiles: [path.resolve(rootDir, "node_modules/@testing-library/jest-dom/dist/vitest.mjs")],
     include: ["apps/web/src/**/*.test.ts", "apps/web/src/**/*.test.tsx", "packages/**/*.test.ts", "packages/**/*.test.tsx"],
     exclude: ["**/node_modules/**", "**/.worktrees/**"],
   },
