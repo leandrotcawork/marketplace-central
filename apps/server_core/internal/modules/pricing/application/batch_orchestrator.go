@@ -180,7 +180,7 @@ func (o *BatchOrchestrator) RunBatch(ctx context.Context, req BatchRunRequest) (
 			if sellingPrice > 0 {
 				marginPct = marginAmt / sellingPrice
 			}
-			status := simulationStatus(marginPct, freightAvailable)
+			status := simulationStatusForBatch(marginPct, freightAvailable)
 
 			items = append(items, BatchSimulationItem{
 				ProductID:        prod.ProductID,

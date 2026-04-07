@@ -50,6 +50,34 @@ func TestRunSimulationCalculatesMarginAndStatus(t *testing.T) {
 	}
 }
 
+func TestRunSimulationUsesPolicyMinMarginPercent(t *testing.T) {
+	repo := &pricingRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	simulation, err := service.RunSimulation(context.Background(), application.RunSimulationInput{
+		SimulationID:      "sim-002",
+		ProductID:         "SKU-002",
+		AccountID:         "mercado-livre-main",
+		BasePriceAmount:   100,
+		CostAmount:        65,
+		CommissionPercent: 0,
+		FixedFeeAmount:    0,
+		ShippingAmount:    10,
+		MinMarginPercent:  0.30,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if simulation.MarginPercent != 0.25 {
+		t.Fatalf("expected margin 0.25, got %v", simulation.MarginPercent)
+	}
+
+	if simulation.Status != "warning" {
+		t.Fatalf("expected warning when margin is below policy minimum, got %q", simulation.Status)
+	}
+}
+
 // --- BatchOrchestrator tests ---
 
 type stubProductProvider struct {
@@ -145,6 +173,39 @@ func TestBatchOrchestratorCalculatesMarginForAllProductsAndPolicies(t *testing.T
 	}
 	if p1Result.Status != "warning" {
 		t.Fatalf("expected warning, got %q", p1Result.Status)
+	}
+}
+
+func TestBatchOrchestratorMarksExactly20PercentMarginAsWarning(t *testing.T) {
+	products := []pricingports.BatchProduct{
+		{ProductID: "p1", CostAmount: 70, PriceAmount: 100},
+	}
+	policies := []pricingports.BatchPolicy{
+		{PolicyID: "pol1", CommissionPercent: 0.10, FixedFeeAmount: 0, DefaultShipping: 0, MinMarginPercent: 0.30, ShippingProvider: "fixed"},
+	}
+
+	orch := application.NewBatchOrchestrator(
+		&stubProductProvider{products: products},
+		&stubPolicyProvider{policies: policies},
+		&stubFreightQuoter{connected: false},
+		"tenant_default",
+	)
+
+	result, err := orch.RunBatch(context.Background(), application.BatchRunRequest{
+		ProductIDs:  []string{"p1"},
+		PolicyIDs:   []string{"pol1"},
+		PriceSource: "my_price",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	item := batchItemByIDs(t, result.Items, "p1", "pol1")
+	if item.MarginPercent != 0.20 {
+		t.Fatalf("expected margin 0.20, got %v", item.MarginPercent)
+	}
+	if item.Status != "warning" {
+		t.Fatalf("expected warning at exactly 20%% margin, got %q", item.Status)
 	}
 }
 

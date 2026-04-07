@@ -32,7 +32,7 @@ func (s Service) RunSimulation(ctx context.Context, input RunSimulationInput) (d
 	commissionAmount := input.BasePriceAmount * input.CommissionPercent
 	marginAmount := input.BasePriceAmount - input.CostAmount - commissionAmount - input.FixedFeeAmount - input.ShippingAmount
 	marginPercent := marginAmount / input.BasePriceAmount
-	status := simulationStatus(marginPercent, true)
+	status := simulationStatusForSingle(marginPercent, input.MinMarginPercent)
 
 	simulation := domain.Simulation{
 		SimulationID:  input.SimulationID,
