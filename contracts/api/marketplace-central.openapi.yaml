@@ -685,6 +685,9 @@ components:
         length_cm:
           type: number
           nullable: true
+        weight_g:
+          type: number
+          nullable: true
     TaxonomyNode:
       type: object
       properties:
@@ -714,6 +717,9 @@ components:
           type: number
           nullable: true
         length_cm:
+          type: number
+          nullable: true
+        weight_g:
           type: number
           nullable: true
         suggested_price_amount:

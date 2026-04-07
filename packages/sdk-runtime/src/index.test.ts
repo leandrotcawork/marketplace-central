@@ -96,6 +96,63 @@ describe("sdk runtime", () => {
     expect(requests[0].init?.headers).toEqual({ "Content-Type": "application/json" });
   });
 
+  it("posts batch simulation payload as json", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async (input, init) => {
+        requests.push({ input, init });
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    await client.runBatchSimulation({
+      product_ids: ["prod-1"],
+      policy_ids: ["policy-1"],
+      origin_cep: "01001000",
+      destination_cep: "20040002",
+      price_source: "my_price",
+      price_overrides: { "prod-1::policy-1": 123.45 },
+    });
+
+    expect(String(requests[0].input)).toBe("http://localhost:8080/pricing/simulations/batch");
+    expect(requests[0].init?.method).toBe("POST");
+    expect(requests[0].init?.headers).toEqual({ "Content-Type": "application/json" });
+    expect(requests[0].init?.body).toBe(
+      JSON.stringify({
+        product_ids: ["prod-1"],
+        policy_ids: ["policy-1"],
+        origin_cep: "01001000",
+        destination_cep: "20040002",
+        price_source: "my_price",
+        price_overrides: { "prod-1::policy-1": 123.45 },
+      }),
+    );
+  });
+
+  it("gets melhor envio status", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async (input, init) => {
+        requests.push({ input, init });
+        return new Response(JSON.stringify({ connected: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    const result = await client.getMelhorEnvioStatus();
+
+    expect(String(requests[0].input)).toBe("http://localhost:8080/connectors/melhor-envio/status");
+    expect(requests[0].init?.method).toBe("GET");
+    expect(result.connected).toBe(true);
+  });
+
   it("throws parsed error payload on non-ok response", async () => {
     const client = createMarketplaceCentralClient({
       baseUrl: "http://localhost:8080",
