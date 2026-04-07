@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+﻿import { defineConfig } from 'vitest/config'
 import path from 'path'
 
 export default defineConfig({
@@ -13,7 +13,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['@testing-library/jest-dom/vitest'],
+    setupFiles: [path.resolve(__dirname, 'node_modules/@testing-library/jest-dom/dist/vitest.mjs')],
     include: ['**/*.test.ts', '**/*.test.tsx'],
     exclude: ['**/node_modules/**', '**/.worktrees/**'],
   },
