@@ -16,6 +16,7 @@ export interface CatalogProduct {
   height_cm: number | null;
   width_cm: number | null;
   length_cm: number | null;
+  weight_g: number | null;
 }
 
 export interface TaxonomyNode {
@@ -34,6 +35,7 @@ export interface ProductEnrichment {
   height_cm: number | null;
   width_cm: number | null;
   length_cm: number | null;
+  weight_g: number | null;
   suggested_price_amount: number | null;
 }
 
@@ -89,7 +91,7 @@ export interface MarketplacePolicy {
   min_margin_percent: number;
   sla_question_minutes: number;
   sla_dispatch_hours: number;
-  shipping_provider: ShippingProvider;
+  shipping_provider: string;
 }
 
 export interface CreateMarketplacePolicyRequest {
@@ -101,7 +103,7 @@ export interface CreateMarketplacePolicyRequest {
   min_margin_percent: number;
   sla_question_minutes: number;
   sla_dispatch_hours: number;
-  shipping_provider?: ShippingProvider;
+  shipping_provider?: string;
 }
 
 export interface PricingSimulation {
@@ -124,6 +126,29 @@ export interface RunPricingSimulationRequest {
   fixed_fee_amount: number;
   shipping_amount: number;
   min_margin_percent: number;
+}
+
+export interface BatchSimulationRequest {
+  product_ids: string[];
+  policy_ids: string[];
+  origin_cep: string;
+  destination_cep: string;
+  price_source: "my_price" | "suggested_price";
+  price_overrides?: Record<string, number>;
+}
+
+export interface BatchSimulationItem {
+  product_id: string;
+  policy_id: string;
+  selling_price: number;
+  cost_amount: number;
+  commission_amount: number;
+  freight_amount: number;
+  fixed_fee_amount: number;
+  margin_amount: number;
+  margin_percent: number;
+  status: string;
+  freight_source: string;
 }
 
 export interface ListResponse<T> {
@@ -256,6 +281,10 @@ export function createMarketplaceCentralClient(options: {
       postJson<MarketplacePolicy>("/marketplaces/policies", req),
     runPricingSimulation: (req: RunPricingSimulationRequest) =>
       postJson<PricingSimulation>("/pricing/simulations", req),
+    runBatchSimulation: (req: BatchSimulationRequest) =>
+      postJson<{ items: BatchSimulationItem[] }>("/pricing/simulations/batch", req),
+    getMelhorEnvioStatus: () =>
+      getJson<{ connected: boolean }>("/connectors/melhor-envio/status"),
     publishToVTEX: (req: PublishBatchRequest) =>
       postJson<PublishBatchResponse>("/connectors/vtex/publish", req),
     getBatchStatus: (batchId: string) =>
