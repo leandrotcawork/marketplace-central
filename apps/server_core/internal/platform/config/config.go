@@ -8,6 +8,10 @@ type Config struct {
 
 func Load() Config {
 	addr := os.Getenv("SERVER_ADDR")
+	apiPort := os.Getenv("API_PORT")
+	if apiPort != "" {
+		addr = ":" + apiPort
+	}
 	if addr == "" {
 		addr = ":8080"
 	}
