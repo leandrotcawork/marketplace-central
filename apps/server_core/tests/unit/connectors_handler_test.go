@@ -19,7 +19,7 @@ func newTestOrchestrator() *app.BatchOrchestrator {
 
 func TestConnectorsPublishHandler(t *testing.T) {
 	orch := newTestOrchestrator()
-	h := transport.NewHandler(orch)
+	h := transport.NewHandler(orch, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -76,7 +76,7 @@ func TestConnectorsPublishHandler(t *testing.T) {
 
 func TestConnectorsPublishHandlerRejectsInvalidMethod(t *testing.T) {
 	orch := newTestOrchestrator()
-	h := transport.NewHandler(orch)
+	h := transport.NewHandler(orch, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -95,7 +95,7 @@ func TestConnectorsRetryHandlerNotFound(t *testing.T) {
 	vtex := &vtexCatalogStub{}
 	orch := app.NewBatchOrchestrator(repo, vtex, "tenant_default")
 
-	handler := transport.NewHandler(orch)
+	handler := transport.NewHandler(orch, nil)
 	mux := http.NewServeMux()
 	handler.Register(mux)
 
@@ -141,7 +141,7 @@ func TestConnectorsBatchStatusHandler(t *testing.T) {
 		t.Fatalf("CreateBatch failed: %v", err)
 	}
 
-	h := transport.NewHandler(orch)
+	h := transport.NewHandler(orch, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 

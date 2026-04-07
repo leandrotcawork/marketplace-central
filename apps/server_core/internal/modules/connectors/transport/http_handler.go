@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	melhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
 	app "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	domain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
 	"marketplace-central/apps/server_core/internal/platform/httpx"
@@ -17,11 +18,12 @@ import (
 // Handler exposes the VTEX publish pipeline over HTTP.
 type Handler struct {
 	orchestrator *app.BatchOrchestrator
+	meAuth       *melhorenvio.OAuthHandler // nil if ME_CLIENT_ID not set
 }
 
 // NewHandler constructs a Handler.
-func NewHandler(orchestrator *app.BatchOrchestrator) *Handler {
-	return &Handler{orchestrator: orchestrator}
+func NewHandler(orchestrator *app.BatchOrchestrator, meAuth *melhorenvio.OAuthHandler) *Handler {
+	return &Handler{orchestrator: orchestrator, meAuth: meAuth}
 }
 
 // Register wires the handler's routes onto mux.
@@ -29,6 +31,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/connectors/vtex/publish", h.handlePublish)
 	mux.HandleFunc("/connectors/vtex/publish/batch/", h.handleBatchRoutes)
 	mux.HandleFunc("/connectors/vtex/validate-connection", h.handleValidateConnection)
+	mux.HandleFunc("/connectors/melhor-envio/auth/start", h.handleMEAuthStart)
+	mux.HandleFunc("/connectors/melhor-envio/auth/callback", h.handleMEAuthCallback)
+	mux.HandleFunc("/connectors/melhor-envio/status", h.handleMEStatus)
 }
 
 // ---- request / response types ----
@@ -337,4 +342,30 @@ func (h *Handler) handleValidateConnection(w http.ResponseWriter, r *http.Reques
 		"vtex_account": req.VTEXAccount,
 	})
 	slog.Info("connectors.validate_connection", "action", "validate", "result", "200", "vtex_account", req.VTEXAccount, "duration_ms", time.Since(start).Milliseconds())
+}
+
+// ---- Melhor Envio OAuth ----
+
+func (h *Handler) handleMEAuthStart(w http.ResponseWriter, r *http.Request) {
+	if h.meAuth == nil {
+		writeConnectorsError(w, http.StatusServiceUnavailable, "CONNECTORS_ME_NOT_CONFIGURED", "Melhor Envio is not configured (ME_CLIENT_ID missing)")
+		return
+	}
+	h.meAuth.HandleStart(w, r)
+}
+
+func (h *Handler) handleMEAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if h.meAuth == nil {
+		writeConnectorsError(w, http.StatusServiceUnavailable, "CONNECTORS_ME_NOT_CONFIGURED", "Melhor Envio is not configured")
+		return
+	}
+	h.meAuth.HandleCallback(w, r)
+}
+
+func (h *Handler) handleMEStatus(w http.ResponseWriter, r *http.Request) {
+	if h.meAuth == nil {
+		httpx.WriteJSON(w, http.StatusOK, map[string]bool{"connected": false})
+		return
+	}
+	h.meAuth.HandleStatus(w, r)
 }
