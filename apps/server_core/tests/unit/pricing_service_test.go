@@ -78,6 +78,34 @@ func TestRunSimulationUsesPolicyMinMarginPercent(t *testing.T) {
 	}
 }
 
+func TestRunSimulationMarksNegativeMarginAsCritical(t *testing.T) {
+	repo := &pricingRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	simulation, err := service.RunSimulation(context.Background(), application.RunSimulationInput{
+		SimulationID:      "sim-003",
+		ProductID:         "SKU-003",
+		AccountID:         "mercado-livre-main",
+		BasePriceAmount:   50,
+		CostAmount:        80,
+		CommissionPercent: 0,
+		FixedFeeAmount:    0,
+		ShippingAmount:    0,
+		MinMarginPercent:  0.10,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if simulation.MarginPercent >= 0 {
+		t.Fatalf("expected negative margin, got %v", simulation.MarginPercent)
+	}
+
+	if simulation.Status != "critical" {
+		t.Fatalf("expected critical when margin is negative, got %q", simulation.Status)
+	}
+}
+
 // --- BatchOrchestrator tests ---
 
 type stubProductProvider struct {

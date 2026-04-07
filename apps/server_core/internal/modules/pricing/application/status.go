@@ -10,6 +10,9 @@ const (
 )
 
 func simulationStatusForSingle(marginPercent, minMarginPercent float64) string {
+	if marginPercent < 0 {
+		return statusCritical
+	}
 	if marginPercent < minMarginPercent {
 		return statusWarning
 	}
