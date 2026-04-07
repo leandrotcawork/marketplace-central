@@ -109,14 +109,15 @@ describe("PricingSimulatorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
 
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
-    expect(screen.getByRole("columnheader", { name: "pol1" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /pol1/i })).toBeInTheDocument();
     const firstCard = screen.getByRole("textbox", { name: /selling price sku-001 pol1/i }).closest("td");
     expect(firstCard).not.toBeNull();
     const card = within(firstCard as HTMLElement);
-    expect(card.getByText(/^Marketplace cost:/i)).toBeInTheDocument();
-    expect(card.getByText(/^Shipping:/i)).toBeInTheDocument();
-    expect(card.getByText(/^Margin before shipping:/i)).toBeInTheDocument();
-    expect(card.getByText(/^Final margin:/i)).toBeInTheDocument();
+    expect(card.getByText(/^Custo/i)).toBeInTheDocument();
+    expect(card.getByText(/^Comissao/i)).toBeInTheDocument();
+    expect(card.getByText(/^Taxa fixa/i)).toBeInTheDocument();
+    expect(card.getByText(/^Frete/i)).toBeInTheDocument();
+    expect(card.getByText(/^Margem/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /expand pol1/i })).not.toBeInTheDocument();
   });
 
@@ -133,7 +134,9 @@ describe("PricingSimulatorPage", () => {
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
     const firstCard = screen.getByRole("textbox", { name: /selling price sku-001 pol1/i }).closest("td");
     expect(firstCard).not.toBeNull();
-    expect((firstCard as HTMLElement).textContent?.replace(/\s+/g, " ").trim()).toContain("Marketplace cost: R$ 24.00 (16%)");
+    const cardText = (firstCard as HTMLElement).textContent?.replace(/\s+/g, " ").trim();
+    expect(cardText).toContain("ComissaoR$ 24.00 (16.0%)");
+    expect(cardText).toContain("Taxa fixaR$ 0.00");
   });
 
   it("shows load error when data fetch fails", async () => {

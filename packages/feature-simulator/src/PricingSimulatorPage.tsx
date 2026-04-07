@@ -335,8 +335,11 @@ export function PricingSimulatorPage({ client }: Props) {
             <th className="px-4 py-3 font-medium text-slate-600 text-right">Price</th>
             {!hasResults && <th className="px-4 py-3 font-medium text-slate-600 text-right">Stock</th>}
             {hasResults && policies.map((pol) => (
-              <th key={pol.policy_id} className="px-3 py-3 font-medium text-slate-600 text-left text-xs min-w-[220px]">
-                {pol.policy_id}
+              <th key={pol.policy_id} className="px-3 py-2 font-medium text-slate-600 text-left min-w-[220px]">
+                <div className="text-xs font-semibold text-slate-700">{pol.policy_id}</div>
+                <div className="text-[11px] text-slate-500">
+                  Base {(pol.commission_percent * 100).toFixed(1)}% {pol.fixed_fee_amount > 0 ? `+ ${fmt(pol.fixed_fee_amount)}` : ""}
+                </div>
               </th>
             ))}
           </tr>
@@ -369,63 +372,51 @@ export function PricingSimulatorPage({ client }: Props) {
               {hasResults && policies.map((pol) => {
                 const item = resultMap[`${p.product_id}::${pol.policy_id}`];
                 const overrideKey = `${p.product_id}::${pol.policy_id}`;
-                const marketplaceCost = item ? item.commission_amount + item.fixed_fee_amount : null;
-                const beforeShippingAmount = item ? item.margin_amount + item.freight_amount : null;
-                const beforeShippingPct = item && item.selling_price > 0
-                  ? beforeShippingAmount! / item.selling_price
-                  : null;
 
                 return (
-                  <td key={`${overrideKey}_card`} className="px-3 py-2 align-top">
+                  <td key={`${overrideKey}_card`} className="px-2 py-2 align-top">
                     {item ? (
-                      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3 shadow-sm">
-                        <div className="text-xs font-semibold text-slate-700">{pol.policy_id}</div>
-
-                        <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
-                          <label className="block text-[11px] uppercase tracking-wide text-slate-500">
-                            Selling Price
-                          </label>
-                          <input
-                            type="text"
-                            defaultValue={item.selling_price.toFixed(2)}
-                            aria-label={`Selling price ${p.sku} ${pol.policy_id}`}
-                            onBlur={(e) => commitOverride(p.product_id, pol.policy_id, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") e.currentTarget.blur();
-                              if (e.key === "Escape") e.currentTarget.value = item.selling_price.toFixed(2);
-                            }}
-                            className="w-full px-2 py-1 text-right text-xs font-mono border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
-                          />
-                        </div>
-
-                        <div className="space-y-1 text-xs text-slate-600">
-                          <div>
-                            Marketplace cost: <span className="font-mono">{fmt(marketplaceCost)}</span> ({(pol.commission_percent * 100).toFixed(0)}%)
-                          </div>
-                          <div>
-                            Shipping: <span className="font-mono">{fmt(item.freight_amount)}</span>
+                      <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-600" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-2 pb-1">
+                          <span className="text-slate-500">Preco venda</span>
+                          <div className="relative w-[110px]">
+                            <input
+                              type="text"
+                              defaultValue={item.selling_price.toFixed(2)}
+                              aria-label={`Selling price ${p.sku} ${pol.policy_id}`}
+                              onBlur={(e) => commitOverride(p.product_id, pol.policy_id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                                if (e.key === "Escape") e.currentTarget.value = item.selling_price.toFixed(2);
+                              }}
+                              className="w-full border border-slate-200 rounded px-2 py-0.5 text-right font-mono text-[12px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
                           </div>
                         </div>
-
-                        <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
-                          <span>
-                            Margin before shipping: <span className="font-mono">{fmt(beforeShippingAmount)}</span>
-                          </span>
-                          <span
-                            aria-label={`Margin before shipping status ${beforeShippingPct != null ? `${(beforeShippingPct * 100).toFixed(1)} percent` : "unavailable"}`}
-                            className={`inline-flex items-center px-2 py-0.5 rounded font-mono text-xs font-bold ${marginBg(beforeShippingPct ?? 0)} ${marginColor(beforeShippingPct ?? 0)}`}
-                          >
-                            {beforeShippingPct != null ? `${(beforeShippingPct * 100).toFixed(1)}%` : "—"}
-                          </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Custo</span>
+                          <span className="font-mono">{fmt(item.cost_amount)}</span>
                         </div>
-
-                        <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
-                          <span>
-                            Final margin: <span className="font-mono">{fmt(item.margin_amount)}</span>
-                          </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Comissao</span>
+                          <span className="font-mono">{fmt(item.commission_amount)} ({(pol.commission_percent * 100).toFixed(1)}%)</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Taxa fixa</span>
+                          <span className="font-mono">{fmt(item.fixed_fee_amount)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Frete</span>
+                          <span className="font-mono">{fmt(item.freight_amount)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <span className="font-semibold text-slate-700">Margem</span>
+                          <span className="font-mono font-semibold text-slate-700">{fmt(item.margin_amount)}</span>
+                        </div>
+                        <div className="flex justify-end pt-1">
                           <span
                             aria-label={`Final margin status ${(item.margin_percent * 100).toFixed(1)} percent`}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-xs font-bold shadow-sm ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
+                            className={`inline-flex items-center px-2 py-0.5 rounded font-mono text-[11px] font-bold ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
                           >
                             {(item.margin_percent * 100).toFixed(1)}%
                           </span>
