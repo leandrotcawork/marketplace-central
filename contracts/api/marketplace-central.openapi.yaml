@@ -432,6 +432,96 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /connectors/melhor-envio/auth/start:
+    get:
+      summary: Start Melhor Envio OAuth flow
+      operationId: startMelhorEnvioOAuth
+      responses:
+        "302":
+          description: Redirect to Melhor Envio authorization page
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "500":
+          description: Failed to create OAuth state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+
+  /connectors/melhor-envio/auth/callback:
+    get:
+      summary: Handle Melhor Envio OAuth callback
+      operationId: handleMelhorEnvioOAuthCallback
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: OAuth exchange successful
+        "400":
+          description: Missing code or state mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "500":
+          description: Failed to save token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "502":
+          description: Token exchange failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+
+  /connectors/melhor-envio/auth/status:
+    get:
+      summary: Check Melhor Envio OAuth status
+      operationId: getMelhorEnvioOAuthStatus
+      responses:
+        "200":
+          description: OAuth connection status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+        "500":
+          description: Failed to read token state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorErrorResponse'
+
   /connectors/vtex/publish:
     post:
       operationId: publishToVTEX
@@ -1066,6 +1156,14 @@ components:
                     - CONNECTORS_VTEX_NOT_FOUND
                     - CONNECTORS_VTEX_TRANSIENT
                     - CONNECTORS_VTEX_AUTH
+                    - CONNECTORS_ME_METHOD_NOT_ALLOWED
+                    - CONNECTORS_ME_STATE_GENERATION_FAILED
+                    - CONNECTORS_ME_STATE_MISSING
+                    - CONNECTORS_ME_STATE_MISMATCH
+                    - CONNECTORS_ME_CODE_MISSING
+                    - CONNECTORS_ME_TOKEN_EXCHANGE_FAILED
+                    - CONNECTORS_ME_TOKEN_SAVE_FAILED
+                    - CONNECTORS_ME_STATUS_STORE_FAILED
                     - CONNECTORS_EXECUTOR_INTERNAL
                     - CONNECTORS_RETRY_MISSING_PRODUCT
                     - CONNECTORS_BATCH_NOT_FOUND

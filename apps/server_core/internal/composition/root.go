@@ -11,6 +11,7 @@ import (
 	classpostgres "marketplace-central/apps/server_core/internal/modules/classifications/adapters/postgres"
 	classapp "marketplace-central/apps/server_core/internal/modules/classifications/application"
 	classtransport "marketplace-central/apps/server_core/internal/modules/classifications/transport"
+	connectorsmelhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
 	connectorspostgres "marketplace-central/apps/server_core/internal/modules/connectors/adapters/postgres"
 	connectorshttp "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/http"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
@@ -59,6 +60,11 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	vtexAdapter := connectorshttp.NewAdapter(vtexCredentials)
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(connectorsRepo, vtexAdapter, cfg.DefaultTenantID)
 	connectorstransport.NewHandler(connectorsOrch).Register(mux)
+
+	meOAuthStore := connectorsmelhorenvio.NewTokenStore(pool, cfg.DefaultTenantID)
+	if meOAuth := connectorsmelhorenvio.NewOAuthHandlerFromEnv(meOAuthStore); meOAuth != nil {
+		meOAuth.Register(mux)
+	}
 
 	return httpx.CORSMiddleware(mux)
 }

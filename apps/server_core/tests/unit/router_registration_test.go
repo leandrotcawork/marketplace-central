@@ -12,6 +12,7 @@ import (
 	classapp "marketplace-central/apps/server_core/internal/modules/classifications/application"
 	classdomain "marketplace-central/apps/server_core/internal/modules/classifications/domain"
 	classtransport "marketplace-central/apps/server_core/internal/modules/classifications/transport"
+	connectorsmelhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	connectorsdomain "marketplace-central/apps/server_core/internal/modules/connectors/domain"
 	connectorports "marketplace-central/apps/server_core/internal/modules/connectors/ports"
@@ -147,6 +148,17 @@ func (r stubConnectorsRepo) SaveMapping(_ context.Context, _ connectorsdomain.VT
 	return nil
 }
 
+// stubMEStore satisfies the Melhor Envio oauth token store interface.
+type stubMEStore struct{}
+
+func (s *stubMEStore) GetToken(_ context.Context) (string, error) {
+	return "", nil
+}
+
+func (s *stubMEStore) SaveToken(_ context.Context, _, _ string) error {
+	return nil
+}
+
 // stubVTEXAdapter satisfies connectors ports.VTEXCatalogPort with in-memory no-ops.
 type stubVTEXAdapter struct{}
 
@@ -199,6 +211,8 @@ func (a stubVTEXAdapter) ValidateConnection(_ context.Context, _ string) error {
 func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 	t.Setenv("VTEX_APP_KEY", "test-key")
 	t.Setenv("VTEX_APP_TOKEN", "test-token")
+	t.Setenv("ME_CLIENT_ID", "test-client")
+	t.Setenv("ME_CLIENT_SECRET", "test-secret")
 
 	mux := http.NewServeMux()
 
@@ -226,6 +240,11 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(stubConnectorsRepo{}, stubVTEXAdapter{}, "tenant_default")
 	connectorstransport.NewHandler(connectorsOrch).Register(mux)
 
+	meOAuth := connectorsmelhorenvio.NewOAuthHandlerFromEnv(&stubMEStore{})
+	if meOAuth != nil {
+		meOAuth.Register(mux)
+	}
+
 	cases := []string{
 		"/healthz",
 		"/catalog/products",
@@ -236,6 +255,9 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 		"/connectors/vtex/publish",
 		"/connectors/vtex/publish/batch/test_batch_123",
 		"/connectors/vtex/validate-connection",
+		"/connectors/melhor-envio/auth/start",
+		"/connectors/melhor-envio/auth/callback",
+		"/connectors/melhor-envio/auth/status",
 	}
 
 	for _, path := range cases {
