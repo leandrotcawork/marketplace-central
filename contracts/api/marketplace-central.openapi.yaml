@@ -401,8 +401,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         "500":
           description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: Batch simulation unavailable
           content:
             application/json:
               schema:
@@ -1007,7 +1019,6 @@ components:
         - policy_ids
         - origin_cep
         - destination_cep
-        - price_source
       properties:
         product_ids:
           type: array
