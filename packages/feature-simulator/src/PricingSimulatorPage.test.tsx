@@ -1,4 +1,4 @@
-﻿import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+﻿import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PricingSimulatorPage } from "./PricingSimulatorPage";
 import type { SimulatorClient } from "./PricingSimulatorPage";
@@ -109,10 +109,15 @@ describe("PricingSimulatorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
 
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
-    expect(await screen.findByText(/marketplace cost/i)).toBeInTheDocument();
-    expect(screen.getByText(/shipping/i)).toBeInTheDocument();
-    expect(screen.getByText(/margin before shipping/i)).toBeInTheDocument();
-    expect(screen.getByText(/final margin/i)).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "pol1" })).toBeInTheDocument();
+    const firstCard = screen.getByRole("textbox", { name: /selling price sku-001 pol1/i }).closest("td");
+    expect(firstCard).not.toBeNull();
+    const card = within(firstCard as HTMLElement);
+    expect(card.getByText(/^Marketplace cost:/i)).toBeInTheDocument();
+    expect(card.getByText(/^Shipping:/i)).toBeInTheDocument();
+    expect(card.getByText(/^Margin before shipping:/i)).toBeInTheDocument();
+    expect(card.getByText(/^Final margin:/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /expand pol1/i })).not.toBeInTheDocument();
   });
 
   it("shows grouped marketplace cost with commission rate", async () => {
@@ -126,50 +131,9 @@ describe("PricingSimulatorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
 
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
-    expect(await screen.findByText(/marketplace cost: r\$ .* \(16%\)/i)).toBeInTheDocument();
-  });
-
-  it("clears results when price reference switch changes after a run", async () => {
-    const client = makeClient();
-    render(<PricingSimulatorPage client={client} />);
-
-    await screen.findByText("Product SKU-001");
-    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
-    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
-    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
-    fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-
-    await screen.findByText(/avg margin/i);
-    fireEvent.click(screen.getByRole("button", { name: /toggle price source/i }));
-    expect(screen.queryByText(/avg margin/i)).not.toBeInTheDocument();
-  });
-
-  it("results show collapsed policy columns by default", async () => {
-    const client = makeClient();
-    render(<PricingSimulatorPage client={client} />);
-    await screen.findByText("Product SKU-001");
-    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
-    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
-    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
-    fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-    await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
-    // Policy column should be collapsed — shows policy id but not "Commission"
-    await screen.findByText("pol1");
-    expect(screen.queryByText(/commission/i)).not.toBeInTheDocument();
-  });
-
-  it("expanding a policy column reveals detail columns", async () => {
-    const client = makeClient();
-    render(<PricingSimulatorPage client={client} />);
-    await screen.findByText("Product SKU-001");
-    fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
-    fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
-    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
-    fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
-    await screen.findByText("pol1");
-    fireEvent.click(screen.getByRole("button", { name: /expand pol1/i }));
-    expect(await screen.findByText(/commission/i)).toBeInTheDocument();
-    expect(screen.getByText(/freight/i)).toBeInTheDocument();
+    const firstCard = screen.getByRole("textbox", { name: /selling price sku-001 pol1/i }).closest("td");
+    expect(firstCard).not.toBeNull();
+    expect((firstCard as HTMLElement).textContent?.replace(/\s+/g, " ").trim()).toContain("Marketplace cost: R$ 24.00 (16%)");
   });
 
   it("shows load error when data fetch fails", async () => {

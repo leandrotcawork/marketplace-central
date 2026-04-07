@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button, PaginatedTable } from "@marketplace-central/ui";
-import { ToggleLeft, ToggleRight, ChevronRight, ChevronDown } from "lucide-react";
+import { ToggleLeft, ToggleRight } from "lucide-react";
 import type {
   CatalogProduct,
   TaxonomyNode,
@@ -49,7 +49,6 @@ export function PricingSimulatorPage({ client }: Props) {
   const [destinationCep, setDestinationCep] = useState("");
   const [priceSource, setPriceSource] = useState<"my_price" | "suggested_price">("my_price");
   const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
-  const [expandedPolicies, setExpandedPolicies] = useState<Set<string>>(new Set());
 
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<BatchSimulationItem[]>([]);
@@ -129,14 +128,6 @@ export function PricingSimulatorPage({ client }: Props) {
       const next = new Set(prev);
       if (allSelected) cls.product_ids.forEach((id) => next.delete(id));
       else cls.product_ids.forEach((id) => next.add(id));
-      return next;
-    });
-  }
-
-  function toggleExpand(policyId: string) {
-    setExpandedPolicies((prev) => {
-      const next = new Set(prev);
-      if (next.has(policyId)) next.delete(policyId); else next.add(policyId);
       return next;
     });
   }
@@ -334,40 +325,11 @@ export function PricingSimulatorPage({ client }: Props) {
             <th className="px-4 py-3 font-medium text-slate-600 text-right">Cost</th>
             <th className="px-4 py-3 font-medium text-slate-600 text-right">Price</th>
             {!hasResults && <th className="px-4 py-3 font-medium text-slate-600 text-right">Stock</th>}
-            {hasResults && policies.flatMap((pol) => {
-              const isExpanded = expandedPolicies.has(pol.policy_id);
-              if (isExpanded) {
-                return [
-                  <th key={`${pol.policy_id}_sp`} className="px-3 py-3 font-medium text-slate-600 text-right text-xs">Sell Price</th>,
-                  <th key={`${pol.policy_id}_cm`} className="px-3 py-3 font-medium text-slate-600 text-right text-xs">Commission</th>,
-                  <th key={`${pol.policy_id}_fr`} className="px-3 py-3 font-medium text-slate-600 text-right text-xs">Freight</th>,
-                  <th key={`${pol.policy_id}_ff`} className="px-3 py-3 font-medium text-slate-600 text-right text-xs">Fixed Fee</th>,
-                  <th key={`${pol.policy_id}_mg`} className="px-3 py-3 font-medium text-slate-600 text-right text-xs">
-                    <button
-                      type="button"
-                      aria-label={`Expand ${pol.policy_id}`}
-                      onClick={() => toggleExpand(pol.policy_id)}
-                      className="flex items-center gap-1 text-blue-700 font-semibold cursor-pointer"
-                    >
-                      {pol.policy_id} <ChevronDown className="h-3 w-3" />
-                    </button>
-                    Margin
-                  </th>,
-                ];
-              }
-              return [
-                <th key={pol.policy_id} className="px-4 py-3 font-medium text-slate-600 text-right text-xs">
-                  <button
-                    type="button"
-                    aria-label={`Expand ${pol.policy_id}`}
-                    onClick={() => toggleExpand(pol.policy_id)}
-                    className="flex items-center gap-1 text-slate-700 cursor-pointer hover:text-blue-600"
-                  >
-                    {pol.policy_id} <ChevronRight className="h-3 w-3" />
-                  </button>
-                </th>,
-              ];
-            })}
+            {hasResults && policies.map((pol) => (
+              <th key={pol.policy_id} className="px-3 py-3 font-medium text-slate-600 text-left text-xs min-w-[220px]">
+                {pol.policy_id}
+              </th>
+            ))}
           </tr>
         )}
         renderRow={(p) => {
@@ -395,53 +357,76 @@ export function PricingSimulatorPage({ client }: Props) {
               {!hasResults && (
                 <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{p.stock_quantity}</td>
               )}
-              {hasResults && policies.flatMap((pol) => {
+              {hasResults && policies.map((pol) => {
                 const item = resultMap[`${p.product_id}::${pol.policy_id}`];
-                const isExpanded = expandedPolicies.has(pol.policy_id);
-                if (isExpanded) {
-                  const overrideKey = `${p.product_id}::${pol.policy_id}`;
-                  return [
-                    <td key={`${overrideKey}_sp`} className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                      {item ? (
-                        <input
-                          type="text"
-                          defaultValue={item.selling_price.toFixed(2)}
-                          aria-label={`Selling price ${p.sku} ${pol.policy_id}`}
-                          onBlur={(e) => commitOverride(p.product_id, pol.policy_id, e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") e.currentTarget.value = item.selling_price.toFixed(2); }}
-                          className="w-20 px-1.5 py-0.5 text-right text-xs font-mono border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
-                        />
-                      ) : <span className="text-slate-300 text-xs">—</span>}
-                    </td>,
-                    <td key={`${overrideKey}_cm`} className="px-3 py-2 text-right font-mono text-xs text-slate-600 tabular-nums">
-                      {item ? fmt(item.commission_amount) : <span className="text-slate-300">—</span>}
-                    </td>,
-                    <td key={`${overrideKey}_fr`} className="px-3 py-2 text-right font-mono text-xs text-slate-600 tabular-nums">
-                      {item ? (
-                        <span title={item.freight_source}>{fmt(item.freight_amount)}</span>
-                      ) : <span className="text-slate-300">—</span>}
-                    </td>,
-                    <td key={`${overrideKey}_ff`} className="px-3 py-2 text-right font-mono text-xs text-slate-600 tabular-nums">
-                      {item ? fmt(item.fixed_fee_amount) : <span className="text-slate-300">—</span>}
-                    </td>,
-                    <td key={`${overrideKey}_mg`} className="px-3 py-2 text-right">
-                      {item ? (
-                        <span className={`inline-block px-2 py-0.5 rounded font-mono text-xs font-bold ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}>
-                          {(item.margin_percent * 100).toFixed(1)}%
-                        </span>
-                      ) : <span className="text-slate-300 text-xs">—</span>}
-                    </td>,
-                  ];
-                }
-                return [
-                  <td key={`${p.product_id}::${pol.policy_id}_col`} className="px-4 py-2 text-right">
+                const overrideKey = `${p.product_id}::${pol.policy_id}`;
+                const marketplaceCost = item ? item.commission_amount + item.fixed_fee_amount : null;
+                const beforeShippingAmount = item ? item.margin_amount + item.freight_amount : null;
+                const beforeShippingPct = item && item.selling_price > 0
+                  ? beforeShippingAmount! / item.selling_price
+                  : null;
+
+                return (
+                  <td key={`${overrideKey}_card`} className="px-3 py-2 align-top">
                     {item ? (
-                      <span className={`inline-block px-2 py-0.5 rounded font-mono text-xs font-bold ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}>
-                        {(item.margin_percent * 100).toFixed(1)}%
-                      </span>
-                    ) : <span className="text-slate-300 text-xs">—</span>}
-                  </td>,
-                ];
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3 shadow-sm">
+                        <div className="text-xs font-semibold text-slate-700">{pol.policy_id}</div>
+
+                        <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+                          <label className="block text-[11px] uppercase tracking-wide text-slate-500">
+                            Selling Price
+                          </label>
+                          <input
+                            type="text"
+                            defaultValue={item.selling_price.toFixed(2)}
+                            aria-label={`Selling price ${p.sku} ${pol.policy_id}`}
+                            onBlur={(e) => commitOverride(p.product_id, pol.policy_id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                              if (e.key === "Escape") e.currentTarget.value = item.selling_price.toFixed(2);
+                            }}
+                            className="w-full px-2 py-1 text-right text-xs font-mono border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                        </div>
+
+                        <div className="space-y-1 text-xs text-slate-600">
+                          <div>
+                            Marketplace cost: <span className="font-mono">{fmt(marketplaceCost)}</span> ({(pol.commission_percent * 100).toFixed(0)}%)
+                          </div>
+                          <div>
+                            Shipping: <span className="font-mono">{fmt(item.freight_amount)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
+                          <span>
+                            Margin before shipping: <span className="font-mono">{fmt(beforeShippingAmount)}</span>
+                          </span>
+                          <span
+                            aria-label={`Margin before shipping status ${beforeShippingPct != null ? `${(beforeShippingPct * 100).toFixed(1)} percent` : "unavailable"}`}
+                            className={`inline-flex items-center px-2 py-0.5 rounded font-mono text-xs font-bold ${marginBg(beforeShippingPct ?? 0)} ${marginColor(beforeShippingPct ?? 0)}`}
+                          >
+                            {beforeShippingPct != null ? `${(beforeShippingPct * 100).toFixed(1)}%` : "—"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
+                          <span>
+                            Final margin: <span className="font-mono">{fmt(item.margin_amount)}</span>
+                          </span>
+                          <span
+                            aria-label={`Final margin status ${(item.margin_percent * 100).toFixed(1)} percent`}
+                            className={`inline-flex items-center px-2 py-0.5 rounded font-mono text-xs font-bold ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
+                          >
+                            {(item.margin_percent * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
+                );
               })}
             </tr>
           );
