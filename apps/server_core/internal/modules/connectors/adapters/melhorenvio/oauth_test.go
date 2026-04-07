@@ -268,7 +268,7 @@ func TestOAuthHandlerHandleStatusSurfacesStoreError(t *testing.T) {
 	store := &oauthTestStore{getErr: errors.New("db unavailable")}
 	h := newOAuthHandlerForTest(store, &http.Client{})
 
-	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/auth/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/status", nil)
 	rec := httptest.NewRecorder()
 
 	h.HandleStatus(rec, req)
@@ -278,6 +278,68 @@ func TestOAuthHandlerHandleStatusSurfacesStoreError(t *testing.T) {
 	}
 	if code := errorCodeFromResponse(t, rec.Body); code != "CONNECTORS_ME_STATUS_STORE_FAILED" {
 		t.Fatalf("expected CONNECTORS_ME_STATUS_STORE_FAILED, got %q", code)
+	}
+}
+
+func TestOAuthHandlerHandleStatusReturnsFalseWhenServiceCheckFails(t *testing.T) {
+	store := &oauthTestStore{token: "token-123"}
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Body:       ioNopCloser{Reader: bytes.NewReader([]byte(`{}`))},
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	h := newOAuthHandlerForTest(store, client)
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/status", nil)
+	rec := httptest.NewRecorder()
+
+	h.HandleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var payload map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["connected"] {
+		t.Fatal("expected connected=false")
+	}
+}
+
+func TestOAuthHandlerHandleStatusReturnsTrueWhenServiceCheckSucceeds(t *testing.T) {
+	store := &oauthTestStore{token: "token-123"}
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/api/v2/me/shipment/services" {
+			t.Fatalf("expected services path, got %q", req.URL.Path)
+		}
+		if got := req.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected bearer token header, got %q", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       ioNopCloser{Reader: bytes.NewReader([]byte(`{}`))},
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	h := newOAuthHandlerForTest(store, client)
+	req := httptest.NewRequest(http.MethodGet, "/connectors/melhor-envio/status", nil)
+	rec := httptest.NewRecorder()
+
+	h.HandleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var payload map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !payload["connected"] {
+		t.Fatal("expected connected=true")
 	}
 }
 

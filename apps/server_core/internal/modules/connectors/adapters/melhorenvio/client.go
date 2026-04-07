@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	pricingports "marketplace-central/apps/server_core/internal/modules/pricing/ports"
@@ -64,7 +65,10 @@ func (c *Client) IsConnected(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return token != "", nil
+	if strings.TrimSpace(token) == "" {
+		return false, nil
+	}
+	return checkServices(ctx, c.httpClient, c.baseURL, token)
 }
 
 func (c *Client) QuoteFreight(ctx context.Context, req pricingports.FreightRequest) (map[string]pricingports.FreightResult, error) {
@@ -190,5 +194,26 @@ func hasQuoteError(raw json.RawMessage) (bool, error) {
 		return message != "", nil
 	}
 
+	return true, nil
+}
+
+func checkServices(ctx context.Context, httpClient *http.Client, baseURL, token string) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/me/shipment/services", nil)
+	if err != nil {
+		return false, fmt.Errorf("melhorenvio build services request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("melhorenvio services request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, nil
+	}
 	return true, nil
 }

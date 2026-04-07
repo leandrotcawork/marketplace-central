@@ -67,7 +67,7 @@ func (h *OAuthHandler) Register(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("/connectors/melhor-envio/auth/start", h.HandleStart)
 	mux.HandleFunc("/connectors/melhor-envio/auth/callback", h.HandleCallback)
-	mux.HandleFunc("/connectors/melhor-envio/auth/status", h.HandleStatus)
+	mux.HandleFunc("/connectors/melhor-envio/status", h.HandleStatus)
 }
 
 // HandleStart redirects the user to ME's OAuth authorization page.
@@ -230,7 +230,18 @@ func (h *OAuthHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	connected := strings.TrimSpace(token) != ""
+	connected := false
+	if strings.TrimSpace(token) != "" {
+		client := h.httpClient
+		if client == nil {
+			client = &http.Client{Timeout: defaultOAuthTimeout}
+		}
+		ok, err := checkServices(r.Context(), client, defaultBaseURL, token)
+		if err != nil {
+			slog.Error("connectors.me_auth", "action", "status", "result", "200", "error", err.Error(), "duration_ms", time.Since(start).Milliseconds())
+		}
+		connected = ok
+	}
 	slog.Info("connectors.me_auth", "action", "status", "result", "200", "connected", connected, "duration_ms", time.Since(start).Milliseconds())
 	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"connected": connected})
 }

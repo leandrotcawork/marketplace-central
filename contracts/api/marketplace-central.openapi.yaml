@@ -536,7 +536,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConnectorErrorResponse'
 
-  /connectors/melhor-envio/auth/status:
+  /connectors/melhor-envio/status:
     get:
       summary: Check Melhor Envio OAuth status
       operationId: getMelhorEnvioOAuthStatus

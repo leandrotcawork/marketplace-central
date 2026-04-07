@@ -234,6 +234,44 @@ func TestMEClientIsConnectedReturnsFalseWhenNoToken(t *testing.T) {
 	}
 }
 
+func TestMEClientIsConnectedChecksServicesEndpoint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/me/shipment/services" {
+			t.Fatalf("expected services path, got %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("expected bearer token header, got %q", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := melhorenvio.NewClientWithBaseURL(melhorenvio.NewInMemoryTokenStore("test-token"), srv.URL)
+	connected, err := client.IsConnected(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !connected {
+		t.Fatal("expected connected=true")
+	}
+}
+
+func TestMEClientIsConnectedReturnsFalseOnNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	client := melhorenvio.NewClientWithBaseURL(melhorenvio.NewInMemoryTokenStore("test-token"), srv.URL)
+	connected, err := client.IsConnected(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if connected {
+		t.Fatal("expected connected=false")
+	}
+}
+
 type tokenGetterStub struct {
 	token string
 	err   error
