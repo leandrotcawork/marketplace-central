@@ -70,19 +70,38 @@ describe("PricingSimulatorPage", () => {
     expect(screen.getByRole("button", { name: /run simulation/i })).not.toBeDisabled();
   });
 
-  it("clicking a classification pill selects all its products", async () => {
-    render(<PricingSimulatorPage client={makeClient()} />);
-    await screen.findByText("Ativos");
+  it("clicking a classification pill filters the table to its products without selecting them", async () => {
+    const client = makeClient({
+      listCatalogProducts: vi.fn().mockResolvedValue({
+        items: [makeProduct("p1", "SKU-001"), makeProduct("p2", "SKU-002"), makeProduct("p3", "SKU-OUT")],
+      }),
+      listClassifications: vi.fn().mockResolvedValue({ items: [makeClassification("cls1", "Ativos", ["p1", "p2"])] }),
+    });
+    render(<PricingSimulatorPage client={client} />);
+    await screen.findByText("Product SKU-001");
+    expect(screen.getByText("Product SKU-OUT")).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
-    expect(screen.getByText(/2 selected/i)).toBeInTheDocument();
+
+    expect(screen.queryByText("Product SKU-OUT")).not.toBeInTheDocument();
+    expect(screen.getByText("Product SKU-001")).toBeInTheDocument();
+    expect(screen.getByText("Product SKU-002")).toBeInTheDocument();
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
   });
 
-  it("clicking classification pill twice deselects all its products", async () => {
-    render(<PricingSimulatorPage client={makeClient()} />);
-    await screen.findByText("Ativos");
+  it("clicking classification pill twice removes the filter", async () => {
+    const client = makeClient({
+      listCatalogProducts: vi.fn().mockResolvedValue({
+        items: [makeProduct("p1", "SKU-001"), makeProduct("p2", "SKU-002"), makeProduct("p3", "SKU-OUT")],
+      }),
+      listClassifications: vi.fn().mockResolvedValue({ items: [makeClassification("cls1", "Ativos", ["p1", "p2"])] }),
+    });
+    render(<PricingSimulatorPage client={client} />);
+    await screen.findByText("Product SKU-OUT");
     fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    expect(screen.queryByText("Product SKU-OUT")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
-    expect(screen.queryByText(/2 selected/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Product SKU-OUT")).toBeInTheDocument();
   });
 
   it("running simulation renders results and summary banner", async () => {
@@ -91,7 +110,8 @@ describe("PricingSimulatorPage", () => {
     await screen.findByText("Product SKU-001");
     fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
     fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
-    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-001/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-002/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
     expect(await screen.findByText(/avg/i)).toBeInTheDocument();
@@ -105,7 +125,8 @@ describe("PricingSimulatorPage", () => {
     await screen.findByText("Product SKU-001");
     fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
     fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
-    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-001/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-002/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
 
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
@@ -128,7 +149,8 @@ describe("PricingSimulatorPage", () => {
     await screen.findByText("Product SKU-001");
     fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
     fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
-    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-001/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-002/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
 
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
@@ -155,7 +177,8 @@ describe("PricingSimulatorPage", () => {
     await screen.findByText("Product SKU-001");
     fireEvent.change(screen.getByLabelText(/origin cep/i), { target: { value: "01310100" } });
     fireEvent.change(screen.getByLabelText(/destination cep/i), { target: { value: "30140071" } });
-    fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-001/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-002/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
     expect(await screen.findByText(/batch failed/i)).toBeInTheDocument();
   });

@@ -56,6 +56,7 @@ export function PricingSimulatorPage({ client }: Props) {
 
   const [search, setSearch] = useState("");
   const [taxonomyFilter, setTaxonomyFilter] = useState("");
+  const [classificationFilter, setClassificationFilter] = useState<Set<string>>(new Set());
   const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "warning" | "critical">("all");
 
   useEffect(() => {
@@ -95,12 +96,24 @@ export function PricingSimulatorPage({ client }: Props) {
 
   const hasResults = results.length > 0;
 
+  const allowedByClassification = useMemo(() => {
+    if (classificationFilter.size === 0) return null;
+    const allowed = new Set<string>();
+    for (const cls of classifications) {
+      if (classificationFilter.has(cls.classification_id)) {
+        cls.product_ids.forEach((id) => allowed.add(id));
+      }
+    }
+    return allowed;
+  }, [classifications, classificationFilter]);
+
   const filtered = useMemo(() => {
     let items = products.filter((p) => {
       const q = search.toLowerCase();
       const matchSearch = !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
       const matchTax = !taxonomyFilter || p.taxonomy_node_id === taxonomyFilter;
-      return matchSearch && matchTax;
+      const matchClassification = !allowedByClassification || allowedByClassification.has(p.product_id);
+      return matchSearch && matchTax && matchClassification;
     });
     if (hasResults && healthFilter !== "all") {
       items = items.filter((p) => {
@@ -112,7 +125,7 @@ export function PricingSimulatorPage({ client }: Props) {
       });
     }
     return items;
-  }, [products, search, taxonomyFilter, healthFilter, hasResults, policies, resultMap]);
+  }, [products, search, taxonomyFilter, allowedByClassification, healthFilter, hasResults, policies, resultMap]);
 
   function toggleProduct(id: string) {
     setSelectedIds((prev) => {
@@ -122,12 +135,11 @@ export function PricingSimulatorPage({ client }: Props) {
     });
   }
 
-  function toggleClassification(cls: Classification) {
-    const allSelected = cls.product_ids.every((id) => selectedIds.has(id));
-    setSelectedIds((prev) => {
+  function toggleClassificationFilter(classificationId: string) {
+    setClassificationFilter((prev) => {
       const next = new Set(prev);
-      if (allSelected) cls.product_ids.forEach((id) => next.delete(id));
-      else cls.product_ids.forEach((id) => next.add(id));
+      if (next.has(classificationId)) next.delete(classificationId);
+      else next.add(classificationId);
       return next;
     });
   }
@@ -246,19 +258,20 @@ export function PricingSimulatorPage({ client }: Props) {
       )}
     </div>
 
-      {/* Classification pills (scope selector) */}
+      {/* Classification pills (filter — narrows the visible products) */}
       {classifications.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {classifications.map((cls) => {
-            const allSelected = cls.product_ids.length > 0 && cls.product_ids.every((id) => selectedIds.has(id));
+            const active = classificationFilter.has(cls.classification_id);
             return (
               <button
                 key={cls.classification_id}
                 type="button"
                 aria-label={`${cls.name} ×${cls.product_count}`}
-                onClick={() => toggleClassification(cls)}
+                aria-pressed={active}
+                onClick={() => toggleClassificationFilter(cls.classification_id)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
-                  allSelected
+                  active
                     ? "bg-blue-600 text-white border-blue-600"
                     : "bg-white text-slate-700 border-slate-300 hover:border-blue-400"
                 }`}
