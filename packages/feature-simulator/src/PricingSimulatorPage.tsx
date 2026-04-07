@@ -56,7 +56,6 @@ export function PricingSimulatorPage({ client }: Props) {
 
   const [search, setSearch] = useState("");
   const [taxonomyFilter, setTaxonomyFilter] = useState("");
-  const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "warning" | "critical">("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +67,6 @@ export function PricingSimulatorPage({ client }: Props) {
           client.listMarketplacePolicies(),
           client.listTaxonomyNodes(),
         ]);
-        await client.getMelhorEnvioStatus();
         if (cancelled) return;
         setProducts(prodRes.items);
         setClassifications(clsRes.items);
@@ -101,17 +99,8 @@ export function PricingSimulatorPage({ client }: Props) {
       const matchTax = !taxonomyFilter || p.taxonomy_node_id === taxonomyFilter;
       return matchSearch && matchTax;
     });
-    if (hasResults && healthFilter !== "all") {
-      items = items.filter((p) => {
-        const statuses = policies.map((pol) => resultMap[`${p.product_id}::${pol.policy_id}`]?.status).filter(Boolean);
-        if (healthFilter === "healthy") return statuses.some((s) => s === "healthy");
-        if (healthFilter === "warning") return statuses.some((s) => s === "warning");
-        if (healthFilter === "critical") return statuses.some((s) => s !== "healthy" && s !== "warning");
-        return true;
-      });
-    }
     return items;
-  }, [products, search, taxonomyFilter, healthFilter, hasResults, policies, resultMap]);
+  }, [products, search, taxonomyFilter]);
 
   function toggleProduct(id: string) {
     setSelectedIds((prev) => {
@@ -259,7 +248,7 @@ export function PricingSimulatorPage({ client }: Props) {
               <button
                 key={cls.classification_id}
                 type="button"
-                aria-label={`${cls.name} x${cls.product_count}`}
+                aria-label={`${cls.name} Ã—${cls.product_count}`}
                 onClick={() => toggleClassification(cls)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
                   allSelected
@@ -267,7 +256,7 @@ export function PricingSimulatorPage({ client }: Props) {
                     : "bg-white text-slate-700 border-slate-300 hover:border-blue-400"
                 }`}
               >
-                {cls.name} <span className="opacity-75">x{cls.product_count}</span>
+                {cls.name} <span className="opacity-75">Ã—{cls.product_count}</span>
               </button>
             );
           })}
@@ -310,19 +299,6 @@ export function PricingSimulatorPage({ client }: Props) {
           <option value="">All Taxonomy</option>
           {taxonomyNodes.map((t) => <option key={t.node_id} value={t.node_id}>{t.name}</option>)}
         </select>
-        {hasResults && (
-          <select
-            value={healthFilter}
-            onChange={(e) => setHealthFilter(e.target.value as any)}
-            aria-label="Health filter"
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Health</option>
-            <option value="healthy">Healthy</option>
-            <option value="warning">Warning</option>
-            <option value="critical">Critical</option>
-          </select>
-        )}
       </div>
 
       {/* Product table */}

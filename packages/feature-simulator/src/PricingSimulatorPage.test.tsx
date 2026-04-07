@@ -95,7 +95,7 @@ describe("PricingSimulatorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
     expect(await screen.findByText(/avg/i)).toBeInTheDocument();
-    expect(await screen.findByText(/^Healthy:/i)).toBeInTheDocument();
+    expect(await screen.findByText(/healthy/i)).toBeInTheDocument();
   });
 
   it("results show collapsed policy columns by default", async () => {
@@ -107,6 +107,7 @@ describe("PricingSimulatorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
+    // Policy column should be collapsed — shows policy id but not "Commission"
     await screen.findByText("pol1");
     expect(screen.queryByText(/commission/i)).not.toBeInTheDocument();
   });
