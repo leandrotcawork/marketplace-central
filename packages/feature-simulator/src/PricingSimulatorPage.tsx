@@ -166,6 +166,12 @@ export function PricingSimulatorPage({ client }: Props) {
     setPriceOverrides((prev) => ({ ...prev, [key]: val }));
   }
 
+  function clearSimulationState() {
+    setResults([]);
+    setRunError(null);
+    setPriceOverrides({});
+  }
+
   // Summary stats
   const avgMargin = results.length > 0
     ? results.reduce((s, r) => s + r.margin_percent, 0) / results.length : 0;
@@ -211,7 +217,10 @@ export function PricingSimulatorPage({ client }: Props) {
           <div className="flex items-end gap-2 pb-0.5">
             <button
               type="button"
-              onClick={() => setPriceSource((v) => v === "my_price" ? "suggested_price" : "my_price")}
+              onClick={() => {
+                setPriceSource((v) => (v === "my_price" ? "suggested_price" : "my_price"));
+                if (hasResults) clearSimulationState();
+              }}
               className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"
               aria-label="Toggle price source"
             >
@@ -416,7 +425,7 @@ export function PricingSimulatorPage({ client }: Props) {
                           </span>
                           <span
                             aria-label={`Final margin status ${(item.margin_percent * 100).toFixed(1)} percent`}
-                            className={`inline-flex items-center px-2 py-0.5 rounded font-mono text-xs font-bold ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-xs font-bold shadow-sm ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
                           >
                             {(item.margin_percent * 100).toFixed(1)}%
                           </span>
