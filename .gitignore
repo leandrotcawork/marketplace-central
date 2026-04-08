@@ -16,3 +16,4 @@ next-env.d.ts
 data/
 certificates/
 .claude/
+.trello-agent/project.json
