@@ -24,6 +24,7 @@ import (
 	connectorstransport "marketplace-central/apps/server_core/internal/modules/connectors/transport"
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
+	marketplacesregistry "marketplace-central/apps/server_core/internal/modules/marketplaces/registry"
 	marketplacestransport "marketplace-central/apps/server_core/internal/modules/marketplaces/transport"
 	pricingcatalog "marketplace-central/apps/server_core/internal/modules/pricing/adapters/catalog"
 	pricingfee "marketplace-central/apps/server_core/internal/modules/pricing/adapters/feeschedule"
@@ -75,6 +76,18 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 			feeSyncSvc.SeedAll(ctx)
+		}()
+	}
+
+	// Seed stub fee rows for channels without a dedicated FeeSyncer (Amazon, Leroy, Madeira).
+	if pool != nil {
+		go func() {
+			start := time.Now()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			slog.Info("registry.SeedAll started", "action", "seed_stub_fees")
+			marketplacesregistry.SeedAll(ctx, pool)
+			slog.Info("registry.SeedAll completed", "action", "seed_stub_fees", "result", "ok", "duration_ms", time.Since(start).Milliseconds())
 		}()
 	}
 
