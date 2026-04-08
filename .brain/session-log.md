@@ -1,25 +1,33 @@
 # Last Session — Marketplace Central
-> Date: 2026-04-08 | Session: #8
+> Date: 2026-04-08 | Session: #9
 
 ## What Was Accomplished
-- Fixed classification pills bug: chips now filter the product table instead of bulk-selecting rows (`classificationFilter` state added to `filtered` useMemo)
-- Refactored simulator matrix cell structure to match legacy comparison layout (per-cell breakdown: custo / comissão / taxa fixa / frete / margem)
-- Aligned simulator table layout and toolbar to legacy pattern (column headers, dense row rendering)
-- Started Trello manager + board-agent design: spec at `docs/superpowers/specs/2026-04-08-trello-manager-design.md`, plan at `docs/superpowers/plans/2026-04-08-trello-manager.md`
+- Completed audit remediation for Phase 3 (Marketplace Registry & Fee Foundation) — all 7 issues resolved across 6 commits
+- Fixed LookupFee SQL: single-query priority matrix replacing two-pass loop, added valid_from guard
+- Wired CategoryID through BatchProduct → catalog reader → orchestrator (fee schedule fallback now reachable from real pricing path)
+- Fixed fromDomain in pricing/adapters/marketplace/reader.go: MarketplaceCode + CommissionOverride now mapped
+- Wired commission_override through POST /policies transport handler
+- Updated OpenAPI contract: admin endpoints (/admin/fee-schedules/seed, /admin/fee-schedules/sync) + marketplace_code/commission_override schema fields
+- Updated SDK types: MarketplaceAccount.marketplace_code, MarketplacePolicy.marketplace_code + commission_override
+- Added 15 new unit tests: 7 fee-schedule service (listing_type priority matrix), 4 BatchOrchestrator precedence, 3 reader adapter, 1 field-mapping
+- Merged feat/marketplace-registry → master and pushed (43 files, 2513 insertions)
+- Full Chrome validation: all 6 pages pass, zero console errors, batch simulation running correctly (margem média 19.9%)
 
 ## What Changed in the System
-- `packages/feature-simulator/src/PricingSimulatorPage.tsx` — multiple structural changes (filter logic, cell layout, toolbar); has uncommitted refinements
-- `docs/superpowers/specs/2026-04-08-trello-manager-design.md` — new spec file (committed skeleton + 154 uncommitted lines)
-- `docs/superpowers/plans/2026-04-08-trello-manager.md` — new untracked plan file
+- New modules: marketplaces/registry, marketplaces/adapters/postgres/fee_schedule_repo, connectors/application/fee_sync_service, pricing/adapters/feeschedule
+- New migrations: 0010–0013 (marketplace_definitions, marketplace_fee_schedules, marketplace_accounts v2, pricing_policies commission_override)
+- LookupFee SQL rewritten in fee_schedule_repo.go — single-query with ORDER BY priority DESC
+- BatchProduct now carries CategoryID field (wired from TaxonomyNodeID via catalog reader)
+- commission_override field in transport, domain, application, SDK all aligned
 
 ## Decisions Made This Session
-- Classification chips chose option A (filter semantics) over bulk-select — surgical fix to the reported bug, matching legacy Classificação dropdown behavior
+- LookupFee uses single ORDER BY priority query rather than two-pass category loop — avoids N+1 and correctly handles NULL listing_type catch-all rows
 
 ## What's Immediately Next
-- Commit the remaining uncommitted changes in `PricingSimulatorPage.tsx` and the Trello spec/plan files
-- Continue Trello manager implementation (if user confirms scope)
-- Simulator UI: verify the comparison layout feels correct vs legacy before closing Phase 2 frontend task
+- Phase 4: VTEX connector (product registration flow, catalog sync job, publisher progress UI)
+- Minor UI gap: Add Policy form doesn't expose commission_override field (backend accepts it; frontend form hasn't been updated)
+- Migration runner (1.4) remains a stub — still running migrations manually via psql
 
 ## Open Questions
-- Is the Trello manager work a new Phase 2.x task or a separate phase/initiative?
-- Is the simulator Phase 2 frontend task (2.2) now considered done, or does it need a final browser smoke-test pass?
+- Is the migration runner (1.4) worth formalizing before Phase 4, or continue manual psql approach?
+- Phase 3.1 (future): add ListingType to BatchPolicy so per-listing-type ML rates (classico/premium) reach the orchestrator

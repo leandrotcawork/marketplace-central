@@ -1,11 +1,11 @@
 {
   "project": "marketplace-central",
-  "last_updated": "2026-04-08T12:00:00Z",
-  "current_phase_id": "phase-3",
+  "last_updated": "2026-04-08T17:30:00Z",
+  "current_phase_id": "phase-3b",
   "summary": {
-    "completed_phases": 2,
-    "completed_tasks": 10,
-    "total_tasks": 19
+    "completed_phases": 3,
+    "completed_tasks": 13,
+    "total_tasks": 25
   },
   "phases": [
     {
@@ -24,58 +24,49 @@
           "id": "1.1",
           "name": "Database connectivity",
           "status": "done",
-          "completed_at": "2026-04-04T00:00:00Z",
-          "notes": "pgdb + msdb pools wired; catalog (MS reader + enrichments) and classifications adapters done; marketplaces adapter status uncertain"
+          "completed_at": "2026-04-04T00:00:00Z"
         },
         {
           "id": "1.2",
           "name": "Handler wiring",
           "status": "done",
-          "completed_at": "2026-04-04T00:00:00Z",
-          "notes": "Catalog, classifications, pricing handlers fully wired with slog + structured error codes"
+          "completed_at": "2026-04-04T00:00:00Z"
         },
         {
           "id": "1.3",
           "name": "SDK and frontend",
           "status": "done",
-          "completed_at": "2026-04-04T00:00:00Z",
-          "notes": "11 new SDK methods; ProductPicker; Products, VTEX Publisher, Simulator pages rewritten"
+          "completed_at": "2026-04-04T00:00:00Z"
         },
         {
           "id": "1.4",
           "name": "Migration runner",
           "status": "pending",
-          "subtasks": [
-            "Implement real migration runner in cmd/migrate/main.go (read SQL files, track applied migrations)"
-          ]
-        },
-        {
-          "id": "1.6",
-          "name": "VTEX credential validation endpoint",
-          "status": "done",
-          "completed_at": "2026-04-04T17:00:00Z",
-          "notes": "POST /connectors/vtex/validate-connection - full hexagonal stack. VTEX account tfcvgo returns 200 in ~762ms. Integration test verified."
+          "notes": "cmd/migrate/main.go is a stub; migrations run manually via psql"
         },
         {
           "id": "1.5",
           "name": "Verification",
           "status": "done",
-          "completed_at": "2026-04-04T13:00:00Z",
-          "notes": "Server boots clean; 3858 products load; EAN/reference/suggested_price populated; CORS working; frontend at localhost:5173 confirmed live."
+          "completed_at": "2026-04-04T13:00:00Z"
+        },
+        {
+          "id": "1.6",
+          "name": "VTEX credential validation endpoint",
+          "status": "done",
+          "completed_at": "2026-04-04T17:00:00Z"
         },
         {
           "id": "1.7",
           "name": "UX redesign",
           "status": "done",
-          "completed_at": "2026-04-06T08:00:00Z",
-          "notes": "PaginatedTable + DetailPanel shared primitives. Full rewrites: ProductsPage, VTEXPublishPage, PricingSimulatorPage. 84/84 tests."
+          "completed_at": "2026-04-06T08:00:00Z"
         },
         {
           "id": "1.8",
           "name": "Classifications management page",
           "status": "done",
-          "completed_at": "2026-04-06T09:00:00Z",
-          "notes": "New packages/feature-classifications. Two-column layout and /classifications route shipped."
+          "completed_at": "2026-04-06T09:00:00Z"
         }
       ]
     },
@@ -83,41 +74,87 @@
       "id": "phase-2",
       "name": "Pricing simulator",
       "status": "completed",
-      "completed_at": "2026-04-08T12:00:00Z",
-      "started_at": "2026-04-07T09:00:00Z",
+      "completed_at": "2026-04-08T12:00:00Z"
+    },
+    {
+      "id": "phase-3",
+      "name": "Marketplace Registry & Fee Foundation",
+      "status": "completed",
+      "completed_at": "2026-04-08T17:00:00Z",
+      "started_at": "2026-04-08T09:00:00Z",
+      "notes": "Branch feat/marketplace-registry merged to master. Three-layer plugin architecture: marketplace_definitions → fee_schedules → tenant accounts/policies. Fee lookup fallback chain: CommissionOverride → fee_schedules (4-level priority) → policy.CommissionPercent. Seed adapters for ML, Shopee, Magalu. Chrome validation passed.",
       "tasks": [
         {
-          "id": "2.1",
-          "name": "Backend",
+          "id": "3.1",
+          "name": "Registry + fee schedule backend",
           "status": "done",
-          "completed_at": "2026-04-07T15:00:00Z",
-          "notes": "Batch simulation shipped with marketplace policy fanout, price overrides, freight source handling, Melhor Envio connectivity checks, and simulator migrations."
+          "completed_at": "2026-04-08T14:00:00Z",
+          "notes": "Migrations 0010-0013, registry package, FeeScheduleService, FeeSyncService, connector seed adapters, transport handlers, FeeScheduleLookup in BatchOrchestrator"
         },
         {
-          "id": "2.2",
-          "name": "Frontend",
+          "id": "3.2",
+          "name": "Audit remediation",
           "status": "done",
-          "started_at": "2026-04-07T16:00:00Z",
-          "completed_at": "2026-04-08T12:00:00Z",
-          "notes": "Classification pills filter table. Matrix cell layout, toolbar, and margin chip aligned to legacy pattern. Validated by user."
+          "completed_at": "2026-04-08T16:30:00Z",
+          "notes": "7 issues resolved: LookupFee single-query rewrite, CategoryID wiring, fromDomain mapping, commission_override transport, OpenAPI admin endpoints + schema, SDK types, 15 new tests"
         },
         {
-          "id": "2.3",
-          "name": "SDK",
+          "id": "3.3",
+          "name": "Chrome validation",
           "status": "done",
-          "completed_at": "2026-04-07T14:00:00Z",
-          "notes": "Added batch simulation request/response types, Melhor Envio status method, and updated simulator-facing models."
+          "completed_at": "2026-04-08T17:00:00Z",
+          "notes": "All 6 pages pass, zero console errors, batch simulation running correctly at 19.9% avg margin"
         }
       ]
     },
     {
-      "id": "phase-3",
-      "name": "VTEX connector",
+      "id": "phase-3b",
+      "name": "UI/UX Overhaul & Marketplace Data Foundation",
       "status": "in_progress",
+      "focus": "Fix marketplace page UX to match legacy quality; seed all 6 marketplace definitions with full commission profiles and capabilities",
+      "tasks": [
+        {
+          "id": "3b.1",
+          "name": "Redesign Marketplace page UI/UX",
+          "status": "pending",
+          "subtasks": [
+            "Study legacy page: MarketplaceCard grid, 4-tab panel (Config/Connection/Matrix/Frete), commission matrix, escopo comercial strip",
+            "Redesign current MPC marketplace page to match legacy quality and navigation model",
+            "Add capabilities display, completeness score, average margin per marketplace"
+          ]
+        },
+        {
+          "id": "3b.2",
+          "name": "Seed all 6 marketplace definitions into MPC",
+          "status": "pending",
+          "notes": "Legacy has: ML (oauth2, 14.8%+R$5), Amazon (lwa, 12%), Magalu (oauth2, 16%), Leroy (api_key, 18%), Madeira (token, 15%), Shopee (blocked, tiered). Only ML/Shopee/Magalu are in MPC definitions today.",
+          "subtasks": [
+            "Add Amazon Brasil, Leroy Merlin, Madeira Madeira to marketplace_definitions registry adapters",
+            "Add capabilities and auth_strategy fields to marketplace_definitions schema",
+            "Seed commission profiles for all 6 channels into fee_schedules at startup",
+            "Use /brainstorming to map legacy per-category commission rules into MPC fee_schedules format"
+          ]
+        },
+        {
+          "id": "3b.3",
+          "name": "Close Phase 3 open items",
+          "status": "pending",
+          "subtasks": [
+            "Add commission_override field to Add Policy form UI (backend already accepts it)",
+            "Wire ListingType through BatchPolicy so ML classico/premium per-listing rates reach orchestrator",
+            "Implement real migration runner in cmd/migrate/main.go (currently a stub)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase-4",
+      "name": "VTEX connector",
+      "status": "not_started",
       "focus": "Product registration via VTEX API, catalog sync",
       "tasks": [
         {
-          "id": "3.1",
+          "id": "4.1",
           "name": "Connector infrastructure",
           "status": "pending",
           "subtasks": [
@@ -126,7 +163,7 @@
           ]
         },
         {
-          "id": "3.2",
+          "id": "4.2",
           "name": "Catalog enhancement",
           "status": "pending",
           "subtasks": [
@@ -135,7 +172,7 @@
           ]
         },
         {
-          "id": "3.3",
+          "id": "4.3",
           "name": "Frontend",
           "status": "pending",
           "subtasks": [
@@ -146,13 +183,13 @@
       ]
     },
     {
-      "id": "phase-4",
+      "id": "phase-5",
       "name": "Messaging + Orders + Alerts",
       "status": "not_started",
       "focus": "Message centralization, order monitoring, SLA alerts",
       "tasks": [
         {
-          "id": "4.1",
+          "id": "5.1",
           "name": "Messaging module",
           "status": "pending",
           "subtasks": [
@@ -162,7 +199,7 @@
           ]
         },
         {
-          "id": "4.2",
+          "id": "5.2",
           "name": "Orders module",
           "status": "pending",
           "subtasks": [
@@ -171,7 +208,7 @@
           ]
         },
         {
-          "id": "4.3",
+          "id": "5.3",
           "name": "Alerts module",
           "status": "pending",
           "subtasks": [
@@ -182,13 +219,13 @@
       ]
     },
     {
-      "id": "phase-5",
+      "id": "phase-6",
       "name": "Multi-marketplace",
       "status": "not_started",
       "focus": "Additional connectors (ML, Magalu), unified inbox",
       "tasks": [
         {
-          "id": "5.1",
+          "id": "6.1",
           "name": "Additional connectors",
           "status": "pending",
           "subtasks": [
@@ -198,7 +235,7 @@
           ]
         },
         {
-          "id": "5.2",
+          "id": "6.2",
           "name": "Unified features",
           "status": "pending",
           "subtasks": [

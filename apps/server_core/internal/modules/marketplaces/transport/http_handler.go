@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/application"
+	"marketplace-central/apps/server_core/internal/modules/marketplaces/domain"
 	"marketplace-central/apps/server_core/internal/platform/httpx"
 )
 
@@ -155,7 +156,27 @@ func (h Handler) Register(mux *http.ServeMux) {
 			writeMarketplacesError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
-		httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": defs})
+
+		type defItem struct {
+			Code              string                   `json:"code"`
+			DisplayName       string                   `json:"display_name"`
+			AuthStrategy      string                   `json:"auth_strategy"`
+			IsActive          bool                     `json:"is_active"`
+			CapabilityProfile domain.CapabilityProfile `json:"capability_profile"`
+			Metadata          domain.PluginMetadata    `json:"metadata"`
+		}
+		out := make([]defItem, 0, len(defs))
+		for _, d := range defs {
+			out = append(out, defItem{
+				Code:              d.MarketplaceCode,
+				DisplayName:       d.DisplayName,
+				AuthStrategy:      d.AuthStrategy,
+				IsActive:          d.Active,
+				CapabilityProfile: d.CapabilityProfile,
+				Metadata:          d.Metadata,
+			})
+		}
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": out})
 	})
 
 	mux.HandleFunc("/marketplaces/fee-schedules", func(w http.ResponseWriter, r *http.Request) {

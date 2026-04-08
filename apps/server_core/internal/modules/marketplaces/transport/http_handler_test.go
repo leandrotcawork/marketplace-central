@@ -111,7 +111,14 @@ func TestDefinitionsHandler_GetReturnsItems(t *testing.T) {
 	}
 
 	var body struct {
-		Items []domain.MarketplaceDefinition `json:"items"`
+		Items []struct {
+			Code              string                   `json:"code"`
+			DisplayName       string                   `json:"display_name"`
+			AuthStrategy      string                   `json:"auth_strategy"`
+			IsActive          bool                     `json:"is_active"`
+			CapabilityProfile domain.CapabilityProfile `json:"capability_profile"`
+			Metadata          domain.PluginMetadata    `json:"metadata"`
+		} `json:"items"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -122,8 +129,8 @@ func TestDefinitionsHandler_GetReturnsItems(t *testing.T) {
 	}
 	item := body.Items[0]
 
-	if item.MarketplaceCode != "test_market" {
-		t.Errorf("marketplace_code = %q, want %q", item.MarketplaceCode, "test_market")
+	if item.Code != "test_market" {
+		t.Errorf("code = %q, want %q", item.Code, "test_market")
 	}
 
 	// capability_profile must be present
