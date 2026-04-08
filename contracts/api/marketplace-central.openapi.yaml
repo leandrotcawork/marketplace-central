@@ -287,6 +287,62 @@ paths:
         "400":
           description: marketplace_code query param missing
 
+  /admin/fee-schedules/seed:
+    post:
+      operationId: seedMarketplaceFeeSchedules
+      summary: Force-seed fee schedules for a marketplace
+      tags: [admin]
+      parameters:
+        - name: marketplace_code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marketplace_code: { type: string }
+                  seeded:           { type: integer }
+        "400":
+          description: Unknown marketplace_code or missing param
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/fee-schedules/sync:
+    post:
+      operationId: syncMarketplaceFeeSchedules
+      summary: Force-sync fee schedules for a marketplace
+      tags: [admin]
+      parameters:
+        - name: marketplace_code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marketplace_code: { type: string }
+                  synced:           { type: integer }
+        "400":
+          description: Unknown marketplace_code or missing param
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /marketplaces/accounts:
     get:
       summary: List marketplace accounts
@@ -869,6 +925,14 @@ components:
           type: string
         connection_mode:
           type: string
+        marketplace_code:
+          type: string
+          description: "Registered marketplace plugin code (e.g. mercado_livre, shopee, magalu)."
+        credentials_json:
+          type: object
+          additionalProperties:
+            type: string
+          description: "Credential key-value pairs matching credential_schema. Write-only — not returned in list responses."
     MarketplacePolicy:
       type: object
       required:
@@ -890,9 +954,17 @@ components:
           type: string
         account_id:
           type: string
+        marketplace_code:
+          type: string
+          description: "The marketplace this policy applies to."
         commission_percent:
           type: number
           format: double
+        commission_override:
+          type: number
+          format: double
+          nullable: true
+          description: "Tenant-specific override. Null = standard fee schedule applies."
         fixed_fee_amount:
           type: number
           format: double
@@ -934,6 +1006,11 @@ components:
         commission_percent:
           type: number
           format: double
+        commission_override:
+          type: number
+          format: double
+          nullable: true
+          description: "When set, overrides fee_schedules lookup. Null = use standard schedule."
         fixed_fee_amount:
           type: number
           format: double
