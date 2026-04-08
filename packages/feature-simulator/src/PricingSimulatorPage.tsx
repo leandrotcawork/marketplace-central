@@ -480,28 +480,36 @@ export function PricingSimulatorPage({ client }: Props) {
                       >
                         {item ? (
                           <div className="w-[200px]">
-                            {/* Big editable selling price — legacy top price style */}
-                            <input
-                              type="text"
-                              defaultValue={`R$ ${item.selling_price.toFixed(2)}`}
-                              aria-label={`Selling price ${p.sku} ${pol.policy_id}`}
-                              onFocus={(e) => {
-                                e.target.value = item.selling_price.toFixed(2);
-                                e.target.select();
-                              }}
-                              onBlur={(e) => {
-                                commitOverride(p.product_id, pol.policy_id, e.target.value);
-                                e.target.value = `R$ ${item.selling_price.toFixed(2)}`;
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur();
-                                if (e.key === "Escape") {
-                                  e.currentTarget.value = `R$ ${item.selling_price.toFixed(2)}`;
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                              className="w-full text-base font-bold text-slate-900 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-400 focus:outline-none tabular-nums pb-0.5 cursor-pointer"
-                            />
+                            {/* Price row with margin chip in top-right */}
+                            <div className="flex items-baseline justify-between gap-2">
+                              <input
+                                type="text"
+                                defaultValue={`R$ ${item.selling_price.toFixed(2)}`}
+                                aria-label={`Selling price ${p.sku} ${pol.policy_id}`}
+                                onFocus={(e) => {
+                                  e.target.value = item.selling_price.toFixed(2);
+                                  e.target.select();
+                                }}
+                                onBlur={(e) => {
+                                  commitOverride(p.product_id, pol.policy_id, e.target.value);
+                                  e.target.value = `R$ ${item.selling_price.toFixed(2)}`;
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                  if (e.key === "Escape") {
+                                    e.currentTarget.value = `R$ ${item.selling_price.toFixed(2)}`;
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                className="flex-1 min-w-0 text-base font-bold text-slate-900 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-400 focus:outline-none tabular-nums pb-0.5 cursor-pointer"
+                              />
+                              <span
+                                aria-label={`Final margin status ${(item.margin_percent * 100).toFixed(1)} percent`}
+                                className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
+                              >
+                                {(item.margin_percent * 100).toFixed(1)}%
+                              </span>
+                            </div>
 
                             {/* Line items */}
                             <div className="mt-2 space-y-1 text-xs text-slate-500">
@@ -510,11 +518,8 @@ export function PricingSimulatorPage({ client }: Props) {
                                 <span className="font-mono text-slate-600">{fmt(item.cost_amount)}</span>
                               </div>
                               <div className="flex justify-between gap-2">
-                                <span>Comissão:</span>
-                                <span className="font-mono text-slate-600">
-                                  {fmt(item.commission_amount)}{" "}
-                                  <span className="text-slate-400">({(pol.commission_percent * 100).toFixed(1)}%)</span>
-                                </span>
+                                <span>Comissão ({(pol.commission_percent * 100).toFixed(1)}%):</span>
+                                <span className="font-mono text-slate-600">{fmt(item.commission_amount)}</span>
                               </div>
                               {item.fixed_fee_amount > 0 && (
                                 <div className="flex justify-between gap-2">
@@ -522,20 +527,14 @@ export function PricingSimulatorPage({ client }: Props) {
                                   <span className="font-mono text-slate-600">{fmt(item.fixed_fee_amount)}</span>
                                 </div>
                               )}
+                              <div className="flex justify-between gap-2">
+                                <span>Frete:</span>
+                                <span className="font-mono text-slate-600">{fmt(item.freight_amount)}</span>
+                              </div>
                               <div className={`flex justify-between gap-2 font-semibold ${marginColor(item.margin_percent)}`}>
                                 <span>Margem:</span>
                                 <span className="font-mono">{fmt(item.margin_amount)}</span>
                               </div>
-                            </div>
-
-                            {/* Margin badge */}
-                            <div className="mt-2">
-                              <span
-                                aria-label={`Final margin status ${(item.margin_percent * 100).toFixed(1)} percent`}
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
-                              >
-                                {(item.margin_percent * 100).toFixed(1)}%
-                              </span>
                             </div>
                           </div>
                         ) : (
