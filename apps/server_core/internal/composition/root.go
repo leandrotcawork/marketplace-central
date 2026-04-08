@@ -1,8 +1,11 @@
 package composition
 
 import (
+	"context"
 	"log"
+	"log/slog"
 	"net/http"
+	"time"
 
 	catalogmetalshopping "marketplace-central/apps/server_core/internal/modules/catalog/adapters/metalshopping"
 	catalogpostgres "marketplace-central/apps/server_core/internal/modules/catalog/adapters/postgres"
@@ -12,7 +15,10 @@ import (
 	classapp "marketplace-central/apps/server_core/internal/modules/classifications/application"
 	classtransport "marketplace-central/apps/server_core/internal/modules/classifications/transport"
 	melhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
+	connmagalu "marketplace-central/apps/server_core/internal/modules/connectors/adapters/magalu"
+	connml "marketplace-central/apps/server_core/internal/modules/connectors/adapters/mercado_livre"
 	connectorspostgres "marketplace-central/apps/server_core/internal/modules/connectors/adapters/postgres"
+	connshopee "marketplace-central/apps/server_core/internal/modules/connectors/adapters/shopee"
 	connectorshttp "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/http"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	connectorstransport "marketplace-central/apps/server_core/internal/modules/connectors/transport"
@@ -20,6 +26,7 @@ import (
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
 	marketplacestransport "marketplace-central/apps/server_core/internal/modules/marketplaces/transport"
 	pricingcatalog "marketplace-central/apps/server_core/internal/modules/pricing/adapters/catalog"
+	pricingfee "marketplace-central/apps/server_core/internal/modules/pricing/adapters/feeschedule"
 	pricingmarket "marketplace-central/apps/server_core/internal/modules/pricing/adapters/marketplace"
 	pricingpostgres "marketplace-central/apps/server_core/internal/modules/pricing/adapters/postgres"
 	pricingapp "marketplace-central/apps/server_core/internal/modules/pricing/application"
@@ -47,7 +54,27 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
 	marketSvc := marketplacesapp.NewService(marketRepo, cfg.DefaultTenantID)
-	marketplacestransport.NewHandler(marketSvc).Register(mux)
+
+	feeRepo := marketplacespostgres.NewFeeScheduleRepository(pool)
+	feeSvc := marketplacesapp.NewFeeScheduleService(feeRepo)
+
+	if err := feeSvc.SeedDefinitions(context.Background()); err != nil {
+		slog.Warn("marketplace definitions sync failed", "err", err)
+	}
+
+	feeSyncSvc := connectorsapp.NewFeeSyncService(feeRepo,
+		connml.NewFeeSyncer(),
+		connshopee.NewFeeSyncer(),
+		connmagalu.NewFeeSyncer(),
+	)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		feeSyncSvc.SeedAll(ctx)
+	}()
+
+	marketplacestransport.NewHandler(marketSvc, feeSvc, feeSyncSvc).Register(mux)
 
 	pricingRepo := pricingpostgres.NewRepository(pool, cfg.DefaultTenantID)
 	pricingSvc := pricingapp.NewService(pricingRepo, cfg.DefaultTenantID)
@@ -58,9 +85,10 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	meOAuth := melhorenvio.NewOAuthHandlerFromEnv(meTokenStore) // nil if ME_CLIENT_ID unset
 
 	// Pricing batch orchestrator
+	feeAdapter := pricingfee.NewAdapter(feeSvc)
 	prodReader := pricingcatalog.NewReader(catalogSvc)
 	polReader := pricingmarket.NewReader(marketSvc)
-	batchOrch := pricingapp.NewBatchOrchestrator(prodReader, polReader, meClient, cfg.DefaultTenantID)
+	batchOrch := pricingapp.NewBatchOrchestrator(prodReader, polReader, meClient, feeAdapter, cfg.DefaultTenantID)
 	pricingtransport.NewHandler(pricingSvc, batchOrch).Register(mux)
 
 	// Connectors (VTEX + ME auth)
