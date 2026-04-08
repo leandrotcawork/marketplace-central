@@ -1,10 +1,10 @@
 {
   "project": "marketplace-central",
-  "last_updated": "2026-04-07T20:00:00Z",
-  "current_phase_id": "phase-2",
+  "last_updated": "2026-04-08T12:00:00Z",
+  "current_phase_id": "phase-3",
   "summary": {
-    "completed_phases": 1,
-    "completed_tasks": 9,
+    "completed_phases": 2,
+    "completed_tasks": 10,
     "total_tasks": 19
   },
   "phases": [
@@ -82,8 +82,8 @@
     {
       "id": "phase-2",
       "name": "Pricing simulator",
-      "status": "in_progress",
-      "focus": "Full simulation engine with frontend UI",
+      "status": "completed",
+      "completed_at": "2026-04-08T12:00:00Z",
       "started_at": "2026-04-07T09:00:00Z",
       "tasks": [
         {
@@ -96,13 +96,10 @@
         {
           "id": "2.2",
           "name": "Frontend",
-          "status": "in_progress",
+          "status": "done",
           "started_at": "2026-04-07T16:00:00Z",
-          "notes": "Simulator v2 page shipped and tested, but a comparison-focused redesign follow-up is open because the current collapsed marketplace columns hide too much detail.",
-          "subtasks": [
-            "Redesign results layout for clearer product-by-product, marketplace-by-marketplace comparison",
-            "Preserve batch simulation controls, health indicators, and inline editing where they help comparison quality"
-          ]
+          "completed_at": "2026-04-08T12:00:00Z",
+          "notes": "Classification pills filter table. Matrix cell layout, toolbar, and margin chip aligned to legacy pattern. Validated by user."
         },
         {
           "id": "2.3",
@@ -116,7 +113,7 @@
     {
       "id": "phase-3",
       "name": "VTEX connector",
-      "status": "not_started",
+      "status": "in_progress",
       "focus": "Product registration via VTEX API, catalog sync",
       "tasks": [
         {

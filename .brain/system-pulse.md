@@ -1,5 +1,5 @@
 # System Pulse - Marketplace Central
-> Last updated: 2026-04-07 | Session: #6
+> Last updated: 2026-04-08 | Session: #8
 
 ## Project Identity
 
@@ -117,16 +117,16 @@ Completed in this phase:
 - Feature branch merged to `master`; `API_PORT` override added and verified on port `8082`
 
 Still pending:
-- Simulator UI refinement: current results grid is functionally correct but too collapsed for effective marketplace comparison
+- Final browser smoke-test of redesigned simulator to confirm Phase 2 frontend closure
 - Migration runner (`cmd/migrate/main.go`) remains a low-priority gap from foundation work
-- Browser-level polish pass after simulator redesign lands
+- Trello manager + board-agent implementation (spec and plan drafted, not yet coded)
 
 **Recent completed work (from git):**
-- Feat: pricing simulator v2 - batch simulation endpoint, SDK/runtime types, Melhor Envio auth/status flows, simulator rewrite, and verification completed
-- Refactor: Melhor Envio transport now depends on a port interface instead of importing the concrete adapter
-- Merge: `feat/pricing-simulator-v2` merged into `master` after conflict validation against leaked older master changes
-- Feat: `API_PORT` override added to server config and verified on port `8082`
-- Feat: classifications management page - new `feature-classifications` package, `/classifications` route
+- Fix: classification chips now filter the product table (classificationFilter) instead of bulk-selecting
+- Refactor: simulator matrix cell structure aligned to legacy layout (per-cell breakdown)
+- Feat: simulator table layout and toolbar aligned to legacy pattern
+- Docs: Trello manager + board-agent design spec started (`docs/superpowers/specs/2026-04-08-trello-manager-design.md`)
+- Feat: pricing simulator v2 - batch simulation endpoint, SDK/runtime types, Melhor Envio auth/status flows
 
 ---
 

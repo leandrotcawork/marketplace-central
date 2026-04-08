@@ -1,27 +1,25 @@
 # Last Session — Marketplace Central
-> Date: 2026-04-07 | Session: #7
+> Date: 2026-04-08 | Session: #8
 
 ## What Was Accomplished
-- Compared new simulator (`localhost:5173/simulator`) vs legacy (`localhost:3000/simulador`) live in Chrome via MCP
-- Reproduced the user-reported bug: clicking a classification chip ("Ativos ×27") does NOT filter the product list — it bulk-selects those 27 products while the table still renders all 3,859
-- Traced root cause in `packages/feature-simulator/src/PricingSimulatorPage.tsx`:
-  - `toggleClassification()` (lines 125–133) mutates `selectedIds`, never touches any filter state
-  - The `filtered` useMemo (lines 98–115) filters only by `search`, `taxonomyFilter`, and `healthFilter` — classification is absent
-- Identified a second, broader gap: new page is a catalog-picker-first flow gated behind CEP + Melhor Envios, while legacy is a results-first matrix that renders `N produtos × M marketplaces` immediately with dense per-cell breakdown (custo / comissão / taxa fixa / frete / margem + colored badges)
+- Fixed classification pills bug: chips now filter the product table instead of bulk-selecting rows (`classificationFilter` state added to `filtered` useMemo)
+- Refactored simulator matrix cell structure to match legacy comparison layout (per-cell breakdown: custo / comissão / taxa fixa / frete / margem)
+- Aligned simulator table layout and toolbar to legacy pattern (column headers, dense row rendering)
+- Started Trello manager + board-agent design: spec at `docs/superpowers/specs/2026-04-08-trello-manager-design.md`, plan at `docs/superpowers/plans/2026-04-08-trello-manager.md`
 
 ## What Changed in the System
-- No code changes. Analysis-only session. Three MCP tabs created for live comparison
+- `packages/feature-simulator/src/PricingSimulatorPage.tsx` — multiple structural changes (filter logic, cell layout, toolbar); has uncommitted refinements
+- `docs/superpowers/specs/2026-04-08-trello-manager-design.md` — new spec file (committed skeleton + 154 uncommitted lines)
+- `docs/superpowers/plans/2026-04-08-trello-manager.md` — new untracked plan file
 
 ## Decisions Made This Session
-- None yet — awaiting user choice between three proposed fix paths:
-  - **A**: Classification chips become a filter (add `classificationFilter` state, include in `filtered` useMemo)
-  - **B**: Redesign flow to be results-first like legacy (auto-defaults, demo state, or tenant-default CEPs)
-  - **C**: A now, B as follow-up
+- Classification chips chose option A (filter semantics) over bulk-select — surgical fix to the reported bug, matching legacy Classificação dropdown behavior
 
 ## What's Immediately Next
-- User to pick A / B / C, then implement. Recommended starting point is A (surgical, matches the exact reported bug)
+- Commit the remaining uncommitted changes in `PricingSimulatorPage.tsx` and the Trello spec/plan files
+- Continue Trello manager implementation (if user confirms scope)
+- Simulator UI: verify the comparison layout feels correct vs legacy before closing Phase 2 frontend task
 
 ## Open Questions
-- Should classification be single-select (like legacy Classificação dropdown) or multi-chip filter?
-- Is there a tenant-default origin CEP that could unblock results-first rendering without user input?
-- Should the fix preserve the existing "chip = bulk select" affordance as a separate action (e.g., a "select all" button per classification) or drop it entirely?
+- Is the Trello manager work a new Phase 2.x task or a separate phase/initiative?
+- Is the simulator Phase 2 frontend task (2.2) now considered done, or does it need a final browser smoke-test pass?
