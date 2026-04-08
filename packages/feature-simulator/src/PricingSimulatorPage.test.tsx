@@ -70,7 +70,7 @@ describe("PricingSimulatorPage", () => {
     expect(screen.getByRole("button", { name: /run simulation/i })).not.toBeDisabled();
   });
 
-  it("clicking a classification pill filters the table to its products without selecting them", async () => {
+  it("clicking a classification pill filters the table AND auto-selects its products", async () => {
     const client = makeClient({
       listCatalogProducts: vi.fn().mockResolvedValue({
         items: [makeProduct("p1", "SKU-001"), makeProduct("p2", "SKU-002"), makeProduct("p3", "SKU-OUT")],
@@ -86,10 +86,10 @@ describe("PricingSimulatorPage", () => {
     expect(screen.queryByText("Product SKU-OUT")).not.toBeInTheDocument();
     expect(screen.getByText("Product SKU-001")).toBeInTheDocument();
     expect(screen.getByText("Product SKU-002")).toBeInTheDocument();
-    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/2 selected/i)).toBeInTheDocument();
   });
 
-  it("clicking classification pill twice removes the filter", async () => {
+  it("clicking classification pill twice removes the filter and deselects its products", async () => {
     const client = makeClient({
       listCatalogProducts: vi.fn().mockResolvedValue({
         items: [makeProduct("p1", "SKU-001"), makeProduct("p2", "SKU-002"), makeProduct("p3", "SKU-OUT")],
@@ -100,8 +100,10 @@ describe("PricingSimulatorPage", () => {
     await screen.findByText("Product SKU-OUT");
     fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
     expect(screen.queryByText("Product SKU-OUT")).not.toBeInTheDocument();
+    expect(screen.getByText(/2 selected/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /ativos/i }));
     expect(screen.getByText("Product SKU-OUT")).toBeInTheDocument();
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
   });
 
   it("running simulation renders results and summary banner", async () => {
@@ -114,8 +116,8 @@ describe("PricingSimulatorPage", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /select product sku-002/i }));
     fireEvent.click(screen.getByRole("button", { name: /run simulation/i }));
     await waitFor(() => expect(client.runBatchSimulation).toHaveBeenCalledOnce());
-    expect(await screen.findByText(/avg/i)).toBeInTheDocument();
-    expect(await screen.findByText(/healthy:\s*2/i)).toBeInTheDocument();
+    expect(await screen.findByText(/margem média/i)).toBeInTheDocument();
+    expect(await screen.findByText(/saudáveis/i)).toBeInTheDocument();
   });
 
   it("renders marketplace comparison cards after simulation run", async () => {
@@ -134,11 +136,12 @@ describe("PricingSimulatorPage", () => {
     const firstCard = screen.getByRole("textbox", { name: /selling price sku-001 pol1/i }).closest("td");
     expect(firstCard).not.toBeNull();
     const card = within(firstCard as HTMLElement);
-    expect(card.getByText(/^Custo/i)).toBeInTheDocument();
-    expect(card.getByText(/^Comissao/i)).toBeInTheDocument();
-    expect(card.getByText(/^Taxa fixa/i)).toBeInTheDocument();
-    expect(card.getByText(/^Frete/i)).toBeInTheDocument();
-    expect(card.getByText(/^Margem/i)).toBeInTheDocument();
+    expect(card.getByText(/^Custo:/i)).toBeInTheDocument();
+    expect(card.getByText(/^Comiss/i)).toBeInTheDocument();
+    expect(card.getByText(/^Margem:/i)).toBeInTheDocument();
+    // Taxa fixa only shown when > 0; Frete removed from matrix cell
+    expect(card.queryByText(/^Taxa fixa/i)).not.toBeInTheDocument();
+    expect(card.queryByText(/^Frete/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /expand pol1/i })).not.toBeInTheDocument();
   });
 
@@ -157,8 +160,11 @@ describe("PricingSimulatorPage", () => {
     const firstCard = screen.getByRole("textbox", { name: /selling price sku-001 pol1/i }).closest("td");
     expect(firstCard).not.toBeNull();
     const cardText = (firstCard as HTMLElement).textContent?.replace(/\s+/g, " ").trim();
-    expect(cardText).toContain("ComissaoR$ 24.00 (16.0%)");
-    expect(cardText).toContain("Taxa fixaR$ 0.00");
+    expect(cardText).toContain("R$ 24.00");
+    expect(cardText).toContain("(16.0%)");
+    // Taxa fixa hidden when 0; Margem still present
+    expect(cardText).not.toContain("Taxa fixa");
+    expect(cardText).toContain("Margem:");
   });
 
   it("shows load error when data fetch fails", async () => {

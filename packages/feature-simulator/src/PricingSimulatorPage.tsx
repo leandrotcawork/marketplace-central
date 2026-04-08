@@ -136,10 +136,19 @@ export function PricingSimulatorPage({ client }: Props) {
   }
 
   function toggleClassificationFilter(classificationId: string) {
+    const cls = classifications.find((c) => c.classification_id === classificationId);
+    if (!cls) return;
+    const willActivate = !classificationFilter.has(classificationId);
     setClassificationFilter((prev) => {
       const next = new Set(prev);
-      if (next.has(classificationId)) next.delete(classificationId);
-      else next.add(classificationId);
+      if (willActivate) next.add(classificationId);
+      else next.delete(classificationId);
+      return next;
+    });
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (willActivate) cls.product_ids.forEach((id) => next.add(id));
+      else cls.product_ids.forEach((id) => next.delete(id));
       return next;
     });
   }
@@ -184,6 +193,32 @@ export function PricingSimulatorPage({ client }: Props) {
     setPriceOverrides({});
   }
 
+  function csvCell(value: string | number) {
+    const s = String(value ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  function exportCsv() {
+    if (!hasResults) return;
+    const headers = ["Produto", "SKU", "Custo", ...policies.map((p) => `${p.policy_id} margem%`)];
+    const lines = [headers.map(csvCell).join(",")];
+    for (const p of filtered) {
+      const cells: (string | number)[] = [p.name, p.sku, p.cost_amount.toFixed(2)];
+      for (const pol of policies) {
+        const item = resultMap[`${p.product_id}::${pol.policy_id}`];
+        cells.push(item ? (item.margin_percent * 100).toFixed(1) : "");
+      }
+      lines.push(cells.map(csvCell).join(","));
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "simulacao.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // Summary stats
   const avgMargin = results.length > 0
     ? results.reduce((s, r) => s + r.margin_percent, 0) / results.length : 0;
@@ -193,7 +228,47 @@ export function PricingSimulatorPage({ client }: Props) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-slate-900">Pricing Simulator</h2>
+      {/* Page header — legacy "Simulador de Margens" pattern */}
+      <div className="space-y-1">
+        <h2 className="text-xl font-semibold text-slate-900">Pricing Simulator</h2>
+        <div
+          aria-label="Simulator stats"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600"
+        >
+          <span>
+            <strong className="text-slate-900">{filtered.length}</strong> produtos ×{" "}
+            <strong className="text-slate-900">{policies.length}</strong> marketplaces
+          </span>
+          {hasResults && (
+            <>
+              <span className="text-slate-300" aria-hidden>•</span>
+              <span>
+                Margem média:{" "}
+                <strong className={marginColor(avgMargin)}>{(avgMargin * 100).toFixed(1)}%</strong>
+              </span>
+              <span className="text-slate-300" aria-hidden>•</span>
+              <span className="text-emerald-700">
+                Saudáveis: <strong>{healthyCount}</strong>
+              </span>
+              <span className="text-amber-700">
+                Atenção: <strong>{warningCount}</strong>
+              </span>
+              {criticalCount > 0 && (
+                <span className="text-red-700">
+                  Críticos: <strong>{criticalCount}</strong>
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setResults([])}
+                className="ml-2 text-xs text-slate-500 hover:text-slate-700 underline cursor-pointer"
+              >
+                Clear Results
+              </button>
+            </>
+          )}
+        </div>
+      </div>
 
       {loadError && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{loadError}</div>
@@ -286,29 +361,14 @@ export function PricingSimulatorPage({ client }: Props) {
         </div>
       )}
 
-      {/* Summary banner */}
-      {hasResults && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 flex flex-wrap gap-6 items-center text-sm">
-          <span className="font-medium text-slate-700">
-            Avg margin <span className={marginColor(avgMargin)}>{(avgMargin * 100).toFixed(1)}%</span>
-          </span>
-          <span className="text-emerald-700">Healthy: {healthyCount}</span>
-          <span className="text-amber-700">Warning: {warningCount}</span>
-          {criticalCount > 0 && <span className="text-red-700">Critical: {criticalCount}</span>}
-          <button onClick={() => setResults([])} className="ml-auto text-xs text-slate-500 hover:text-slate-700 cursor-pointer">
-            Clear Results
-          </button>
-        </div>
-      )}
-
-      {/* Filter bar */}
+      {/* Filter bar — legacy toolbar pattern */}
       <div className="flex flex-wrap items-center gap-3">
         <input
           type="text"
-          placeholder="Search products..."
+          placeholder="Buscar por nome ou SKU..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[180px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 min-w-[220px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <select
           value={taxonomyFilter}
@@ -316,22 +376,29 @@ export function PricingSimulatorPage({ client }: Props) {
           aria-label="Taxonomy filter"
           className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">All Taxonomy</option>
+          <option value="">Todas as classificações</option>
           {taxonomyNodes.map((t) => <option key={t.node_id} value={t.node_id}>{t.name}</option>)}
         </select>
-        {hasResults && (
-          <select
-            value={healthFilter}
-            onChange={(e) => setHealthFilter(e.target.value as any)}
-            aria-label="Health filter"
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Health</option>
-            <option value="healthy">Healthy</option>
-            <option value="warning">Warning</option>
-            <option value="critical">Critical</option>
-          </select>
-        )}
+        <select
+          value={healthFilter}
+          onChange={(e) => setHealthFilter(e.target.value as any)}
+          aria-label="Health filter"
+          disabled={!hasResults}
+          className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+        >
+          <option value="all">Todos os status</option>
+          <option value="healthy">Saudável (&gt;20%)</option>
+          <option value="warning">Atenção (10–20%)</option>
+          <option value="critical">Crítico (&lt;10%)</option>
+        </select>
+        <button
+          type="button"
+          onClick={exportCsv}
+          disabled={!hasResults}
+          className="px-3 py-2 text-sm font-medium border border-slate-200 rounded-lg bg-white text-slate-700 hover:border-blue-400 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
+        >
+          Exportar CSV
+        </button>
       </div>
 
       {/* Product table */}
@@ -342,19 +409,28 @@ export function PricingSimulatorPage({ client }: Props) {
         renderHeader={() => (
           <tr>
             <th className="px-3 py-3 w-10"></th>
-            <th className="px-4 py-3 font-medium text-slate-600 text-left">Name</th>
-            <th className="px-4 py-3 font-medium text-slate-600 text-left">SKU</th>
-            <th className="px-4 py-3 font-medium text-slate-600 text-right">Cost</th>
-            <th className="px-4 py-3 font-medium text-slate-600 text-right">Price</th>
-            {!hasResults && <th className="px-4 py-3 font-medium text-slate-600 text-right">Stock</th>}
-            {hasResults && policies.map((pol) => (
-              <th key={pol.policy_id} className="px-3 py-2 font-medium text-slate-600 text-left min-w-[220px]">
-                <div className="text-xs font-semibold text-slate-700">{pol.policy_id}</div>
-                <div className="text-[11px] text-slate-500">
-                  Base {(pol.commission_percent * 100).toFixed(1)}% {pol.fixed_fee_amount > 0 ? `+ ${fmt(pol.fixed_fee_amount)}` : ""}
-                </div>
-              </th>
-            ))}
+            {/* Pre-sim: separate columns. Post-sim: single compact Produto column */}
+            {!hasResults ? (
+              <>
+                <th className="px-4 py-3 font-medium text-slate-600 text-left">Nome</th>
+                <th className="px-4 py-3 font-medium text-slate-600 text-left">SKU</th>
+                <th className="px-4 py-3 font-medium text-slate-600 text-right">Custo</th>
+                <th className="px-4 py-3 font-medium text-slate-600 text-right">Preço</th>
+                <th className="px-4 py-3 font-medium text-slate-600 text-right">Estoque</th>
+              </>
+            ) : (
+              <>
+                <th className="px-4 py-3 font-medium text-slate-600 text-left w-52">Produto</th>
+                {policies.map((pol) => (
+                  <th key={pol.policy_id} className="px-4 py-3 font-medium text-slate-600 text-left min-w-[200px]">
+                    <div className="text-sm font-semibold text-slate-700">{pol.policy_id}</div>
+                    <div className="text-xs font-normal text-slate-400">
+                      Base {(pol.commission_percent * 100).toFixed(1)}%{pol.fixed_fee_amount > 0 ? ` + ${fmt(pol.fixed_fee_amount)}` : ""}
+                    </div>
+                  </th>
+                ))}
+              </>
+            )}
           </tr>
         )}
         renderRow={(p) => {
@@ -362,7 +438,7 @@ export function PricingSimulatorPage({ client }: Props) {
           return (
             <tr
               key={p.product_id}
-              className={`border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${checked ? "bg-blue-50/30" : ""}`}
+              className={`border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${checked ? "bg-blue-50/40" : ""}`}
               onClick={() => toggleProduct(p.product_id)}
             >
               <td className="px-3 py-3 text-center">
@@ -375,72 +451,101 @@ export function PricingSimulatorPage({ client }: Props) {
                   className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500"
                 />
               </td>
-              <td className="px-4 py-3 font-medium text-slate-900">{p.name}</td>
-              <td className="px-4 py-3 text-slate-500 font-mono text-xs">{p.sku}</td>
-              <td className="px-4 py-3 text-right font-mono text-slate-600 tabular-nums">{fmt(p.cost_amount)}</td>
-              <td className="px-4 py-3 text-right font-mono text-slate-600 tabular-nums">{fmt(p.price_amount)}</td>
-              {!hasResults && (
-                <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{p.stock_quantity}</td>
-              )}
-              {hasResults && policies.map((pol) => {
-                const item = resultMap[`${p.product_id}::${pol.policy_id}`];
-                const overrideKey = `${p.product_id}::${pol.policy_id}`;
 
-                return (
-                  <td key={`${overrideKey}_card`} className="px-2 py-2 align-top">
-                    {item ? (
-                      <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-600" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between gap-2 pb-1">
-                          <span className="text-slate-500">Preco venda</span>
-                          <div className="relative w-[110px]">
+              {!hasResults ? (
+                <>
+                  <td className="px-4 py-3 font-medium text-slate-900">{p.name}</td>
+                  <td className="px-4 py-3 text-slate-500 font-mono text-xs">{p.sku}</td>
+                  <td className="px-4 py-3 text-right font-mono text-slate-600 tabular-nums">{fmt(p.cost_amount)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-slate-600 tabular-nums">{fmt(p.price_amount)}</td>
+                  <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{p.stock_quantity}</td>
+                </>
+              ) : (
+                <>
+                  {/* Compact product cell — legacy "Produto" style */}
+                  <td className="px-4 py-3 align-top">
+                    <div className="font-medium text-sm text-slate-900 leading-snug">{p.name}</div>
+                    <div className="text-xs text-slate-400 font-mono mt-0.5">{p.sku}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">Custo: {fmt(p.cost_amount)}</div>
+                  </td>
+
+                  {/* Marketplace result cells — legacy matrix style */}
+                  {policies.map((pol) => {
+                    const item = resultMap[`${p.product_id}::${pol.policy_id}`];
+                    return (
+                      <td
+                        key={`${p.product_id}::${pol.policy_id}`}
+                        className="px-4 py-3 align-top"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {item ? (
+                          <div className="w-[200px]">
+                            {/* Big editable selling price — legacy top price style */}
                             <input
                               type="text"
-                              defaultValue={item.selling_price.toFixed(2)}
+                              defaultValue={`R$ ${item.selling_price.toFixed(2)}`}
                               aria-label={`Selling price ${p.sku} ${pol.policy_id}`}
-                              onBlur={(e) => commitOverride(p.product_id, pol.policy_id, e.target.value)}
+                              onFocus={(e) => {
+                                e.target.value = item.selling_price.toFixed(2);
+                                e.target.select();
+                              }}
+                              onBlur={(e) => {
+                                commitOverride(p.product_id, pol.policy_id, e.target.value);
+                                e.target.value = `R$ ${item.selling_price.toFixed(2)}`;
+                              }}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") e.currentTarget.blur();
-                                if (e.key === "Escape") e.currentTarget.value = item.selling_price.toFixed(2);
+                                if (e.key === "Escape") {
+                                  e.currentTarget.value = `R$ ${item.selling_price.toFixed(2)}`;
+                                  e.currentTarget.blur();
+                                }
                               }}
-                              className="w-full border border-slate-200 rounded px-2 py-0.5 text-right font-mono text-[12px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              className="w-full text-base font-bold text-slate-900 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-400 focus:outline-none tabular-nums pb-0.5 cursor-pointer"
                             />
+
+                            {/* Line items */}
+                            <div className="mt-2 space-y-1 text-xs text-slate-500">
+                              <div className="flex justify-between gap-2">
+                                <span>Custo:</span>
+                                <span className="font-mono text-slate-600">{fmt(item.cost_amount)}</span>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <span>Comissão:</span>
+                                <span className="font-mono text-slate-600">
+                                  {fmt(item.commission_amount)}{" "}
+                                  <span className="text-slate-400">({(pol.commission_percent * 100).toFixed(1)}%)</span>
+                                </span>
+                              </div>
+                              {item.fixed_fee_amount > 0 && (
+                                <div className="flex justify-between gap-2">
+                                  <span>Taxa fixa:</span>
+                                  <span className="font-mono text-slate-600">{fmt(item.fixed_fee_amount)}</span>
+                                </div>
+                              )}
+                              <div className={`flex justify-between gap-2 font-semibold ${marginColor(item.margin_percent)}`}>
+                                <span>Margem:</span>
+                                <span className="font-mono">{fmt(item.margin_amount)}</span>
+                              </div>
+                            </div>
+
+                            {/* Margin badge */}
+                            <div className="mt-2">
+                              <span
+                                aria-label={`Final margin status ${(item.margin_percent * 100).toFixed(1)} percent`}
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
+                              >
+                                {(item.margin_percent * 100).toFixed(1)}%
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Custo</span>
-                          <span className="font-mono">{fmt(item.cost_amount)}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Comissao</span>
-                          <span className="font-mono">{fmt(item.commission_amount)} ({(pol.commission_percent * 100).toFixed(1)}%)</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Taxa fixa</span>
-                          <span className="font-mono">{fmt(item.fixed_fee_amount)}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Frete</span>
-                          <span className="font-mono">{fmt(item.freight_amount)}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 pt-0.5">
-                          <span className="font-semibold text-slate-700">Margem</span>
-                          <span className="font-mono font-semibold text-slate-700">{fmt(item.margin_amount)}</span>
-                        </div>
-                        <div className="flex justify-end pt-1">
-                          <span
-                            aria-label={`Final margin status ${(item.margin_percent * 100).toFixed(1)} percent`}
-                            className={`inline-flex items-center px-2 py-0.5 rounded font-mono text-[11px] font-bold ${marginBg(item.margin_percent)} ${marginColor(item.margin_percent)}`}
-                          >
-                            {(item.margin_percent * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-slate-300 text-xs">—</span>
-                    )}
-                  </td>
-                );
-              })}
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </>
+              )}
             </tr>
           );
         }}
