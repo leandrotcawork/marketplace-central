@@ -9,11 +9,12 @@ Active. Phase 1 foundation scaffold is complete. Next: wire handlers to database
 | Phase | Name | Focus | Status |
 |---|---|---|---|
 | 0 | Foundation scaffold | Monorepo structure, stubs, tests, documents | done |
-| 1 | Foundation wiring | Connect handlers to Postgres, real CRUD, SDK methods | next |
-| 2 | Pricing simulator | Full simulation engine with frontend UI | planned |
-| 3 | VTEX connector | Product registration via VTEX API, catalog sync | planned |
-| 4 | Messaging + Orders | Message centralization, order monitoring, SLA alerts | planned |
-| 5 | Multi-marketplace | Additional connectors (ML, Magalu), unified inbox | planned |
+| 1 | Foundation wiring | Connect handlers to Postgres, real CRUD, SDK methods | done |
+| 2 | Pricing simulator | Full simulation engine with frontend UI | done |
+| 3 | Marketplace Registry & Fee Foundation | Registry plugin, fee schedules, tenant accounts, BatchOrchestrator | done |
+| 4 | VTEX connector | Product registration via VTEX API, catalog sync | planned |
+| 5 | Messaging + Orders | Message centralization, order monitoring, SLA alerts | planned |
+| 6 | Multi-marketplace | Additional connectors (ML, Magalu), unified inbox | planned |
 
 ---
 
@@ -110,7 +111,24 @@ Goal: Full-featured pricing simulation with frontend UI.
 
 ---
 
-## Phase 3 — VTEX connector (planned)
+## Phase 3 — Marketplace Registry & Fee Foundation (COMPLETE — 2026-04-08)
+
+**Branch:** `feat/marketplace-registry`
+**Spec:** `docs/superpowers/specs/2026-04-08-marketplace-registry-design.md`
+**Plan:** `docs/superpowers/plans/2026-04-08-marketplace-registry.md`
+
+Three-layer marketplace plugin architecture:
+- `marketplace_definitions` (global, code-defined) — mercado_livre, shopee, magalu
+- `marketplace_fee_schedules` (global, DB seeded at startup) — per-category commission rates
+- `marketplace_accounts` + `marketplace_pricing_policies` (per-tenant)
+
+Fee lookup fallback chain: `CommissionOverride → fee_schedules (4-level: exact category + listing_type priority) → policy.CommissionPercent`
+
+Deliverables: migrations 0010–0013, registry package, FeeScheduleService, FeeSyncService, connector seed adapters (ML 16%/22%, Shopee 8 categories, Magalu 7 categories), transport (definitions, fee-schedules, admin seed/sync endpoints), FeeScheduleLookup injected into BatchOrchestrator, frontend dynamic credential form.
+
+---
+
+## Phase 4 — VTEX connector (planned)
 
 Goal: Register products on VTEX via API. Sync catalog data.
 
