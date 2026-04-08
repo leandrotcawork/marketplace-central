@@ -1,30 +1,27 @@
 # Last Session — Marketplace Central
-> Date: 2026-04-06 | Session: #5
+> Date: 2026-04-07 | Session: #7
 
 ## What Was Accomplished
-- UX redesign executed across all 4 plans: `PaginatedTable` + `DetailPanel` shared primitives, full rewrites of ProductsPage (slide-over panel + classification checkboxes), VTEXPublishPage (sticky config bar + inline paginated table + Load Classification), PricingSimulatorPage (sticky command bar + inline simulation results)
-- New `packages/feature-classifications` package: dedicated `/classifications` page with two-column layout (list + detail), full product table with search/filter/checkboxes, create-on-first-check pattern, delete with confirm
-- Classifications nav item added between Products and VTEX Publisher (`Tags` icon, `/classifications` route)
-- 84/84 frontend tests pass, all pushed to origin
-- Permanent fix for Windows CRLF `.env` issue: `run-server.ps1` (PowerShell), `Makefile` (`make server`), `.vscode/tasks.json` (VS Code task)
-- User created 3 classifications via the new UI: **Ativos** (27 products), **Descontinuados** (23), **Encomenda** (19)
-- Retrieved all 69 product PNs from DB (via RLS-aware query with `set_config('app.tenant_id', ...)`)
+- Compared new simulator (`localhost:5173/simulator`) vs legacy (`localhost:3000/simulador`) live in Chrome via MCP
+- Reproduced the user-reported bug: clicking a classification chip ("Ativos ×27") does NOT filter the product list — it bulk-selects those 27 products while the table still renders all 3,859
+- Traced root cause in `packages/feature-simulator/src/PricingSimulatorPage.tsx`:
+  - `toggleClassification()` (lines 125–133) mutates `selectedIds`, never touches any filter state
+  - The `filtered` useMemo (lines 98–115) filters only by `search`, `taxonomyFilter`, and `healthFilter` — classification is absent
+- Identified a second, broader gap: new page is a catalog-picker-first flow gated behind CEP + Melhor Envios, while legacy is a results-first matrix that renders `N produtos × M marketplaces` immediately with dense per-cell breakdown (custo / comissão / taxa fixa / frete / margem + colored badges)
 
 ## What Changed in the System
-- New: `packages/feature-classifications/` — ClassificationsPage, tests, package.json, tsconfig.json
-- New: `packages/ui/src/PaginatedTable.tsx` + `packages/ui/src/DetailPanel.tsx`
-- Modified: `packages/feature-products/`, `packages/feature-connectors/`, `packages/feature-simulator/` — full rewrites
-- Modified: `apps/web/src/app/Layout.tsx`, `AppRouter.tsx` — Classifications nav + route
-- Modified: `apps/web/src/index.css` — added `@source` for feature-classifications
-- New: `run-server.ps1`, `Makefile`, `.vscode/tasks.json` — dev tooling for Windows CRLF workaround
+- No code changes. Analysis-only session. Three MCP tabs created for live comparison
 
 ## Decisions Made This Session
-- No new architectural decisions; patterns followed existing conventions
+- None yet — awaiting user choice between three proposed fix paths:
+  - **A**: Classification chips become a filter (add `classificationFilter` state, include in `filtered` useMemo)
+  - **B**: Redesign flow to be results-first like legacy (auto-defaults, demo state, or tenant-default CEPs)
+  - **C**: A now, B as follow-up
 
 ## What's Immediately Next
-- Smoke test the full app end-to-end: run `.\run-server.ps1` + `npm run dev --workspace=apps/web`, then test Products, VTEX Publisher, Pricing Simulator, Classifications pages in browser
-- Decide: move to Phase 2 (Pricing Simulator batch engine) or tackle VTEX Publisher full publish flow first
+- User to pick A / B / C, then implement. Recommended starting point is A (surgical, matches the exact reported bug)
 
 ## Open Questions
-- Dimensions data: legacy SQLite never committed — will user re-enter manually or source from VTEX?
-- VTEX Publisher publish flow: does batch submit → pipeline steps → status polling work end-to-end?
+- Should classification be single-select (like legacy Classificação dropdown) or multi-chip filter?
+- Is there a tenant-default origin CEP that could unblock results-first rendering without user input?
+- Should the fix preserve the existing "chip = bulk select" affordance as a separate action (e.g., a "select all" button per classification) or drop it entirely?

@@ -1,10 +1,10 @@
-# System Pulse — Marketplace Central
-> Last updated: 2026-04-06 | Session: #5
+# System Pulse - Marketplace Central
+> Last updated: 2026-04-07 | Session: #6
 
 ## Project Identity
 
 **Name:** Marketplace Central (MPC)
-**Purpose:** Intelligence and control surface for marketplace operations — pricing simulation, message centralization, order monitoring, SLA guardrails.
+**Purpose:** Intelligence and control surface for marketplace operations - pricing simulation, message centralization, order monitoring, SLA guardrails.
 **Target:** Brazilian marketplace sellers using VTEX, Mercado Livre, Magalu, Amazon.
 **Future:** Designed to merge into MetalShopping as a module (MetalShopping_Final on GitHub).
 
@@ -45,13 +45,13 @@ apps/server_core/          # Go backend
       classifications/     # Product classification data
       marketplaces/        # Accounts + pricing policies
       pricing/             # Price simulation engine
-      connectors/          # [early] Marketplace API adapters (VTEX etc.)
+      connectors/          # VTEX + Melhor Envio integration surfaces
     platform/
       config/              # Env config loading
       httpx/               # JSON writer, router
       logging/             # Structured logger (slog)
       pgdb/                # Postgres pool + tenant helpers
-  migrations/              # Sequential SQL: 0001–0007
+  migrations/              # Sequential SQL: 0001-0009
 
 apps/web/                  # React client (thin)
   src/
@@ -79,8 +79,8 @@ docs/marketplaces/         # Per-marketplace API reference docs
 |---|---|---|
 | `catalog` | Foundation done | Products, SKU/EAN, cost tracking, taxonomy, enrichments, classifications |
 | `marketplaces` | Foundation done | Accounts, pricing policies (commission, fees, freight, SLA) |
-| `pricing` | Foundation done | Simulation engine, margin calc, snapshots, manual overrides, suggested price |
-| `connectors` | Early/partial | VTEX adapter (in progress) |
+| `pricing` | Phase 2 delivered | Batch simulation engine, margin calc, snapshots, manual overrides, suggested price |
+| `connectors` | Early/partial | VTEX adapter plus Melhor Envio OAuth, status, and freight quote support |
 | `messaging` | Planned (Phase 4) | Unified inbox, SLA tracking |
 | `orders` | Planned (Phase 4) | Order monitoring, dispatch SLA |
 | `alerts` | Planned (Phase 4) | SLA guardrails, notifications |
@@ -95,38 +95,38 @@ docs/marketplaces/         # Per-marketplace API reference docs
 - **Database:** All queries include `tenant_id` predicate; `pgxpool.Pool` only
 - **Money:** `float64` in domain, `numeric(14,2)` in Postgres
 - **Transport layer:** Validates, delegates to application service, returns JSON
-- **Frontend:** No direct fetch — all via `sdk-runtime`
+- **Frontend:** No direct fetch - all via `sdk-runtime`
 - **Commits:** `<type>(<scope>): <what>` (feat | fix | docs | chore | refactor | test)
-- **Migrations:** Sequential `NNNN_description.sql`, forward-only (0001–0007 exist)
-- **Commissions:** Stored as decimal (e.g., 0.16 = 16%); frontend multiplies by 100 for display
+- **Migrations:** Sequential `NNNN_description.sql`, forward-only (0001-0009 exist)
+- **Commissions:** Stored as decimal (e.g. `0.16 = 16%`); frontend multiplies by 100 only for display
+- **Connector boundaries:** transport depends on ports, not concrete adapter packages
 
 ---
 
 ## Current Phase
 
-**Phase 1 — Foundation Wiring** (active, near complete)
+**Phase 2 - Pricing simulator** (active, core implementation complete)
 
-Goal: Make 3 modules functional end-to-end with real database operations.
+Goal: deliver batch pricing simulation across marketplace policies with real freight inputs and a comparison-oriented UI.
 
-Completed this phase:
-- Both pgxpool instances wired (pgdb for MPC, msdb for MetalShopping read-only)
-- Catalog, Classifications, Pricing modules: full CRUD, slog, structured error codes
-- SDK extended: 11 new methods + CatalogProduct, Classification, ProductEnrichment types
-- UX redesign: PaginatedTable + DetailPanel shared primitives; full rewrites of Products, VTEX Publisher, Pricing Simulator pages (84/84 tests)
-- Classifications page (`/classifications`): two-column layout, full product table with checkboxes, create/delete — `packages/feature-classifications`
-- User's 3 active classifications: Ativos (27 products), Descontinuados (23), Encomenda (19) = 69 total
-- Windows dev tooling: `run-server.ps1`, `Makefile` (`make server`), `.vscode/tasks.json`
+Completed in this phase:
+- Batch simulation endpoint shipped in Go and wired in composition root
+- SDK/runtime expanded with batch simulation and Melhor Envio status methods
+- Melhor Envio OAuth/status flow and freight quote support added, with port-based transport decoupling
+- Simulator page rewritten for batch execution and verified with tests, build, and smoke checks
+- Feature branch merged to `master`; `API_PORT` override added and verified on port `8082`
 
 Still pending:
-- Migration runner (cmd/migrate/main.go — still a stub, low priority)
-- Smoke test in browser: Marketplace Settings forms, Pricing Simulator, VTEX Publisher end-to-end
+- Simulator UI refinement: current results grid is functionally correct but too collapsed for effective marketplace comparison
+- Migration runner (`cmd/migrate/main.go`) remains a low-priority gap from foundation work
+- Browser-level polish pass after simulator redesign lands
 
 **Recent completed work (from git):**
-- Feat: Classifications management page — new `feature-classifications` package, `/classifications` route
-- Feat: UX redesign (Plans 1–4) — PaginatedTable, DetailPanel, sticky bars, slide-over panels
-- Feat: POST /connectors/vtex/validate-connection — full hexagonal stack, live VTEX 200 confirmed
-- Fix: CORS middleware added — browser can now reach the API from localhost:5173
-- Fix: marketplaces adapter ON CONFLICT targets and default_shipping_amount column name
+- Feat: pricing simulator v2 - batch simulation endpoint, SDK/runtime types, Melhor Envio auth/status flows, simulator rewrite, and verification completed
+- Refactor: Melhor Envio transport now depends on a port interface instead of importing the concrete adapter
+- Merge: `feat/pricing-simulator-v2` merged into `master` after conflict validation against leaked older master changes
+- Feat: `API_PORT` override added to server config and verified on port `8082`
+- Feat: classifications management page - new `feature-classifications` package, `/classifications` route
 
 ---
 
@@ -140,8 +140,10 @@ Still pending:
 | `0005_connectors.sql` | Connector accounts/config |
 | `0006_product_enrichments.sql` | Product enrichments (dimensions, suggested price) |
 | `0007_classifications.sql` | Product classifications |
+| `0008_simulator_v2.sql` | Weight and shipping provider support for batch simulation |
+| `0009_melhor_envio_tokens.sql` | Melhor Envio token/account support updates |
 
-Note: No `0002` file exists — was merged/removed as part of Phase 0 cleanup.
+Note: No `0002` file exists - was merged/removed as part of Phase 0 cleanup.
 
 ---
 
@@ -149,31 +151,25 @@ Note: No `0002` file exists — was merged/removed as part of Phase 0 cleanup.
 
 | File | Purpose |
 |---|---|
-| `AGENTS.md` | Engineering rules (absolute — read on every session) |
+| `AGENTS.md` | Engineering rules (absolute - read on every session) |
 | `ARCHITECTURE.md` | Frozen architectural decisions |
-| `IMPLEMENTATION_PLAN.md` | Phase plan with task checklist |
+| `docs/superpowers/plans/2026-04-06-pricing-simulator-v2.md` | Execution plan for simulator v2 |
 | `contracts/api/marketplace-central.openapi.yaml` | API source of truth |
 | `apps/server_core/internal/composition/root.go` | Module registration + DI |
-| `apps/server_core/internal/platform/msdb/pool.go` | MetalShopping read-only pool |
-| `apps/server_core/internal/modules/catalog/` | Catalog module (MS reader + enrichments) |
-| `apps/server_core/internal/modules/classifications/` | Classifications module (full CRUD) |
-| `apps/server_core/migrations/` | Sequential SQL migrations (0001–0007) |
+| `apps/server_core/internal/modules/connectors/ports/me_auth.go` | Port boundary for Melhor Envio auth/status |
+| `apps/server_core/internal/platform/config/config.go` | Server env loading, including `API_PORT` |
 | `packages/sdk-runtime/src/index.ts` | TypeScript API client |
-| `packages/ui/src/PaginatedTable.tsx` | Shared paginated table with render props |
-| `packages/ui/src/DetailPanel.tsx` | Shared slide-over panel |
-| `packages/feature-classifications/src/ClassificationsPage.tsx` | Classifications management UI |
-| `run-server.ps1` | PowerShell script — loads .env (CRLF-safe) + starts Go server |
-| `.env` | Local env vars (MS_DATABASE_URL, MC_DATABASE_URL, VTEX_*) |
+| `packages/feature-simulator/src/PricingSimulatorPage.tsx` | Current simulator UI, pending redesign follow-up |
+| `docs/superpowers/specs/2026-04-07-me-auth-port-design.md` | Design record for port-based Melhor Envio auth/status decoupling |
+| `run-server.ps1` | PowerShell script - loads `.env` and starts Go server |
 
 ---
 
 ## Known Risks
 
-- `.brain/` is in `.gitignore` — brain files won't be committed unless removed from gitignore
-- `zero_commit_rate` is 38.9% (sessions where no commits were made) — many sessions end without a commit
-- Migration `0002` is missing from sequence (was cleaned up) — not a bug, just a gap
-- `server.exe` is untracked in git (compiled binary checked into working dir)
-- Connectors module: validate-connection done; full publish flow (batch → pipeline → VTEX API) not yet smoke-tested via UI
-- Marketplace Settings, Pricing Simulator, VTEX Publisher publish flow not smoke-tested end-to-end
-- Migration runner cmd/migrate/main.go is still a stub — migrations run manually via psql for now
-- VTEX credential validation confirmed working (account tfcvgo, ~762ms); VTEX_ACCOUNT=tfcvgo in local .env (gitignored)
+- `.brain/` is in `.gitignore` - brain files will not be committed unless that changes
+- `server.exe` may still appear untracked in the working dir after local runs
+- Simulator v2 UI currently hides too much comparison detail in collapsed marketplace columns; redesign work is next
+- Connectors publish flow (batch -> pipeline -> VTEX API) still needs browser-level smoke validation
+- Migration runner `cmd/migrate/main.go` is still a stub - migrations are still being run manually via psql
+- `.env` is local-only and gitignored, so required runtime settings like `API_PORT` and VTEX credentials are not shared through git
