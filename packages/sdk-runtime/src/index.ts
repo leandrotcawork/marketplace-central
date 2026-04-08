@@ -93,6 +93,7 @@ export interface MarketplaceAccount {
   account_id: string;
   tenant_id: string;
   channel_code: string;
+  marketplace_code: string;
   display_name: string;
   status: string;
   connection_mode: string;
@@ -113,7 +114,9 @@ export interface MarketplacePolicy {
   policy_id: string;
   tenant_id: string;
   account_id: string;
+  marketplace_code: string;
   commission_percent: number;
+  commission_override: number | null;
   fixed_fee_amount: number;
   default_shipping: number;
   tax_percent: number;
@@ -127,6 +130,7 @@ export interface CreateMarketplacePolicyRequest {
   policy_id: string;
   account_id: string;
   commission_percent: number;
+  commission_override?: number | null;
   fixed_fee_amount: number;
   default_shipping: number;
   min_margin_percent: number;
