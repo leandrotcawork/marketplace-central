@@ -119,7 +119,7 @@ func TestPricingBatchEndpointReturnsResults(t *testing.T) {
 		{PolicyID: "pol1", CommissionPercent: 0.16, DefaultShipping: 20, MinMarginPercent: 0.10, ShippingProvider: "fixed"},
 	}}
 	stubFreight := &stubFreightQuoter{connected: false}
-	batch := application.NewBatchOrchestrator(stubProducts, stubPolicies, stubFreight, "t1")
+	batch := application.NewBatchOrchestrator(stubProducts, stubPolicies, stubFreight, nil, "t1")
 
 	repo := &pricingRepoStub{}
 	svc := application.NewService(repo, "t1")
@@ -152,7 +152,7 @@ func TestPricingBatchEndpointRejectsEmptyProductIDs(t *testing.T) {
 	stubProducts := &stubProductProvider{products: []pricingports.BatchProduct{}}
 	stubPolicies := &stubPolicyProvider{policies: []pricingports.BatchPolicy{}}
 	stubFreight := &stubFreightQuoter{connected: false}
-	batch := application.NewBatchOrchestrator(stubProducts, stubPolicies, stubFreight, "t1")
+	batch := application.NewBatchOrchestrator(stubProducts, stubPolicies, stubFreight, nil, "t1")
 
 	repo := &pricingRepoStub{}
 	svc := application.NewService(repo, "t1")

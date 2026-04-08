@@ -6,7 +6,7 @@ ALTER TABLE marketplace_accounts
 -- Backfill marketplace_code from channel_code for known mappings
 UPDATE marketplace_accounts
 SET marketplace_code = channel_code
-WHERE channel_code IN ('mercado_livre', 'shopee', 'magalu', 'amazon', 'leroy_merlin', 'madeira_madeira')
+WHERE channel_code IN ('mercado_livre', 'shopee', 'magalu')
   AND marketplace_code IS NULL;
 
 -- Migrate existing credential data to new column

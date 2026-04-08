@@ -169,6 +169,7 @@ func TestBatchOrchestratorCalculatesMarginForAllProductsAndPolicies(t *testing.T
 		&stubProductProvider{products: products},
 		&stubPolicyProvider{policies: policies},
 		&stubFreightQuoter{connected: false},
+		nil,
 		"tenant_default",
 	)
 
@@ -216,6 +217,7 @@ func TestBatchOrchestratorMarksExactly20PercentMarginAsWarning(t *testing.T) {
 		&stubProductProvider{products: products},
 		&stubPolicyProvider{policies: policies},
 		&stubFreightQuoter{connected: false},
+		nil,
 		"tenant_default",
 	)
 
@@ -250,6 +252,7 @@ func TestBatchOrchestratorUsesSuggestedPriceWhenRequested(t *testing.T) {
 		&stubProductProvider{products: products},
 		&stubPolicyProvider{policies: policies},
 		&stubFreightQuoter{connected: false},
+		nil,
 		"tenant_default",
 	)
 
@@ -302,6 +305,7 @@ func TestBatchOrchestratorQuotesFreightPerProductAndUsesReturnedAmounts(t *testi
 		&stubProductProvider{products: products},
 		&stubPolicyProvider{policies: policies},
 		freight,
+		nil,
 		"tenant_default",
 	)
 
@@ -354,6 +358,7 @@ func TestBatchOrchestratorMarksMELoadIssuesAsCritical(t *testing.T) {
 		&stubProductProvider{products: products},
 		&stubPolicyProvider{policies: policies},
 		freight,
+		nil,
 		"tenant_default",
 	)
 
@@ -404,6 +409,7 @@ func TestBatchOrchestratorMarksMEQuoteErrorsAsCritical(t *testing.T) {
 		&stubProductProvider{products: products},
 		&stubPolicyProvider{policies: policies},
 		freight,
+		nil,
 		"tenant_default",
 	)
 
@@ -447,6 +453,7 @@ func TestBatchOrchestratorMarksMissingDimensionsAsCritical(t *testing.T) {
 		&stubProductProvider{products: products},
 		&stubPolicyProvider{policies: policies},
 		freight,
+		nil,
 		"tenant_default",
 	)
 
@@ -497,6 +504,7 @@ func TestBatchOrchestratorMarksCriticalWhenFreightMissingEvenIfMarginIsHigh(t *t
 		&stubProductProvider{products: products},
 		&stubPolicyProvider{policies: policies},
 		freight,
+		nil,
 		"tenant_default",
 	)
 

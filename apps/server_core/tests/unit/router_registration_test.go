@@ -242,7 +242,7 @@ func TestRouterRegistersAllFoundationEndpoints(t *testing.T) {
 
 	// /marketplaces/accounts, /marketplaces/policies
 	marketSvc := marketplacesapp.NewService(stubMarketplacesRepo{}, "tenant_default")
-	marketplacestransport.NewHandler(marketSvc).Register(mux)
+	marketplacestransport.NewHandler(marketSvc, nil, nil).Register(mux)
 
 	// /pricing/simulations
 	pricingSvc := pricingapp.NewService(stubPricingRepo{}, "tenant_default")

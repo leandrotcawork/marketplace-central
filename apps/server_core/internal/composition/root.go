@@ -58,8 +58,10 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	feeRepo := marketplacespostgres.NewFeeScheduleRepository(pool)
 	feeSvc := marketplacesapp.NewFeeScheduleService(feeRepo)
 
-	if err := feeSvc.SeedDefinitions(context.Background()); err != nil {
-		slog.Warn("marketplace definitions sync failed", "err", err)
+	if pool != nil {
+		if err := feeSvc.SeedDefinitions(context.Background()); err != nil {
+			slog.Warn("marketplace definitions sync failed", "err", err)
+		}
 	}
 
 	feeSyncSvc := connectorsapp.NewFeeSyncService(feeRepo,
@@ -68,11 +70,13 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 		connmagalu.NewFeeSyncer(),
 	)
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		feeSyncSvc.SeedAll(ctx)
-	}()
+	if pool != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			feeSyncSvc.SeedAll(ctx)
+		}()
+	}
 
 	marketplacestransport.NewHandler(marketSvc, feeSvc, feeSyncSvc).Register(mux)
 

@@ -54,7 +54,7 @@ func (r *marketplacesRepoStub) ListPoliciesByIDs(_ context.Context, policyIDs []
 func newMarketplacesHandler() transport.Handler {
 	repo := &marketplacesRepoStub{}
 	svc := application.NewService(repo, "tenant_default")
-	return transport.NewHandler(svc)
+	return transport.NewHandler(svc, nil, nil)
 }
 
 func TestMarketplacesAccountsHandlerPostReturnsAccount(t *testing.T) {
