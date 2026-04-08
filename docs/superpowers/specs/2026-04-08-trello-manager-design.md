@@ -101,6 +101,28 @@ agents/
       prompt.md
 ```
 
+### Versioning Rules
+
+The `agents/` tree is split into versioned configuration and non-versioned runtime state.
+
+Version these files:
+
+- `agents/trello-manager/registry.json`
+- `agents/trello-manager/manager-rules.md`
+- `agents/trello-manager/prompts/manager.md`
+- `agents/boards/<slug>/board-config.json`
+- `agents/boards/<slug>/board-rules.md`
+- `agents/boards/<slug>/prompt.md`
+
+Do not version these files:
+
+- `agents/trello-manager/sprints/active-sprint.json` when used as live operational state
+- ephemeral logs
+- temporary snapshots
+- runtime caches or transient reconciliation artifacts
+
+Historical sprint files may be versioned later if the team wants sprint history in git, but v1 should treat active sprint state as operational runtime data.
+
 ### `registry.json`
 
 Maps user-facing project names and slugs to Trello workspace IDs, board IDs, and local board-agent folders.
@@ -213,6 +235,19 @@ Sprint membership must reference Trello card IDs, never card names.
 
 Sprint ownership is manager-level, not board-level, because sprint planning is a coordination layer above any single board.
 
+### Sprint Reconciliation Rules
+
+Sprint reporting must reconcile local sprint membership against live Trello state every time sprint status is requested.
+
+Rules:
+
+- if a sprint card id no longer exists, report it in `missing`
+- if a sprint card is archived, keep it in sprint history but exclude it from active completion counts
+- if a sprint card now belongs to a different board, report it in `moved` with the detected board id
+- if a sprint card still exists on the expected board, classify it using the board agent's workflow rules
+
+The manager must not silently drop stale sprint references. Reconciliation output is part of the status result so the user can correct or carry over sprint membership intentionally.
+
 ## Reporting Model
 
 Every board agent should return a standard status shape:
@@ -260,6 +295,125 @@ Definitions:
 - `summarize_sprint_cards(card_ids)`: summarize only the cards already assigned to a sprint
 
 Board agents interpret sprint cards but do not own sprint membership.
+
+### Structured Payloads
+
+The contract must use structured payloads so the manager can reason about writes deterministically.
+
+#### `find_card(query)`
+
+Input:
+
+```json
+{
+  "query_text": "retry safety",
+  "list_scope": ["backlog", "doing", "blocked"],
+  "label_scope": ["backend"],
+  "limit": 5
+}
+```
+
+Output:
+
+```json
+{
+  "matches": [
+    {
+      "card_id": "abc123",
+      "name": "Improve API retry safety",
+      "list_key": "doing",
+      "confidence": 0.92
+    }
+  ],
+  "ambiguous": false
+}
+```
+
+#### `create_card(input)`
+
+Input:
+
+```json
+{
+  "title": "Improve API retry safety",
+  "description": "Track retry-safe writes for the pricing flow.",
+  "target_list_key": "backlog",
+  "labels": ["backend"],
+  "due_date": null,
+  "checklist_items": []
+}
+```
+
+Output:
+
+```json
+{
+  "action": "created",
+  "card": {
+    "card_id": "abc123",
+    "name": "Improve API retry safety",
+    "list_key": "backlog",
+    "url": "https://trello.com/c/example"
+  }
+}
+```
+
+#### `update_card(input)`
+
+Input:
+
+```json
+{
+  "card_id": "abc123",
+  "comment": "Implementation started in current session.",
+  "set_due_date": null,
+  "move_to_list_key": "doing",
+  "labels_to_add": [],
+  "labels_to_remove": []
+}
+```
+
+Output:
+
+```json
+{
+  "action": "updated",
+  "card_id": "abc123",
+  "changes": {
+    "comment_added": true,
+    "moved_to_list_key": "doing"
+  }
+}
+```
+
+#### `summarize_sprint_cards(card_ids)`
+
+Input:
+
+```json
+{
+  "card_ids": ["abc123", "def456"]
+}
+```
+
+Output:
+
+```json
+{
+  "active": [
+    {
+      "card_id": "abc123",
+      "name": "Improve API retry safety",
+      "list_key": "doing",
+      "status": "active"
+    }
+  ],
+  "completed": [],
+  "blocked": [],
+  "missing": [],
+  "moved": []
+}
+```
 
 ## Skill Layout
 
