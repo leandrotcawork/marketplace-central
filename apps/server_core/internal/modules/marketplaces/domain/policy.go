@@ -4,7 +4,9 @@ type Policy struct {
 	PolicyID           string  `json:"policy_id"`
 	TenantID           string  `json:"tenant_id"`
 	AccountID          string  `json:"account_id"`
+	MarketplaceCode    string  `json:"marketplace_code"`
 	CommissionPercent  float64 `json:"commission_percent"`
+	CommissionOverride *float64 `json:"commission_override,omitempty"`
 	FixedFeeAmount     float64 `json:"fixed_fee_amount"`
 	DefaultShipping    float64 `json:"default_shipping"`
 	TaxPercent         float64 `json:"tax_percent"`
