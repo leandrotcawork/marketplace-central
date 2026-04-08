@@ -24,25 +24,34 @@ func NewFeeScheduleRepository(pool *pgxpool.Pool) *FeeScheduleRepository {
 
 func (r *FeeScheduleRepository) UpsertDefinitions(ctx context.Context, defs []domain.MarketplaceDefinition) error {
 	for _, d := range defs {
-		caps := d.Capabilities
-		if caps == nil {
-			caps = []string{}
-		}
 		schema, err := json.Marshal(d.CredentialSchema)
+		if err != nil {
+			return err
+		}
+		capJSON, err := json.Marshal(d.CapabilityProfile)
+		if err != nil {
+			return err
+		}
+		metaJSON, err := json.Marshal(d.Metadata)
 		if err != nil {
 			return err
 		}
 		_, err = r.pool.Exec(ctx, `
 			INSERT INTO marketplace_definitions
-				(marketplace_code, display_name, fee_source, capabilities, credential_schema, active)
-			VALUES ($1, $2, $3, $4, $5, $6)
+				(marketplace_code, display_name, fee_source, credential_schema,
+				 auth_strategy, capability_profile, metadata, active, is_active)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
 			ON CONFLICT (marketplace_code) DO UPDATE SET
-				display_name      = EXCLUDED.display_name,
-				fee_source        = EXCLUDED.fee_source,
-				capabilities      = EXCLUDED.capabilities,
-				credential_schema = EXCLUDED.credential_schema,
-				active            = EXCLUDED.active
-		`, d.MarketplaceCode, d.DisplayName, d.FeeSource, caps, schema, d.Active)
+				display_name       = EXCLUDED.display_name,
+				fee_source         = EXCLUDED.fee_source,
+				credential_schema  = EXCLUDED.credential_schema,
+				auth_strategy      = EXCLUDED.auth_strategy,
+				capability_profile = EXCLUDED.capability_profile,
+				metadata           = EXCLUDED.metadata,
+				active             = EXCLUDED.active,
+				is_active          = EXCLUDED.is_active
+		`, d.MarketplaceCode, d.DisplayName, d.FeeSource,
+			schema, d.AuthStrategy, capJSON, metaJSON, d.Active)
 		if err != nil {
 			return err
 		}
@@ -52,9 +61,10 @@ func (r *FeeScheduleRepository) UpsertDefinitions(ctx context.Context, defs []do
 
 func (r *FeeScheduleRepository) ListDefinitions(ctx context.Context) ([]domain.MarketplaceDefinition, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT marketplace_code, display_name, fee_source, capabilities, credential_schema, active
+		SELECT marketplace_code, display_name, fee_source, credential_schema,
+		       auth_strategy, capability_profile, metadata, active
 		FROM marketplace_definitions
-		WHERE active = true
+		WHERE is_active = true
 		ORDER BY marketplace_code
 	`)
 	if err != nil {
@@ -65,12 +75,25 @@ func (r *FeeScheduleRepository) ListDefinitions(ctx context.Context) ([]domain.M
 	var defs []domain.MarketplaceDefinition
 	for rows.Next() {
 		var d domain.MarketplaceDefinition
-		var schemaRaw []byte
-		if err := rows.Scan(&d.MarketplaceCode, &d.DisplayName, &d.FeeSource, &d.Capabilities, &schemaRaw, &d.Active); err != nil {
+		var schemaRaw, capRaw, metaRaw []byte
+		if err := rows.Scan(
+			&d.MarketplaceCode, &d.DisplayName, &d.FeeSource, &schemaRaw,
+			&d.AuthStrategy, &capRaw, &metaRaw, &d.Active,
+		); err != nil {
 			return nil, err
 		}
 		if len(schemaRaw) > 0 {
 			if err := json.Unmarshal(schemaRaw, &d.CredentialSchema); err != nil {
+				return nil, err
+			}
+		}
+		if len(capRaw) > 0 {
+			if err := json.Unmarshal(capRaw, &d.CapabilityProfile); err != nil {
+				return nil, err
+			}
+		}
+		if len(metaRaw) > 0 {
+			if err := json.Unmarshal(metaRaw, &d.Metadata); err != nil {
 				return nil, err
 			}
 		}
