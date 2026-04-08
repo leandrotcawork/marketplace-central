@@ -1965,16 +1965,541 @@ T6–T8      Domain types (including Account fields)
 T9–T10     Ports
 T11–T14    Registry
 T15–T16    Postgres adapters (read path)
-T16a–T16d  Write-path updates (account + policy + SDK create types)
+T16a–T16c  Write-path updates — Go only (account + policy; NO SDK changes yet)
 T17–T18    Application service + unit tests  ← run tests here
+T18b       BatchOrchestrator fallback chain tests (add after T18)
 T19–T22    Connector sync/seed adapters
 T22b       SeedMarketplace(force) method
-T23–T24    Transport handlers (read)
-T24a       Admin endpoints + FeeSeedTrigger interface
-T25–T27    Pricing update
-T28        Composition root (final wiring — pass feeSyncSvc to NewHandler)
-T29–T30    SDK + OpenAPI (read types + admin endpoints)
-T30b       Frontend credential form
-T30c–T30e  Expanded tests
-T31–T33    Build, test, smoke, commit
+T23        Transport handler — FeeSeedTrigger interface defined HERE (not T24a)
+T24        Transport read endpoints
+T24a       Admin endpoints (seed + sync + status)
+T25–T27    Pricing update (FeeRates local type, not marketplaces/domain)
+T28        Composition root (background SeedAll, HTTP server starts first)
+T29        OpenAPI spec (all endpoints + schemas, source of truth)
+T30        SDK types and methods (derived from OpenAPI — AFTER T29)
+T30b       Frontend credential form (loading + error + empty states)
+T30c–T30e  Unit tests (idempotency, handler, isolation)
+T34        Real DB integration tests (FeeScheduleRepository against dev Postgres)
+T31–T33    Build, test, smoke (field-level validation), commit
+```
+
+---
+
+## Amendments — Multi-Mode Codex Review (2026-04-08)
+
+> These amendments correct issues identified across COVERAGE, SEQUENCING, QUALITY, ARCHITECTURE, and OPERATIONS reviews. They override or extend the tasks above.
+
+---
+
+### AMD-1 (OPERATIONS) — Seed `marketplace_definitions` in SQL, not at startup
+
+**Problem:** Migration 0012 backfills `marketplace_code` with a FK to `marketplace_definitions`, but that table is seeded at server startup (after migrations run). The backfill UPDATE will either silently skip (values remain NULL) or fail if a NOT NULL constraint is added — the FK is satisfied only by coincidence of deploy order.
+
+**Fix:** Embed the definition seed rows directly in `0010_marketplace_definitions.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS marketplace_definitions (
+    marketplace_code  text PRIMARY KEY,
+    display_name      text NOT NULL,
+    fee_source        text NOT NULL CHECK (fee_source IN ('api_sync', 'static_table')),
+    capabilities      text[] NOT NULL DEFAULT '{}',
+    credential_schema jsonb NOT NULL DEFAULT '[]',
+    active            boolean NOT NULL DEFAULT true,
+    created_at        timestamptz NOT NULL DEFAULT now()
+);
+
+-- Seed initial marketplace definitions so migration 0012 FK backfill is valid
+INSERT INTO marketplace_definitions (marketplace_code, display_name, fee_source, capabilities, credential_schema)
+VALUES
+  ('mercado_livre', 'Mercado Livre', 'api_sync',     ARRAY['fee_api','orders','messages'],
+   '[{"key":"client_id","label":"Client ID","secret":false},{"key":"client_secret","label":"Client Secret","secret":true},{"key":"redirect_uri","label":"Redirect URI","secret":false}]'),
+  ('shopee',        'Shopee',        'static_table',  ARRAY['orders','messages'],
+   '[{"key":"partner_id","label":"Partner ID","secret":false},{"key":"secret_key","label":"Secret Key","secret":true},{"key":"shop_id","label":"Shop ID","secret":false}]'),
+  ('magalu',        'Magalu',        'static_table',  ARRAY['orders','messages'],
+   '[{"key":"api_key","label":"API Key","secret":true},{"key":"seller_id","label":"Seller ID","secret":false}]')
+ON CONFLICT (marketplace_code) DO NOTHING;
+```
+
+**Consequence for startup:** `SeedDefinitions(ctx)` still runs at startup but is now purely a sync to keep the DB aligned with the registry code (for when new marketplaces are added in future). It no longer bootstraps required FK references.
+
+---
+
+### AMD-2 (OPERATIONS) — Start HTTP server before seeds; run SeedAll in background
+
+**Problem:** `SeedAll` runs synchronously in `root.go` before handlers are registered. A slow or failing connector sync blocks `/healthz` and extends cold-start time.
+
+**Fix:** Update `composition/root.go` to:
+1. Register all handlers first (including `/healthz`)
+2. Start the HTTP server
+3. Run `feeSvc.SeedDefinitions` synchronously (fast — local upsert, idempotent, max ~3 rows)
+4. Start `feeSyncSvc.SeedAll` in a background goroutine with a bounded timeout
+
+```go
+// In root.go — after all handlers registered:
+go func() {
+    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+    defer cancel()
+    if err := feeSvc.SeedDefinitions(ctx); err != nil {
+        slog.Error("marketplace definitions sync failed", "err", err)
+    }
+    feeSyncSvc.SeedAll(ctx)
+}()
+```
+
+`SeedDefinitions` is fast (3 rows, local DB) and safe to run before or after startup — it is no longer a FK bootstrap step (AMD-1 fixes that). `SeedAll` is allowed to be slow or fail without blocking the server.
+
+---
+
+### AMD-3 (OPERATIONS) — Degraded state policy + status endpoint
+
+**Problem:** If `SeedAll` fails silently, the server serves pricing data using only `policy.CommissionPercent` (flat rate). Operators have no visibility into this degraded state.
+
+**Fix:** Add `GET /admin/fee-schedules/status` endpoint:
+
+```go
+mux.HandleFunc("/admin/fee-schedules/status", func(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        // method not allowed
+        return
+    }
+    defs, _ := h.feeSvc.ListDefinitions(r.Context())
+    status := make([]map[string]any, 0, len(defs))
+    for _, def := range defs {
+        count := 0
+        schedules, err := h.feeSvc.ListFeeSchedules(r.Context(), def.MarketplaceCode)
+        if err == nil {
+            count = len(schedules)
+        }
+        status = append(status, map[string]any{
+            "marketplace_code": def.MarketplaceCode,
+            "fee_schedules":    count,
+            "seeded":           count > 0,
+        })
+    }
+    httpx.WriteJSON(w, http.StatusOK, map[string]any{"marketplaces": status})
+})
+```
+
+Also document explicitly: when fee schedules are missing for a marketplace, the commission fallback chain falls to step 3 (`policy.CommissionPercent`). The result label in the simulator is still valid — it's a flat-rate approximation. This is acceptable and expected in Phase 3.
+
+---
+
+### AMD-4 (ARCHITECTURE) — pricing/ports uses local `MarketplaceFees` type, not marketplaces/domain
+
+**Problem:** `pricing/ports/fee_schedule.go` returns `mktdomain.FeeSchedule`, creating a cross-module domain dependency (pricing imports marketplaces/domain). Any change to `FeeSchedule` struct forces pricing changes.
+
+**Fix:** Define a pricing-local projection in `pricing/ports/fee_schedule.go`:
+
+```go
+package ports
+
+import "context"
+
+// MarketplaceFees is the pricing-local view of a fee schedule row.
+// It contains only what the pricing engine needs — no marketplace-domain details.
+type MarketplaceFees struct {
+    CommissionPercent float64
+    FixedFeeAmount    float64
+}
+
+// FeeScheduleLookup allows the pricing engine to query marketplace commission rates
+// without coupling to the marketplaces module's domain model.
+type FeeScheduleLookup interface {
+    LookupFee(ctx context.Context, marketplaceCode, categoryID, listingType string) (MarketplaceFees, bool, error)
+}
+```
+
+Update `pricing/adapters/feeschedule/adapter.go` to translate:
+
+```go
+func (a *Adapter) LookupFee(ctx context.Context, marketplaceCode, categoryID, listingType string) (ports.MarketplaceFees, bool, error) {
+    fee, found, err := a.svc.LookupFee(ctx, marketplaceCode, categoryID, listingType)
+    if err != nil || !found {
+        return ports.MarketplaceFees{}, found, err
+    }
+    return ports.MarketplaceFees{
+        CommissionPercent: fee.CommissionPercent,
+        FixedFeeAmount:    fee.FixedFeeAmount,
+    }, true, nil
+}
+```
+
+Update `BatchOrchestrator` to use `ports.MarketplaceFees`:
+
+```go
+if fee, found, err := o.feeLookup.LookupFee(ctx, pol.MarketplaceCode, prod.TaxonomyNodeID, ""); err == nil && found {
+    commissionPct = fee.CommissionPercent
+}
+```
+
+**Import graph after fix:** `pricing` never imports `marketplaces/domain` — only `pricing/ports`. Clean boundary.
+
+---
+
+### AMD-5 (COVERAGE) — ML sync scope: global defaults only in Phase 3
+
+**Clarification:** The plan previously implied ML sync would discover categories from `catalog_products` (tenant-derived). This creates a contradiction: `marketplace_fee_schedules` is a system-level table (no tenant_id), but the categories to sync are tenant-specific.
+
+**Decision for Phase 3:** The ML fee sync adapter (`connectors/adapters/mercado_livre/fee_sync.go`) seeds **only global default rows** (Clássico 16%, Premium 22%) — no per-category API calls. Per-category ML sync is deferred to Phase 3.1 after:
+1. ML OAuth is wired for a tenant account
+2. A tenant-scoped category→ML-category mapping table exists
+
+Remove the sentence "discovers categories by querying distinct category_id values from catalog_products" from Task 19. Replace with: "Seeds two global rows (category_id='default', listing_type='classico'/'premium'). Per-category rates via ML API are Phase 3.1."
+
+---
+
+### AMD-6 (COVERAGE) — slog instrumentation on all new handlers
+
+**Rule from AGENTS.md:** Every handler logs `action`, `result`, `duration_ms`.
+
+**Pattern for all new endpoints** in `transport/http_handler.go`:
+
+```go
+start := time.Now()
+// ... handler logic ...
+slog.InfoContext(r.Context(), "marketplaces.listDefinitions",
+    "action", "list_definitions",
+    "result", "ok",
+    "duration_ms", time.Since(start).Milliseconds(),
+)
+```
+
+On error:
+```go
+slog.ErrorContext(r.Context(), "marketplaces.listDefinitions",
+    "action", "list_definitions",
+    "result", "error",
+    "err", err,
+    "duration_ms", time.Since(start).Milliseconds(),
+)
+```
+
+Apply to: `GET /marketplaces/definitions`, `GET /marketplaces/fee-schedules`, `POST /admin/fee-schedules/seed`, `POST /admin/fee-schedules/sync`, `GET /admin/fee-schedules/status`.
+
+Add `"time"` to transport imports.
+
+---
+
+### AMD-7 (COVERAGE) — Error codes must be MODULE_ENTITY_REASON format
+
+Replace all generic error codes in new handlers:
+
+| Generic (wrong) | Correct |
+|---|---|
+| `"invalid_request"` | `"MARKETPLACES_FEESCHEDULE_PARAM_MISSING"` |
+| `"internal_error"` | `"MARKETPLACES_FEESCHEDULE_LIST_ERROR"` |
+| `"invalid_request"` (admin) | `"CONNECTORS_SYNC_PARAM_MISSING"` |
+| `"invalid_request"` (unknown marketplace) | `"CONNECTORS_SYNC_UNKNOWN_MARKETPLACE"` |
+
+Update `writeMarketplacesError` calls and OpenAPI error response examples accordingly.
+
+---
+
+### AMD-8 (SEQUENCING) — FeeSeedTrigger interface defined in Task 23, not Task 24a
+
+In **Task 23** (the first time `http_handler.go` is opened), define the `FeeSeedTrigger` interface and update the `Handler` struct and `NewHandler` constructor to accept it. Do not open `http_handler.go` again for this purpose in Task 24a.
+
+```go
+// Defined in transport/http_handler.go at Task 23:
+type FeeSeedTrigger interface {
+    SeedMarketplace(ctx context.Context, marketplaceCode string, force bool) (int, error)
+}
+
+type Handler struct {
+    svc        application.Service
+    feeSvc     *application.FeeScheduleService
+    feeSyncSvc FeeSeedTrigger
+}
+
+func NewHandler(svc application.Service, feeSvc *application.FeeScheduleService, feeSyncSvc FeeSeedTrigger) Handler {
+    return Handler{svc: svc, feeSvc: feeSvc, feeSyncSvc: feeSyncSvc}
+}
+```
+
+---
+
+### AMD-9 (SEQUENCING) — OpenAPI before SDK; SDK types NOT in T16d
+
+**T16a–T16c:** Go-only backend write path (no SDK changes).
+
+**T29 (OpenAPI):** Add ALL endpoint definitions and schemas (read + write + admin) to `marketplace-central.openapi.yaml`. This is the contract source of truth.
+
+**T30 (SDK):** Derive ALL TypeScript types and methods from the OpenAPI spec. This includes both read types (`MarketplaceDefinition`, `MarketplaceFeeSchedule`) and create types (`CreateMarketplaceAccountRequest`, `CreateMarketplacePolicyRequest`). Write SDK methods for all 6 endpoints.
+
+Remove T16d from the plan entirely — SDK create types belong in T30.
+
+---
+
+### AMD-10 (QUALITY) — BatchOrchestrator fallback chain unit tests
+
+File: `apps/server_core/internal/modules/pricing/application/batch_orchestrator_test.go` (new or existing)
+
+Add tests for all 3 commission branches:
+
+```go
+func TestRunBatch_CommissionFromOverride(t *testing.T) {
+    override := 0.05
+    // policy.CommissionOverride = &override
+    // feeLookup returns a different rate (0.16) — should NOT be used
+    // expected commissionAmt = sellingPrice * 0.05
+}
+
+func TestRunBatch_CommissionFromFeeSchedule(t *testing.T) {
+    // policy.CommissionOverride = nil
+    // feeLookup returns {CommissionPercent: 0.12}
+    // expected commissionAmt = sellingPrice * 0.12
+}
+
+func TestRunBatch_CommissionFallsBackToPolicy(t *testing.T) {
+    // policy.CommissionOverride = nil
+    // feeLookup returns (_, false, nil) — not found
+    // expected commissionAmt = sellingPrice * policy.CommissionPercent
+}
+```
+
+---
+
+### AMD-11 (QUALITY) — Real DB integration tests for FeeScheduleRepository
+
+File: `apps/server_core/internal/modules/marketplaces/adapters/postgres/fee_schedule_repo_test.go`
+
+These tests run against the dev Postgres instance (same DATABASE_URL as the server). Use `testing.Short()` to skip in CI if needed.
+
+```go
+// +build integration
+
+func TestFeeScheduleRepo_LookupFee_ExactMatch(t *testing.T) {
+    // Connect to real DB; insert a fee row; lookup exact category; assert commission_percent
+}
+
+func TestFeeScheduleRepo_LookupFee_DefaultFallback(t *testing.T) {
+    // Insert only "default" row; lookup unknown category; assert fallback returned
+}
+
+func TestFeeScheduleRepo_LookupFee_ListingTypeDifferentiation(t *testing.T) {
+    // Insert classico=0.16, premium=0.22; lookup "classico"; assert 0.16 not 0.22
+}
+
+func TestFeeScheduleRepo_UpsertSchedules_Idempotent(t *testing.T) {
+    // Insert same rows twice; assert row count unchanged
+}
+
+func TestFeeScheduleRepo_UpsertDefinitions_Idempotent(t *testing.T) {
+    // Insert same 3 definitions twice; assert row count = 3
+}
+```
+
+Run with: `go test -tags=integration ./internal/modules/marketplaces/adapters/postgres/...`
+
+---
+
+### AMD-12 (QUALITY) — Frontend loading/error/empty states (explicit, not a caveat)
+
+Promote from caveat to Task 30b requirement. The `listMarketplaceDefinitions()` call must handle:
+
+```tsx
+const [defs, setDefs] = useState<MarketplaceDefinition[]>([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState<string | null>(null);
+
+useEffect(() => {
+    client.listMarketplaceDefinitions()
+        .then(res => setDefs(res.items))
+        .catch(e => setError(e.message))
+        .finally(() => setLoading(false));
+}, []);
+
+if (loading) return <div>Carregando marketplaces...</div>;
+if (error) return <div>Erro ao carregar marketplaces: {error}</div>;
+if (defs.length === 0) return <div>Nenhum marketplace registrado.</div>;
+```
+
+---
+
+### AMD-13 (QUALITY) — Improve smoke tests (field-level validation)
+
+Replace item-count-only checks with field validation:
+
+```bash
+# Verify specific fields returned for definitions
+curl -s http://localhost:8082/marketplaces/definitions | \
+  jq '.items[] | select(.marketplace_code == "shopee") | {code: .marketplace_code, fee_source: .fee_source, cred_count: (.credential_schema | length)}'
+# Expected: {"code":"shopee","fee_source":"static_table","cred_count":3}
+
+# Verify commission rate in fee schedule
+curl -s "http://localhost:8082/marketplaces/fee-schedules?marketplace_code=mercado_livre" | \
+  jq '.items[] | select(.listing_type == "classico") | .commission_percent'
+# Expected: 0.16
+
+# Verify admin status endpoint
+curl -s http://localhost:8082/admin/fee-schedules/status | \
+  jq '.marketplaces[] | select(.marketplace_code == "shopee") | {seeded: .seeded, count: .fee_schedules}'
+# Expected: {"seeded":true,"count":8}
+
+# Verify commission fallback in simulator — run a simulation with a shopee policy
+# confirm commission_amount = selling_price * 0.14 (default shopee rate) not policy.commission_percent
+```
+
+---
+
+### AMD-14 (OPERATIONS) — Liveness vs readiness; seed retry
+
+**Liveness vs readiness:** `/healthz` signals liveness only. Business endpoints are safe before seeding completes because the commission fallback chain (step 3: `policy.CommissionPercent`) always produces a result. No endpoint fails closed. Document this explicitly in `root.go` comments:
+
+```go
+// SeedAll runs in background. Business endpoints remain operational during seeding
+// because the pricing fallback chain uses policy.CommissionPercent when fee schedules
+// are unavailable. Degraded state (flat-rate pricing) is intentional and temporary.
+go func() {
+    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+    defer cancel()
+    if err := feeSvc.SeedDefinitions(ctx); err != nil {
+        slog.Error("startup: marketplace definitions sync failed — fee schedules may be stale", "err", err)
+    }
+    feeSyncSvc.SeedAll(ctx) // idempotent; skips if already seeded
+    slog.Info("startup: fee schedule seeding complete")
+}()
+```
+
+**Retry:** `SeedAll` is idempotent. Recovery path = call `POST /admin/fee-schedules/seed?marketplace_code=X` after fixing the underlying issue. No automatic retry added — operator-triggered reseed is sufficient for Phase 3.
+
+---
+
+### AMD-15 (QUALITY) — 405 + structured error payload handler tests
+
+Extend handler tests (Task 30d) to explicitly assert:
+
+```go
+func TestDefinitionsHandler_MethodNotAllowed(t *testing.T) {
+    // POST to GET-only endpoint
+    req := httptest.NewRequest(http.MethodPost, "/marketplaces/definitions", nil)
+    rec := httptest.NewRecorder()
+    mux.ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusMethodNotAllowed {
+        t.Errorf("expected 405, got %d", rec.Code)
+    }
+    if rec.Header().Get("Allow") != "GET" {
+        t.Errorf("expected Allow: GET header")
+    }
+    var body struct {
+        Error struct {
+            Code    string `json:"code"`
+            Message string `json:"message"`
+        } `json:"error"`
+    }
+    json.NewDecoder(rec.Body).Decode(&body)
+    if body.Error.Code == "" {
+        t.Error("expected structured error.code in response body")
+    }
+}
+
+func TestFeeSchedulesHandler_MissingParam(t *testing.T) {
+    // GET without marketplace_code
+    req := httptest.NewRequest(http.MethodGet, "/marketplaces/fee-schedules", nil)
+    rec := httptest.NewRecorder()
+    mux.ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", rec.Code)
+    }
+    var body struct{ Error struct{ Code string `json:"code"` } `json:"error"` }
+    json.NewDecoder(rec.Body).Decode(&body)
+    if body.Error.Code != "MARKETPLACES_FEESCHEDULE_PARAM_MISSING" {
+        t.Errorf("expected MARKETPLACES_FEESCHEDULE_PARAM_MISSING, got %s", body.Error.Code)
+    }
+}
+```
+
+Apply same pattern for each new endpoint: 405 test + error.code validation.
+
+**Frontend loading/error/empty:** AMD-12 is the implementation task. Verification: in smoke test, temporarily set definitions endpoint to return 500 and assert the form shows the error state (manual smoke acceptable for Phase 3).
+
+---
+
+### AMD-16 (OPERATIONS) — Status endpoint includes staleness and last seed result
+
+Extend `GET /admin/fee-schedules/status` response to include `last_synced_at` and a `degraded` flag:
+
+```go
+for _, def := range defs {
+    schedules, _ := h.feeSvc.ListFeeSchedules(r.Context(), def.MarketplaceCode)
+    var lastSyncedAt *time.Time
+    for _, s := range schedules {
+        if lastSyncedAt == nil || s.SyncedAt.After(*lastSyncedAt) {
+            t := s.SyncedAt
+            lastSyncedAt = &t
+        }
+    }
+    status = append(status, map[string]any{
+        "marketplace_code": def.MarketplaceCode,
+        "fee_schedules":    len(schedules),
+        "seeded":           len(schedules) > 0,
+        "degraded":         len(schedules) == 0, // pricing falls back to flat rate
+        "last_synced_at":   lastSyncedAt,        // nil if never seeded
+    })
+}
+```
+
+---
+
+### AMD-17 (QUALITY) — Tests for startup non-blocking, admin seed idempotency, status states
+
+Add to Task 30c or new Task 30f:
+
+```go
+// Test: SeedAll does not block handler registration
+func TestSeedAll_DoesNotBlockHandlers(t *testing.T) {
+    // Start a handler mux, register /healthz, call SeedAll in goroutine with slow stub
+    // Assert /healthz returns 200 immediately without waiting for SeedAll
+}
+
+// Test: POST /admin/fee-schedules/seed is idempotent
+func TestAdminSeed_Idempotent(t *testing.T) {
+    // Call seed twice for same marketplace_code
+    // First call: inserts rows, returns n > 0
+    // Second call: upserts same rows, returns same n, no duplicate rows in stub
+}
+
+// Test: GET /admin/fee-schedules/status reflects zero-row (degraded) and seeded states
+func TestAdminStatus_DegradedAndRecovered(t *testing.T) {
+    feeSvc := &stubFeeScheduleService{} // no schedules
+    h := transport.NewHandler(stubSvc{}, feeSvc, stubSeedTrigger{})
+    // GET /admin/fee-schedules/status
+    // Assert: all marketplaces have degraded=true
+    // Seed one marketplace
+    // GET /admin/fee-schedules/status again
+    // Assert: seeded marketplace has degraded=false
+}
+```
+
+---
+
+### Final Amended Execution Order
+
+```
+T1–T4      Write migration files (0010 includes SQL seed data per AMD-1)
+T5         Apply migrations
+T6–T8      Domain types
+T9–T10     Ports (including AMD-4 pricing/ports.MarketplaceFees)
+T11–T14    Registry
+T15–T16    Postgres adapters
+T16a–T16c  Write-path updates — Go only
+T17–T18    Application service + unit tests
+T18b       BatchOrchestrator fallback chain tests (AMD-10)
+T19–T22    Connector sync/seed adapters (AMD-5: ML stub global only)
+T22b       SeedMarketplace(force)
+T23        Transport: FeeSeedTrigger interface + Handler struct (AMD-8)
+T24        Transport: read endpoints + slog + error codes (AMD-6, AMD-7)
+T24a       Transport: admin endpoints seed/sync/status (AMD-3)
+T25–T27    Pricing update (AMD-4: local MarketplaceFees type)
+T28        Composition root: HTTP server first, SeedAll in background (AMD-2)
+T29        OpenAPI spec (source of truth — all endpoints)
+T30        SDK types + methods (derived from T29)
+T30b       Frontend form: loading + error + empty states (AMD-12)
+T30c–T30e  Unit tests (idempotency, handler, isolation)
+T34        Real DB integration tests (AMD-11)
+T31        go build ./... + go test ./...
+T32        Smoke tests (field-level per AMD-13)
+T33        Commit
 ```
