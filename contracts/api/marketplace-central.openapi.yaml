@@ -1410,6 +1410,7 @@ components:
 
     PluginMetadata:
       type: object
+      required: [rollout_stage, execution_mode]
       properties:
         icon_url:
           type: string
