@@ -243,6 +243,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /marketplaces/definitions:
+    get:
+      operationId: listMarketplaceDefinitions
+      summary: List all registered marketplace types
+      tags: [marketplaces]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketplaceDefinition'
+
+  /marketplaces/fee-schedules:
+    get:
+      operationId: listMarketplaceFeeSchedules
+      summary: List fee schedules for a marketplace
+      tags: [marketplaces]
+      parameters:
+        - name: marketplace_code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketplaceFeeSchedule'
+        "400":
+          description: marketplace_code query param missing
+
   /marketplaces/accounts:
     get:
       summary: List marketplace accounts
@@ -1235,6 +1279,36 @@ components:
               error_code:
                 type: string
                 nullable: true
+
+    MarketplaceDefinition:
+      type: object
+      properties:
+        marketplace_code: { type: string }
+        display_name:     { type: string }
+        fee_source:       { type: string, enum: [api_sync, static_table] }
+        capabilities:     { type: array, items: { type: string } }
+        credential_schema:
+          type: array
+          items:
+            type: object
+            properties:
+              key:    { type: string }
+              label:  { type: string }
+              secret: { type: boolean }
+        active: { type: boolean }
+
+    MarketplaceFeeSchedule:
+      type: object
+      properties:
+        id:                 { type: string, format: uuid }
+        marketplace_code:   { type: string }
+        category_id:        { type: string }
+        listing_type:       { type: string }
+        commission_percent: { type: number }
+        fixed_fee_amount:   { type: number }
+        notes:              { type: string }
+        source:             { type: string, enum: [api_sync, seeded, manual] }
+        synced_at:          { type: string, format: date-time }
 
     ErrorResponse:
       type: object

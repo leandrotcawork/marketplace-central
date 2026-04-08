@@ -62,6 +62,33 @@ export interface UpdateClassificationRequest {
   product_ids: string[];
 }
 
+export interface CredentialField {
+  key: string;
+  label: string;
+  secret: boolean;
+}
+
+export interface MarketplaceDefinition {
+  marketplace_code: string;
+  display_name: string;
+  fee_source: 'api_sync' | 'static_table';
+  capabilities: string[];
+  credential_schema: CredentialField[];
+  active: boolean;
+}
+
+export interface MarketplaceFeeSchedule {
+  id: string;
+  marketplace_code: string;
+  category_id: string;
+  listing_type: string;
+  commission_percent: number;
+  fixed_fee_amount: number;
+  notes: string;
+  source: 'api_sync' | 'seeded' | 'manual';
+  synced_at: string;
+}
+
 export interface MarketplaceAccount {
   account_id: string;
   tenant_id: string;
@@ -76,6 +103,8 @@ export interface CreateMarketplaceAccountRequest {
   channel_code: string;
   display_name: string;
   connection_mode: string;
+  marketplace_code?: string;
+  credentials_json?: Record<string, string>;
 }
 
 export type ShippingProvider = "fixed" | "melhor_envio" | "marketplace";
@@ -274,6 +303,9 @@ export function createMarketplaceCentralClient(options: {
     listCatalogProducts: () => getJson<ListResponse<CatalogProduct>>("/catalog/products"),
     listMarketplaceAccounts: () => getJson<ListResponse<MarketplaceAccount>>("/marketplaces/accounts"),
     listMarketplacePolicies: () => getJson<ListResponse<MarketplacePolicy>>("/marketplaces/policies"),
+    listMarketplaceDefinitions: () => getJson<ListResponse<MarketplaceDefinition>>("/marketplaces/definitions"),
+    listMarketplaceFeeSchedules: (marketplaceCode: string) =>
+      getJson<ListResponse<MarketplaceFeeSchedule>>(`/marketplaces/fee-schedules?marketplace_code=${encodeURIComponent(marketplaceCode)}`),
     listPricingSimulations: () => getJson<ListResponse<PricingSimulation>>("/pricing/simulations"),
     createMarketplaceAccount: (req: CreateMarketplaceAccountRequest) =>
       postJson<MarketplaceAccount>("/marketplaces/accounts", req),
