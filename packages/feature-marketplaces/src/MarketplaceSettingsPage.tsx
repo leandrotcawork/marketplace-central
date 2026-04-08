@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, SurfaceCard } from "@marketplace-central/ui";
 import type {
   MarketplaceAccount,
+  MarketplaceDefinition,
   MarketplacePolicy,
   CreateMarketplaceAccountRequest,
   CreateMarketplacePolicyRequest,
@@ -12,6 +13,7 @@ interface MarketplaceClient {
   createMarketplaceAccount: (req: CreateMarketplaceAccountRequest) => Promise<MarketplaceAccount>;
   listMarketplacePolicies: () => Promise<{ items: MarketplacePolicy[] }>;
   createMarketplacePolicy: (req: CreateMarketplacePolicyRequest) => Promise<MarketplacePolicy>;
+  listMarketplaceDefinitions: () => Promise<{ items: MarketplaceDefinition[] }>;
 }
 
 interface MarketplaceSettingsPageProps {
@@ -23,6 +25,8 @@ const emptyAccount: CreateMarketplaceAccountRequest = {
   channel_code: "",
   display_name: "",
   connection_mode: "",
+  marketplace_code: "",
+  credentials_json: {},
 };
 
 const emptyPolicy = {
@@ -72,13 +76,21 @@ function numField(id: string, label: string, placeholder: string, value: string,
 export function MarketplaceSettingsPage({ client }: MarketplaceSettingsPageProps) {
   const [accounts, setAccounts] = useState<MarketplaceAccount[]>([]);
   const [policies, setPolicies] = useState<MarketplacePolicy[]>([]);
+  const [definitions, setDefinitions] = useState<MarketplaceDefinition[]>([]);
+  const [loadingDefinitions, setLoadingDefinitions] = useState(true);
+  const [definitionsError, setDefinitionsError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accountForm, setAccountForm] = useState<CreateMarketplaceAccountRequest>(emptyAccount);
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [policyForm, setPolicyForm] = useState(emptyPolicy);
   const [submittingAccount, setSubmittingAccount] = useState(false);
   const [submittingPolicy, setSubmittingPolicy] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [policyError, setPolicyError] = useState<string | null>(null);
+
+  const selectedDefinition = definitions.find(
+    (d) => d.marketplace_code === accountForm.marketplace_code
+  ) ?? null;
 
   async function load() {
     try {
@@ -94,15 +106,36 @@ export function MarketplaceSettingsPage({ client }: MarketplaceSettingsPageProps
     }
   }
 
-  useEffect(() => { load(); }, []);
+  async function loadDefinitions() {
+    setLoadingDefinitions(true);
+    setDefinitionsError(null);
+    try {
+      const res = await client.listMarketplaceDefinitions();
+      setDefinitions(res.items);
+    } catch (err: any) {
+      setDefinitionsError(err?.error?.message ?? "Failed to load marketplace definitions.");
+    } finally {
+      setLoadingDefinitions(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    loadDefinitions();
+  }, []);
 
   async function handleAddAccount(e: React.FormEvent) {
     e.preventDefault();
     setSubmittingAccount(true);
     setAccountError(null);
     try {
-      await client.createMarketplaceAccount(accountForm);
+      await client.createMarketplaceAccount({
+        ...accountForm,
+        marketplace_code: accountForm.marketplace_code || undefined,
+        credentials_json: Object.keys(credentials).length > 0 ? credentials : undefined,
+      });
       setAccountForm(emptyAccount);
+      setCredentials({});
       await load();
     } catch (err: any) {
       setAccountError(err?.error?.message ?? "Failed to create account.");
@@ -181,9 +214,61 @@ export function MarketplaceSettingsPage({ client }: MarketplaceSettingsPageProps
           )}
           <form onSubmit={handleAddAccount} className="grid grid-cols-2 gap-4">
             {textField("account_id", "Account ID", "acc-001", accountForm.account_id, (v) => setAccountForm((f) => ({ ...f, account_id: v })))}
-            {textField("channel_code", "Channel Code", "vtex", accountForm.channel_code, (v) => setAccountForm((f) => ({ ...f, channel_code: v })))}
             {textField("display_name", "Display Name", "My VTEX Store", accountForm.display_name, (v) => setAccountForm((f) => ({ ...f, display_name: v })))}
             {textField("connection_mode", "Connection Mode", "api", accountForm.connection_mode, (v) => setAccountForm((f) => ({ ...f, connection_mode: v })))}
+
+            {/* Marketplace selection from definitions */}
+            <div className="col-span-2 space-y-1">
+              <label htmlFor="marketplace_code" className="block text-sm font-medium text-slate-700">Marketplace</label>
+              {loadingDefinitions ? (
+                <div className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-400">Loading marketplaces…</div>
+              ) : definitionsError ? (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">{definitionsError}</div>
+              ) : definitions.length === 0 ? (
+                <div className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-400">No marketplace definitions available.</div>
+              ) : (
+                <select
+                  id="marketplace_code"
+                  value={accountForm.marketplace_code ?? ""}
+                  onChange={(e) => {
+                    const code = e.target.value;
+                    setAccountForm((f) => ({ ...f, marketplace_code: code, channel_code: code }));
+                    setCredentials({});
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">— Select a marketplace —</option>
+                  {definitions.map((d) => (
+                    <option key={d.marketplace_code} value={d.marketplace_code}>{d.display_name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Dynamic credential fields from credential_schema */}
+            {selectedDefinition && selectedDefinition.credential_schema.length > 0 && (
+              <>
+                <div className="col-span-2">
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Credentials</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {selectedDefinition.credential_schema.map((field) => (
+                      <div key={field.key} className="space-y-1">
+                        <label htmlFor={`cred_${field.key}`} className="block text-sm font-medium text-slate-700">{field.label}</label>
+                        <input
+                          id={`cred_${field.key}`}
+                          type={field.secret ? "password" : "text"}
+                          placeholder={field.label}
+                          value={credentials[field.key] ?? ""}
+                          onChange={(e) => setCredentials((c) => ({ ...c, [field.key]: e.target.value }))}
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
             <div className="col-span-2 flex justify-end">
               <Button type="submit" variant="primary" loading={submittingAccount}>Add Account</Button>
             </div>
