@@ -38,12 +38,14 @@ func (r *Reader) GetPoliciesForBatch(ctx context.Context, policyIDs []string) ([
 
 func fromDomain(p marketplacesdomain.Policy) pricingports.BatchPolicy {
 	return pricingports.BatchPolicy{
-		PolicyID:          p.PolicyID,
-		AccountID:         p.AccountID,
-		CommissionPercent: p.CommissionPercent,
-		FixedFeeAmount:    p.FixedFeeAmount,
-		DefaultShipping:   p.DefaultShipping,
-		MinMarginPercent:  p.MinMarginPercent,
-		ShippingProvider:  p.ShippingProvider,
+		PolicyID:           p.PolicyID,
+		AccountID:          p.AccountID,
+		MarketplaceCode:    p.MarketplaceCode,   // required for fee schedule lookup
+		CommissionPercent:  p.CommissionPercent,
+		CommissionOverride: p.CommissionOverride, // nil = use fee schedule / policy rate
+		FixedFeeAmount:     p.FixedFeeAmount,
+		DefaultShipping:    p.DefaultShipping,
+		MinMarginPercent:   p.MinMarginPercent,
+		ShippingProvider:   p.ShippingProvider,
 	}
 }

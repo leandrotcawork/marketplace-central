@@ -74,3 +74,31 @@ func TestReader_GetPoliciesForBatch_PreservesMissingAndDeduplicates(t *testing.T
 		t.Fatalf("unexpected service IDs: %#v", got)
 	}
 }
+
+func TestReader_GetPoliciesForBatch_MapsMarketplaceCodeAndCommissionOverride(t *testing.T) {
+	override := 0.05
+	svc := &fakeMarketplacesService{policiesByID: map[string]domain.Policy{
+		"p1": {
+			PolicyID:           "p1",
+			AccountID:          "a1",
+			MarketplaceCode:    "mercado_livre",
+			CommissionPercent:  0.16,
+			CommissionOverride: &override,
+		},
+	}}
+	reader := NewReader(svc)
+	policies, err := reader.GetPoliciesForBatch(context.Background(), []string{"p1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(policies) != 1 {
+		t.Fatalf("expected 1 policy, got %d", len(policies))
+	}
+	got := policies[0]
+	if got.MarketplaceCode != "mercado_livre" {
+		t.Errorf("MarketplaceCode: expected mercado_livre, got %q", got.MarketplaceCode)
+	}
+	if got.CommissionOverride == nil || *got.CommissionOverride != 0.05 {
+		t.Errorf("CommissionOverride: expected 0.05, got %v", got.CommissionOverride)
+	}
+}

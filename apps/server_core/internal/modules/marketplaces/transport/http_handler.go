@@ -104,15 +104,16 @@ func (h Handler) Register(mux *http.ServeMux) {
 
 		case http.MethodPost:
 			var req struct {
-				PolicyID           string  `json:"policy_id"`
-				AccountID          string  `json:"account_id"`
-				CommissionPercent  float64 `json:"commission_percent"`
-				FixedFeeAmount     float64 `json:"fixed_fee_amount"`
-				DefaultShipping    float64 `json:"default_shipping"`
-				MinMarginPercent   float64 `json:"min_margin_percent"`
-				SLAQuestionMinutes int     `json:"sla_question_minutes"`
-				SLADispatchHours   int     `json:"sla_dispatch_hours"`
-				ShippingProvider   string  `json:"shipping_provider"`
+				PolicyID           string   `json:"policy_id"`
+				AccountID          string   `json:"account_id"`
+				CommissionPercent  float64  `json:"commission_percent"`
+				CommissionOverride *float64 `json:"commission_override"`
+				FixedFeeAmount     float64  `json:"fixed_fee_amount"`
+				DefaultShipping    float64  `json:"default_shipping"`
+				MinMarginPercent   float64  `json:"min_margin_percent"`
+				SLAQuestionMinutes int      `json:"sla_question_minutes"`
+				SLADispatchHours   int      `json:"sla_dispatch_hours"`
+				ShippingProvider   string   `json:"shipping_provider"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeMarketplacesError(w, http.StatusBadRequest, "invalid_request", "malformed request body")
@@ -122,6 +123,7 @@ func (h Handler) Register(mux *http.ServeMux) {
 				PolicyID:           req.PolicyID,
 				AccountID:          req.AccountID,
 				CommissionPercent:  req.CommissionPercent,
+				CommissionOverride: req.CommissionOverride,
 				FixedFeeAmount:     req.FixedFeeAmount,
 				DefaultShipping:    req.DefaultShipping,
 				MinMarginPercent:   req.MinMarginPercent,
