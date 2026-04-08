@@ -6,6 +6,7 @@ import "context"
 type BatchProduct struct {
 	ProductID      string
 	SKU            string
+	CategoryID     string   // taxonomy node ID used as fee schedule category proxy; empty = use "default"
 	CostAmount     float64
 	PriceAmount    float64
 	SuggestedPrice *float64

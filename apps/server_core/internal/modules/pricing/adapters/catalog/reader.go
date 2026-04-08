@@ -34,6 +34,7 @@ func (r *Reader) GetProductsForBatch(ctx context.Context, productIDs []string) (
 		result = append(result, pricingports.BatchProduct{
 			ProductID:      p.ProductID,
 			SKU:            p.SKU,
+			CategoryID:     p.TaxonomyNodeID, // maps catalog taxonomy to fee schedule category proxy
 			CostAmount:     p.CostAmount,
 			PriceAmount:    p.PriceAmount,
 			SuggestedPrice: p.SuggestedPrice,

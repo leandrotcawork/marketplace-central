@@ -181,7 +181,11 @@ func (o *BatchOrchestrator) RunBatch(ctx context.Context, req BatchRunRequest) (
 			if pol.CommissionOverride != nil {
 				commissionPct = *pol.CommissionOverride
 			} else if o.feeLookup != nil && pol.MarketplaceCode != "" {
-				if fee, found, err := o.feeLookup.LookupFee(ctx, pol.MarketplaceCode, "default", ""); err == nil && found {
+				categoryID := prod.CategoryID
+			if categoryID == "" {
+				categoryID = "default"
+			}
+			if fee, found, err := o.feeLookup.LookupFee(ctx, pol.MarketplaceCode, categoryID, ""); err == nil && found {
 					commissionPct = fee.CommissionPercent
 				}
 			}
