@@ -39,20 +39,23 @@ type BatchRunResult struct {
 
 // BatchOrchestrator runs batch simulations across all products x policies.
 type BatchOrchestrator struct {
-	products ports.ProductProvider
-	policies ports.PolicyProvider
-	freight  ports.FreightQuoter
-	tenantID string
+	products  ports.ProductProvider
+	policies  ports.PolicyProvider
+	freight   ports.FreightQuoter
+	feeLookup ports.FeeScheduleLookup // nil-safe: skipped when not wired
+	tenantID  string
 }
 
 // NewBatchOrchestrator creates a BatchOrchestrator with its dependencies.
+// feeLookup may be nil; when nil the orchestrator falls back to pol.CommissionPercent.
 func NewBatchOrchestrator(
 	products ports.ProductProvider,
 	policies ports.PolicyProvider,
 	freight ports.FreightQuoter,
+	feeLookup ports.FeeScheduleLookup,
 	tenantID string,
 ) *BatchOrchestrator {
-	return &BatchOrchestrator{products: products, policies: policies, freight: freight, tenantID: tenantID}
+	return &BatchOrchestrator{products: products, policies: policies, freight: freight, feeLookup: feeLookup, tenantID: tenantID}
 }
 
 // RunBatch calculates margins for every product x policy combination.
@@ -174,7 +177,15 @@ func (o *BatchOrchestrator) RunBatch(ctx context.Context, req BatchRunRequest) (
 				freightAvailable = true
 			}
 
-			commissionAmt := sellingPrice * pol.CommissionPercent
+			commissionPct := pol.CommissionPercent
+			if pol.CommissionOverride != nil {
+				commissionPct = *pol.CommissionOverride
+			} else if o.feeLookup != nil && pol.MarketplaceCode != "" {
+				if fee, found, err := o.feeLookup.LookupFee(ctx, pol.MarketplaceCode, "default", ""); err == nil && found {
+					commissionPct = fee.CommissionPercent
+				}
+			}
+			commissionAmt := sellingPrice * commissionPct
 			marginAmt := sellingPrice - prod.CostAmount - commissionAmt - pol.FixedFeeAmount - freightAmt
 			marginPct := 0.0
 			if sellingPrice > 0 {

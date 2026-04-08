@@ -17,13 +17,15 @@ type BatchProduct struct {
 
 // BatchPolicy is all policy data needed for batch simulation.
 type BatchPolicy struct {
-	PolicyID          string
-	AccountID         string
-	CommissionPercent float64
-	FixedFeeAmount    float64
-	DefaultShipping   float64
-	MinMarginPercent  float64
-	ShippingProvider  string // "fixed" | "melhor_envio" | "marketplace"
+	PolicyID           string
+	AccountID          string
+	MarketplaceCode    string   // used to look up fee schedules; empty means no lookup
+	CommissionPercent  float64
+	CommissionOverride *float64 // explicit override; takes priority over fee schedule lookup
+	FixedFeeAmount     float64
+	DefaultShipping    float64
+	MinMarginPercent   float64
+	ShippingProvider   string // "fixed" | "melhor_envio" | "marketplace"
 }
 
 // FreightProduct is one product in a freight quote request.
