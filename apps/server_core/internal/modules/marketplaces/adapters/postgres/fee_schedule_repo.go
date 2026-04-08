@@ -106,36 +106,45 @@ func (r *FeeScheduleRepository) UpsertSchedules(ctx context.Context, schedules [
 }
 
 func (r *FeeScheduleRepository) LookupFee(ctx context.Context, marketplaceCode, categoryID, listingType string) (domain.FeeSchedule, bool, error) {
-	for _, cat := range []string{categoryID, "default"} {
-		var s domain.FeeSchedule
-		var lt *string
-		var syncedAt time.Time
-		err := r.pool.QueryRow(ctx, `
-			SELECT id, marketplace_code, category_id, COALESCE(listing_type, ''),
-			       commission_percent, fixed_fee_amount, COALESCE(notes, ''), source, synced_at
-			FROM marketplace_fee_schedules
-			WHERE marketplace_code = $1
-			  AND category_id = $2
-			  AND (listing_type = $3 OR ($3 = '' AND listing_type IS NULL))
-			  AND (valid_to IS NULL OR valid_to >= current_date)
-			LIMIT 1
-		`, marketplaceCode, cat, listingType).Scan(
-			&s.ID, &s.MarketplaceCode, &s.CategoryID, &lt,
-			&s.CommissionPercent, &s.FixedFeeAmount, &s.Notes, &s.Source, &syncedAt,
-		)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				continue
-			}
-			return domain.FeeSchedule{}, false, err
+	var s domain.FeeSchedule
+	var lt *string
+	var syncedAt time.Time
+
+	// Single query covers the full fallback matrix in one round-trip.
+	// Priority (ORDER BY): exact category > "default"; exact listing_type > NULL catch-all.
+	// When listingType="" only IS NULL rows are valid (caller has no listing type).
+	// valid_from/valid_to enforce date-window correctness.
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, marketplace_code, category_id, COALESCE(listing_type, ''),
+		       commission_percent, fixed_fee_amount, COALESCE(notes, ''), source, synced_at
+		FROM marketplace_fee_schedules
+		WHERE marketplace_code = $1
+		  AND (category_id = $2 OR category_id = 'default')
+		  AND (
+		        listing_type IS NULL
+		    OR  ($3 <> '' AND listing_type = $3)
+		  )
+		  AND (valid_from IS NULL OR valid_from <= current_date)
+		  AND (valid_to   IS NULL OR valid_to   >= current_date)
+		ORDER BY
+		  (category_id = $2)          DESC,  -- exact category before 'default'
+		  (listing_type IS NOT NULL)   DESC   -- exact listing_type before NULL catch-all
+		LIMIT 1
+	`, marketplaceCode, categoryID, listingType).Scan(
+		&s.ID, &s.MarketplaceCode, &s.CategoryID, &lt,
+		&s.CommissionPercent, &s.FixedFeeAmount, &s.Notes, &s.Source, &syncedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.FeeSchedule{}, false, nil
 		}
-		if lt != nil {
-			s.ListingType = *lt
-		}
-		s.SyncedAt = syncedAt
-		return s, true, nil
+		return domain.FeeSchedule{}, false, err
 	}
-	return domain.FeeSchedule{}, false, nil
+	if lt != nil {
+		s.ListingType = *lt
+	}
+	s.SyncedAt = syncedAt
+	return s, true, nil
 }
 
 func (r *FeeScheduleRepository) ListByMarketplace(ctx context.Context, marketplaceCode string) ([]domain.FeeSchedule, error) {
