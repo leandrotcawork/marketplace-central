@@ -10,16 +10,19 @@ import (
 )
 
 type CreateAccountInput struct {
-	AccountID      string
-	ChannelCode    string
-	DisplayName    string
-	ConnectionMode string
+	AccountID       string
+	MarketplaceCode string
+	ChannelCode     string
+	DisplayName     string
+	ConnectionMode  string
+	CredentialsJSON map[string]string
 }
 
 type CreatePolicyInput struct {
 	PolicyID           string
 	AccountID          string
 	CommissionPercent  float64
+	CommissionOverride *float64
 	FixedFeeAmount     float64
 	DefaultShipping    float64
 	MinMarginPercent   float64
@@ -42,12 +45,14 @@ func (s Service) CreateAccount(ctx context.Context, input CreateAccountInput) (d
 		return domain.Account{}, errors.New("MARKETPLACES_ACCOUNT_INVALID")
 	}
 	account := domain.Account{
-		AccountID:      input.AccountID,
-		TenantID:       s.tenantID,
-		ChannelCode:    input.ChannelCode,
-		DisplayName:    input.DisplayName,
-		Status:         "active",
-		ConnectionMode: input.ConnectionMode,
+		AccountID:       input.AccountID,
+		TenantID:        s.tenantID,
+		MarketplaceCode: input.MarketplaceCode,
+		ChannelCode:     input.ChannelCode,
+		DisplayName:     input.DisplayName,
+		Status:          "active",
+		ConnectionMode:  input.ConnectionMode,
+		CredentialsJSON: input.CredentialsJSON,
 	}
 	return account, s.repo.SaveAccount(ctx, account)
 }
@@ -74,6 +79,7 @@ func (s Service) CreatePolicy(ctx context.Context, input CreatePolicyInput) (dom
 		TenantID:           s.tenantID,
 		AccountID:          input.AccountID,
 		CommissionPercent:  input.CommissionPercent,
+		CommissionOverride: input.CommissionOverride,
 		FixedFeeAmount:     input.FixedFeeAmount,
 		DefaultShipping:    input.DefaultShipping,
 		TaxPercent:         0,

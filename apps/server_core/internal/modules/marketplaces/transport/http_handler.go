@@ -51,20 +51,24 @@ func (h Handler) Register(mux *http.ServeMux) {
 
 		case http.MethodPost:
 			var req struct {
-				AccountID      string `json:"account_id"`
-				ChannelCode    string `json:"channel_code"`
-				DisplayName    string `json:"display_name"`
-				ConnectionMode string `json:"connection_mode"`
+				AccountID       string            `json:"account_id"`
+				MarketplaceCode string            `json:"marketplace_code"`
+				ChannelCode     string            `json:"channel_code"`
+				DisplayName     string            `json:"display_name"`
+				ConnectionMode  string            `json:"connection_mode"`
+				CredentialsJSON map[string]string `json:"credentials_json"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeMarketplacesError(w, http.StatusBadRequest, "invalid_request", "malformed request body")
 				return
 			}
 			account, err := h.svc.CreateAccount(r.Context(), application.CreateAccountInput{
-				AccountID:      req.AccountID,
-				ChannelCode:    req.ChannelCode,
-				DisplayName:    req.DisplayName,
-				ConnectionMode: req.ConnectionMode,
+				AccountID:       req.AccountID,
+				MarketplaceCode: req.MarketplaceCode,
+				ChannelCode:     req.ChannelCode,
+				DisplayName:     req.DisplayName,
+				ConnectionMode:  req.ConnectionMode,
+				CredentialsJSON: req.CredentialsJSON,
 			})
 			if err != nil {
 				status, code := mapMarketplacesError(err.Error())
