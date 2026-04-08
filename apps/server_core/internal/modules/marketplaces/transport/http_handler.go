@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -9,12 +10,20 @@ import (
 	"marketplace-central/apps/server_core/internal/platform/httpx"
 )
 
-type Handler struct {
-	svc application.Service
+// FeeSeedTrigger is the transport-layer interface for triggering fee sync/seed.
+// Satisfied by connectors/application.FeeSyncService — defined here to avoid import cycles.
+type FeeSeedTrigger interface {
+	SeedMarketplace(ctx context.Context, marketplaceCode string, force bool) (int, error)
 }
 
-func NewHandler(svc application.Service) Handler {
-	return Handler{svc: svc}
+type Handler struct {
+	svc        application.Service
+	feeSvc     *application.FeeScheduleService
+	feeSyncSvc FeeSeedTrigger
+}
+
+func NewHandler(svc application.Service, feeSvc *application.FeeScheduleService, feeSyncSvc FeeSeedTrigger) Handler {
+	return Handler{svc: svc, feeSvc: feeSvc, feeSyncSvc: feeSyncSvc}
 }
 
 type apiError struct {
@@ -131,5 +140,76 @@ func (h Handler) Register(mux *http.ServeMux) {
 			w.Header().Set("Allow", "GET, POST")
 			writeMarketplacesError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
 		}
+	})
+
+	mux.HandleFunc("/marketplaces/definitions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			writeMarketplacesError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
+			return
+		}
+		defs, err := h.feeSvc.ListDefinitions(r.Context())
+		if err != nil {
+			writeMarketplacesError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": defs})
+	})
+
+	mux.HandleFunc("/marketplaces/fee-schedules", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			writeMarketplacesError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
+			return
+		}
+		code := r.URL.Query().Get("marketplace_code")
+		if code == "" {
+			writeMarketplacesError(w, http.StatusBadRequest, "MARKETPLACES_FEESCHEDULE_PARAM_MISSING", "marketplace_code query param required")
+			return
+		}
+		schedules, err := h.feeSvc.ListFeeSchedules(r.Context(), code)
+		if err != nil {
+			writeMarketplacesError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": schedules})
+	})
+
+	mux.HandleFunc("/admin/fee-schedules/seed", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			writeMarketplacesError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
+			return
+		}
+		code := r.URL.Query().Get("marketplace_code")
+		if code == "" {
+			writeMarketplacesError(w, http.StatusBadRequest, "MARKETPLACES_FEESCHEDULE_PARAM_MISSING", "marketplace_code query param required")
+			return
+		}
+		n, err := h.feeSyncSvc.SeedMarketplace(r.Context(), code, true)
+		if err != nil {
+			writeMarketplacesError(w, http.StatusBadRequest, "MARKETPLACES_FEESEED_UNKNOWN", err.Error())
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"seeded": n, "marketplace_code": code})
+	})
+
+	mux.HandleFunc("/admin/fee-schedules/sync", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			writeMarketplacesError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
+			return
+		}
+		code := r.URL.Query().Get("marketplace_code")
+		if code == "" {
+			writeMarketplacesError(w, http.StatusBadRequest, "MARKETPLACES_FEESCHEDULE_PARAM_MISSING", "marketplace_code query param required")
+			return
+		}
+		n, err := h.feeSyncSvc.SeedMarketplace(r.Context(), code, true)
+		if err != nil {
+			writeMarketplacesError(w, http.StatusBadRequest, "MARKETPLACES_FEESYNC_UNKNOWN", err.Error())
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"synced": n, "marketplace_code": code})
 	})
 }
