@@ -68,13 +68,35 @@ export interface CredentialField {
   secret: boolean;
 }
 
+export type CapabilityStatus = 'supported' | 'partial' | 'planned' | 'blocked'
+
+export interface CapabilityProfile {
+  publish: CapabilityStatus
+  price_sync: CapabilityStatus
+  stock_sync: CapabilityStatus
+  orders: CapabilityStatus
+  messages: CapabilityStatus
+  questions: CapabilityStatus
+  freight_quotes: CapabilityStatus
+  webhooks: CapabilityStatus
+  sandbox: CapabilityStatus
+}
+
+export interface PluginMetadata {
+  icon_url?: string
+  color?: string
+  docs_url?: string
+  rollout_stage: 'v1' | 'wave_2' | 'blocked'
+  execution_mode: 'live' | 'blocked'
+}
+
 export interface MarketplaceDefinition {
-  marketplace_code: string;
-  display_name: string;
-  fee_source: 'api_sync' | 'static_table';
-  capabilities: string[];
-  credential_schema: CredentialField[];
-  active: boolean;
+  code: string
+  display_name: string
+  auth_strategy: 'oauth2' | 'lwa' | 'api_key' | 'token' | 'unknown'
+  is_active: boolean
+  capability_profile: CapabilityProfile
+  metadata: PluginMetadata
 }
 
 export interface MarketplaceFeeSchedule {

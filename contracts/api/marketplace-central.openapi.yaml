@@ -1359,20 +1359,70 @@ components:
 
     MarketplaceDefinition:
       type: object
+      required: [code, display_name, auth_strategy, is_active, capability_profile, metadata]
       properties:
-        marketplace_code: { type: string }
-        display_name:     { type: string }
-        fee_source:       { type: string, enum: [api_sync, static_table] }
-        capabilities:     { type: array, items: { type: string } }
-        credential_schema:
-          type: array
-          items:
-            type: object
-            properties:
-              key:    { type: string }
-              label:  { type: string }
-              secret: { type: boolean }
-        active: { type: boolean }
+        code:
+          type: string
+          example: mercado_livre
+        display_name:
+          type: string
+          example: Mercado Livre
+        auth_strategy:
+          type: string
+          enum: [oauth2, lwa, api_key, token, unknown]
+        is_active:
+          type: boolean
+        capability_profile:
+          $ref: '#/components/schemas/CapabilityProfile'
+        metadata:
+          $ref: '#/components/schemas/PluginMetadata'
+
+    CapabilityProfile:
+      type: object
+      properties:
+        publish:
+          type: string
+          enum: [supported, partial, planned, blocked]
+        price_sync:
+          type: string
+          enum: [supported, partial, planned, blocked]
+        stock_sync:
+          type: string
+          enum: [supported, partial, planned, blocked]
+        orders:
+          type: string
+          enum: [supported, partial, planned, blocked]
+        messages:
+          type: string
+          enum: [supported, partial, planned, blocked]
+        questions:
+          type: string
+          enum: [supported, partial, planned, blocked]
+        freight_quotes:
+          type: string
+          enum: [supported, partial, planned, blocked]
+        webhooks:
+          type: string
+          enum: [supported, partial, planned, blocked]
+        sandbox:
+          type: string
+          enum: [supported, partial, planned, blocked]
+
+    PluginMetadata:
+      type: object
+      properties:
+        icon_url:
+          type: string
+        color:
+          type: string
+        docs_url:
+          type: string
+        rollout_stage:
+          type: string
+          enum: [v1, wave_2, blocked]
+        execution_mode:
+          type: string
+          enum: [live, blocked]
 
     MarketplaceFeeSchedule:
       type: object
