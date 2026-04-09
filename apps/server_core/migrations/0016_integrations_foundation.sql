@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS integration_credentials (
   PRIMARY KEY (tenant_id, credential_id),
   CONSTRAINT ck_integration_credentials_version_positive
     CHECK (version > 0),
+  CONSTRAINT ck_integration_credentials_active_not_revoked
+    CHECK (NOT is_active OR revoked_at IS NULL),
   CONSTRAINT fk_integration_credentials_installation
     FOREIGN KEY (tenant_id, installation_id)
     REFERENCES integration_installations (tenant_id, installation_id)
@@ -80,6 +82,65 @@ ALTER TABLE integration_installations
     FOREIGN KEY (tenant_id, installation_id, active_credential_id)
     REFERENCES integration_credentials (tenant_id, installation_id, credential_id)
     DEFERRABLE INITIALLY DEFERRED;
+
+CREATE OR REPLACE FUNCTION enforce_installation_active_credential_is_usable()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.active_credential_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM integration_credentials c
+    WHERE c.tenant_id = NEW.tenant_id
+      AND c.installation_id = NEW.installation_id
+      AND c.credential_id = NEW.active_credential_id
+      AND c.is_active = true
+      AND c.revoked_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'INTEGRATIONS_ACTIVE_CREDENTIAL_NOT_USABLE';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER trg_enforce_installation_active_credential_is_usable
+  AFTER INSERT OR UPDATE OF tenant_id, installation_id, active_credential_id
+  ON integration_installations
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  EXECUTE FUNCTION enforce_installation_active_credential_is_usable();
+
+CREATE OR REPLACE FUNCTION prevent_deactivating_or_revoking_referenced_credential()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF (NEW.is_active = false OR NEW.revoked_at IS NOT NULL)
+     AND EXISTS (
+       SELECT 1
+       FROM integration_installations i
+       WHERE i.tenant_id = NEW.tenant_id
+         AND i.installation_id = NEW.installation_id
+         AND i.active_credential_id = NEW.credential_id
+     ) THEN
+    RAISE EXCEPTION 'INTEGRATIONS_ACTIVE_CREDENTIAL_STATE_CONFLICT';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER trg_prevent_deactivating_or_revoking_referenced_credential
+  AFTER UPDATE OF is_active, revoked_at
+  ON integration_credentials
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  EXECUTE FUNCTION prevent_deactivating_or_revoking_referenced_credential();
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_integration_credentials_version
   ON integration_credentials (tenant_id, installation_id, version);
@@ -165,9 +226,9 @@ CREATE INDEX IF NOT EXISTS idx_integration_operation_runs_status
 ALTER TABLE marketplace_accounts
   ADD COLUMN IF NOT EXISTS integration_installation_id text,
   ADD CONSTRAINT fk_marketplace_accounts_integration_installation
-    FOREIGN KEY (integration_installation_id)
-    REFERENCES integration_installations (installation_id)
-    ON DELETE SET NULL;
+    FOREIGN KEY (tenant_id, integration_installation_id)
+    REFERENCES integration_installations (tenant_id, installation_id)
+    ON DELETE SET NULL (integration_installation_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_marketplace_accounts_integration_installation
   ON marketplace_accounts (tenant_id, integration_installation_id)
