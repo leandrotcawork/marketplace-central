@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, ChevronDown, Eye, EyeOff, Loader2, Check } from "lucide-react";
 import type {
   MarketplaceAccount,
@@ -22,7 +22,7 @@ interface DefinitionShape {
 // ---------- helpers ----------
 
 function generateId(prefix: string) {
-  return `${prefix}-${crypto.randomUUID().split("-")[0]}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 function toDefinitionShape(d: MarketplaceDefinition | null): DefinitionShape | null {
@@ -208,6 +208,10 @@ export function AccountPanel(props: AccountPanelProps) {
   // Disconnect confirm
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
+  // Timer ref for auto-close after success
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); }, []);
+
   // Derived: selected definition in create mode
   const selectedDefinition: DefinitionShape | null =
     mode === "create"
@@ -242,7 +246,21 @@ export function AccountPanel(props: AccountPanelProps) {
           });
         }
         setSaveResult("success");
-        setTimeout(onClose, 800);
+        closeTimerRef.current = setTimeout(onClose, 800);
+      } else if (mode === "view" && !props.policy) {
+        // Create policy for existing account that has none yet
+        await onCreatePolicy({
+          policy_id: generateId("pol"),
+          account_id: props.account.account_id,
+          commission_percent: parseFloat(commission) || 0,
+          fixed_fee_amount: parseFloat(fixedFee) || 0,
+          default_shipping: parseFloat(defaultShipping) || 0,
+          min_margin_percent: parseFloat(minMargin) || 0,
+          sla_question_minutes: parseInt(slaQuestion, 10) || 0,
+          sla_dispatch_hours: parseInt(slaDispatch, 10) || 0,
+        });
+        setSaveResult("success");
+        closeTimerRef.current = setTimeout(onClose, 800);
       }
     } catch (err: unknown) {
       const e = err as { error?: { message?: string } };
@@ -253,10 +271,11 @@ export function AccountPanel(props: AccountPanelProps) {
     }
   }
 
+  // view mode: only allow submit if no policy exists yet (user can add one) and commission is filled
   const canSubmit =
     mode === "create"
       ? !!displayName.trim() && !!marketplaceCode && !saving
-      : !saving;
+      : !props.policy && !!commission.trim() && !saving;
 
   return (
     <div
@@ -421,7 +440,7 @@ export function AccountPanel(props: AccountPanelProps) {
               )}
               {mode === "view" && !props.policy && (
                 <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
-                  No policy configured yet. Fill in below to create one.
+                  No policy configured yet — fill in to activate.
                 </p>
               )}
               <div className="grid grid-cols-2 gap-3 pt-1">
@@ -495,14 +514,24 @@ export function AccountPanel(props: AccountPanelProps) {
           <button
             type="button"
             onClick={() => setConfirmDisconnect(true)}
-            className="text-sm text-red-500 hover:text-red-700 transition-colors cursor-pointer"
+            className="text-sm text-red-600 hover:text-red-800 transition-colors cursor-pointer"
           >
             Disconnect
           </button>
         )}
         {mode === "view" && confirmDisconnect && (
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-red-600 font-medium text-xs">No delete API yet</span>
+            <span className="text-xs text-red-600 font-medium">Are you sure?</span>
+            <button
+              type="button"
+              onClick={() => {
+                // No delete API available yet
+                setConfirmDisconnect(false);
+              }}
+              className="text-xs text-red-600 hover:text-red-800 font-medium cursor-pointer"
+            >
+              Yes, disconnect
+            </button>
             <button
               type="button"
               onClick={() => setConfirmDisconnect(false)}
@@ -512,7 +541,15 @@ export function AccountPanel(props: AccountPanelProps) {
             </button>
           </div>
         )}
-        {mode === "create" && <span />}
+        {mode === "create" && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+        )}
 
         <div className="flex items-center gap-2">
           {saveResult === "success" && (
