@@ -12,3 +12,11 @@ ALTER TABLE marketplace_definitions
 UPDATE marketplace_definitions SET is_active = active;
 
 COMMENT ON COLUMN marketplace_definitions.active IS 'Deprecated: use is_active. Will be dropped in migration 0015.';
+
+-- Expand fee_source check to include 'seed' (used by stub-seeded channels like Amazon, Leroy, Madeira).
+ALTER TABLE marketplace_definitions
+  DROP CONSTRAINT IF EXISTS marketplace_definitions_fee_source_check;
+
+ALTER TABLE marketplace_definitions
+  ADD CONSTRAINT marketplace_definitions_fee_source_check
+  CHECK (fee_source IN ('api_sync', 'static_table', 'seed'));
