@@ -62,7 +62,7 @@ func (r *FeeScheduleRepository) UpsertDefinitions(ctx context.Context, defs []do
 func (r *FeeScheduleRepository) ListDefinitions(ctx context.Context) ([]domain.MarketplaceDefinition, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT marketplace_code, display_name, fee_source, credential_schema,
-		       auth_strategy, capability_profile, metadata, active
+		       auth_strategy, capability_profile, metadata, is_active
 		FROM marketplace_definitions
 		WHERE is_active = true
 		ORDER BY marketplace_code

@@ -29,6 +29,12 @@ func TestRegistry_AllPluginsHaveRequiredFields(t *testing.T) {
 		if d.AuthStrategy == "" {
 			t.Errorf("plugin %q has empty AuthStrategy", d.MarketplaceCode)
 		}
+		if d.Metadata.RolloutStage == "" {
+			t.Errorf("plugin %q has empty Metadata.RolloutStage", d.MarketplaceCode)
+		}
+		if d.Metadata.ExecutionMode == "" {
+			t.Errorf("plugin %q has empty Metadata.ExecutionMode", d.MarketplaceCode)
+		}
 	}
 }
 

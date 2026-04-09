@@ -133,6 +133,31 @@ func TestDefinitionsHandler_GetReturnsItems(t *testing.T) {
 		t.Errorf("code = %q, want %q", item.Code, "test_market")
 	}
 
+	// is_active must reflect the canonical value
+	if !item.IsActive {
+		t.Errorf("is_active = false, want true")
+	}
+
+	// fee_source and credential_schema must be hidden from the public response
+	var rawBody struct {
+		Items []map[string]any `json:"items"`
+	}
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/marketplaces/definitions", nil)
+	mux.ServeHTTP(rec2, req2)
+	if err := json.NewDecoder(rec2.Body).Decode(&rawBody); err != nil {
+		t.Fatalf("failed to decode raw response: %v", err)
+	}
+	if len(rawBody.Items) > 0 {
+		rawItem := rawBody.Items[0]
+		if _, ok := rawItem["fee_source"]; ok {
+			t.Errorf("response contains fee_source — must be hidden")
+		}
+		if _, ok := rawItem["credential_schema"]; ok {
+			t.Errorf("response contains credential_schema — must be hidden")
+		}
+	}
+
 	// capability_profile must be present
 	if item.CapabilityProfile.Publish != domain.CapabilitySupported {
 		t.Errorf("capability_profile.publish = %q, want %q", item.CapabilityProfile.Publish, domain.CapabilitySupported)

@@ -3,8 +3,10 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/application"
 	"marketplace-central/apps/server_core/internal/modules/marketplaces/domain"
@@ -151,11 +153,14 @@ func (h Handler) Register(mux *http.ServeMux) {
 			writeMarketplacesError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
 			return
 		}
+		start := time.Now()
 		defs, err := h.feeSvc.ListDefinitions(r.Context())
 		if err != nil {
-			writeMarketplacesError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			slog.Error("list definitions failed", "action", "list_definitions", "result", "error", "duration_ms", time.Since(start).Milliseconds(), "err", err)
+			writeMarketplacesError(w, http.StatusInternalServerError, "MARKETPLACES_DEFINITIONS_FETCH_FAILED", err.Error())
 			return
 		}
+		slog.Info("list definitions", "action", "list_definitions", "result", "ok", "duration_ms", time.Since(start).Milliseconds(), "count", len(defs))
 
 		type defItem struct {
 			Code              string                   `json:"code"`
