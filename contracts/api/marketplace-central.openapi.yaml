@@ -243,6 +243,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /integrations/providers:
+    get:
+      summary: List integration provider definitions
+      operationId: listIntegrationProviders
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListIntegrationProvidersResponse'
+  /integrations/installations:
+    get:
+      summary: List integration installations
+      operationId: listIntegrationInstallations
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListIntegrationInstallationsResponse'
+    post:
+      summary: Create integration installation
+      operationId: createIntegrationInstallation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIntegrationInstallationRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationInstallation'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /marketplaces/definitions:
     get:
       operationId: listMarketplaceDefinitions
@@ -1231,6 +1287,24 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PricingSimulation'
+    ListIntegrationProvidersResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationProviderDefinition'
+    ListIntegrationInstallationsResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationInstallation'
     PublishToVTEXRequest:
       type: object
       required:
@@ -1376,6 +1450,117 @@ components:
           $ref: '#/components/schemas/CapabilityProfile'
         metadata:
           $ref: '#/components/schemas/PluginMetadata'
+
+    IntegrationProviderDefinition:
+      type: object
+      required:
+        - provider_code
+        - tenant_id
+        - family
+        - display_name
+        - auth_strategy
+        - install_mode
+        - declared_capabilities
+        - is_active
+        - created_at
+        - updated_at
+      properties:
+        provider_code:
+          type: string
+        tenant_id:
+          type: string
+        family:
+          type: string
+          enum: [marketplace]
+        display_name:
+          type: string
+        auth_strategy:
+          type: string
+          enum: [oauth2, api_key, token, none, unknown]
+        install_mode:
+          type: string
+          enum: [interactive, manual, hybrid]
+        metadata:
+          type: object
+          additionalProperties: true
+        declared_capabilities:
+          type: array
+          items:
+            type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    IntegrationInstallation:
+      type: object
+      required:
+        - installation_id
+        - tenant_id
+        - provider_code
+        - family
+        - display_name
+        - status
+        - health_status
+        - external_account_id
+        - external_account_name
+        - created_at
+        - updated_at
+      properties:
+        installation_id:
+          type: string
+        tenant_id:
+          type: string
+        provider_code:
+          type: string
+        family:
+          type: string
+          enum: [marketplace]
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [draft, pending_connection, connected, degraded, requires_reauth, disconnected, suspended, failed]
+        health_status:
+          type: string
+          enum: [healthy, warning, critical]
+        external_account_id:
+          type: string
+        external_account_name:
+          type: string
+        active_credential_id:
+          type: string
+        last_verified_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateIntegrationInstallationRequest:
+      type: object
+      required:
+        - installation_id
+        - provider_code
+        - family
+        - display_name
+      properties:
+        installation_id:
+          type: string
+        provider_code:
+          type: string
+        family:
+          type: string
+          enum: [marketplace]
+        display_name:
+          type: string
 
     CapabilityProfile:
       type: object

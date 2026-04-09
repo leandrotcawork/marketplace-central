@@ -99,6 +99,51 @@ export interface MarketplaceDefinition {
   metadata: PluginMetadata
 }
 
+export interface IntegrationProviderDefinition {
+  provider_code: string;
+  tenant_id: string;
+  family: "marketplace";
+  display_name: string;
+  auth_strategy: "oauth2" | "api_key" | "token" | "none" | "unknown";
+  install_mode: "interactive" | "manual" | "hybrid";
+  metadata?: Record<string, unknown>;
+  declared_capabilities: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntegrationInstallation {
+  installation_id: string;
+  tenant_id: string;
+  provider_code: string;
+  family: "marketplace";
+  display_name: string;
+  status:
+    | "draft"
+    | "pending_connection"
+    | "connected"
+    | "degraded"
+    | "requires_reauth"
+    | "disconnected"
+    | "suspended"
+    | "failed";
+  health_status: "healthy" | "warning" | "critical";
+  external_account_id: string;
+  external_account_name: string;
+  active_credential_id?: string;
+  last_verified_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateIntegrationInstallationRequest {
+  installation_id: string;
+  provider_code: string;
+  family: "marketplace";
+  display_name: string;
+}
+
 export interface MarketplaceFeeSchedule {
   id: string;
   marketplace_code: string;
@@ -330,6 +375,8 @@ export function createMarketplaceCentralClient(options: {
     listMarketplaceAccounts: () => getJson<ListResponse<MarketplaceAccount>>("/marketplaces/accounts"),
     listMarketplacePolicies: () => getJson<ListResponse<MarketplacePolicy>>("/marketplaces/policies"),
     listMarketplaceDefinitions: () => getJson<ListResponse<MarketplaceDefinition>>("/marketplaces/definitions"),
+    listIntegrationProviders: () => getJson<ListResponse<IntegrationProviderDefinition>>("/integrations/providers"),
+    listIntegrationInstallations: () => getJson<ListResponse<IntegrationInstallation>>("/integrations/installations"),
     listMarketplaceFeeSchedules: (marketplaceCode: string) =>
       getJson<ListResponse<MarketplaceFeeSchedule>>(`/marketplaces/fee-schedules?marketplace_code=${encodeURIComponent(marketplaceCode)}`),
     listPricingSimulations: () => getJson<ListResponse<PricingSimulation>>("/pricing/simulations"),
@@ -337,6 +384,8 @@ export function createMarketplaceCentralClient(options: {
       postJson<MarketplaceAccount>("/marketplaces/accounts", req),
     createMarketplacePolicy: (req: CreateMarketplacePolicyRequest) =>
       postJson<MarketplacePolicy>("/marketplaces/policies", req),
+    createIntegrationInstallation: (req: CreateIntegrationInstallationRequest) =>
+      postJson<IntegrationInstallation>("/integrations/installations", req),
     runPricingSimulation: (req: RunPricingSimulationRequest) =>
       postJson<PricingSimulation>("/pricing/simulations", req),
     runBatchSimulation: (req: BatchSimulationRequest) =>

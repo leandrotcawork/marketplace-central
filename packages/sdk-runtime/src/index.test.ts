@@ -2,6 +2,43 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { createMarketplaceCentralClient } from "./index";
 
 describe("sdk runtime", () => {
+  it("listIntegrationProviders calls /integrations/providers and parses items", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async (input, init) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                provider_code: "mercado_livre",
+                tenant_id: "system",
+                family: "marketplace",
+                display_name: "Mercado Livre",
+                auth_strategy: "oauth2",
+                install_mode: "interactive",
+                metadata: { country: "BR" },
+                declared_capabilities: ["catalog_publish"],
+                is_active: true,
+                created_at: "2026-04-09T00:00:00Z",
+                updated_at: "2026-04-09T00:00:00Z",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+
+    const result = await client.listIntegrationProviders();
+
+    expect(String(requests[0].input)).toBe("http://localhost:8080/integrations/providers");
+    expect(requests[0].init?.method).toBe("GET");
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].provider_code).toBe("mercado_livre");
+  });
+
   it("builds canonical pricing simulation requests", async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const client = createMarketplaceCentralClient({

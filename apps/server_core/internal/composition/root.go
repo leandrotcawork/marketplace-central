@@ -14,14 +14,18 @@ import (
 	classpostgres "marketplace-central/apps/server_core/internal/modules/classifications/adapters/postgres"
 	classapp "marketplace-central/apps/server_core/internal/modules/classifications/application"
 	classtransport "marketplace-central/apps/server_core/internal/modules/classifications/transport"
-	melhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
 	connmagalu "marketplace-central/apps/server_core/internal/modules/connectors/adapters/magalu"
+	melhorenvio "marketplace-central/apps/server_core/internal/modules/connectors/adapters/melhorenvio"
 	connml "marketplace-central/apps/server_core/internal/modules/connectors/adapters/mercado_livre"
 	connectorspostgres "marketplace-central/apps/server_core/internal/modules/connectors/adapters/postgres"
 	connshopee "marketplace-central/apps/server_core/internal/modules/connectors/adapters/shopee"
 	connectorshttp "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/http"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	connectorstransport "marketplace-central/apps/server_core/internal/modules/connectors/transport"
+	integrationspostgres "marketplace-central/apps/server_core/internal/modules/integrations/adapters/postgres"
+	integrationsproviders "marketplace-central/apps/server_core/internal/modules/integrations/adapters/providers"
+	integrationsapp "marketplace-central/apps/server_core/internal/modules/integrations/application"
+	integrationstransport "marketplace-central/apps/server_core/internal/modules/integrations/transport"
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
 	marketplacesregistry "marketplace-central/apps/server_core/internal/modules/marketplaces/registry"
@@ -52,6 +56,34 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	classRepo := classpostgres.NewRepository(pool, cfg.DefaultTenantID)
 	classSvc := classapp.NewService(classRepo, cfg.DefaultTenantID)
 	classtransport.NewHandler(classSvc).Register(mux)
+
+	providerRepo := integrationspostgres.NewProviderDefinitionRepository(pool)
+	providerSvc := integrationsapp.NewProviderService(providerRepo)
+	providerRegistry := integrationsproviders.NewRegistry()
+
+	if pool != nil {
+		if err := providerSvc.SeedProviderDefinitions(context.Background(), providerRegistry.All()); err != nil {
+			slog.Warn("integration provider definitions seed failed", "err", err)
+		}
+	}
+
+	installationRepo := integrationspostgres.NewInstallationRepository(pool, cfg.DefaultTenantID)
+	installationSvc := integrationsapp.NewInstallationService(installationRepo, cfg.DefaultTenantID)
+	credentialRepo := integrationspostgres.NewCredentialRepository(pool, cfg.DefaultTenantID)
+	credentialSvc := integrationsapp.NewCredentialService(credentialRepo, cfg.DefaultTenantID)
+	authSessionRepo := integrationspostgres.NewAuthSessionRepository(pool, cfg.DefaultTenantID)
+	authSvc := integrationsapp.NewAuthService(authSessionRepo, cfg.DefaultTenantID)
+	capabilityStateRepo := integrationspostgres.NewCapabilityStateRepository(pool, cfg.DefaultTenantID)
+	capabilitySvc := integrationsapp.NewCapabilityService(capabilityStateRepo, cfg.DefaultTenantID)
+	operationRunRepo := integrationspostgres.NewOperationRunRepository(pool, cfg.DefaultTenantID)
+	operationSvc := integrationsapp.NewOperationService(operationRunRepo, cfg.DefaultTenantID)
+
+	_ = credentialSvc
+	_ = authSvc
+	_ = capabilitySvc
+	_ = operationSvc
+
+	integrationstransport.NewHandler(providerSvc, installationSvc).Register(mux)
 
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
 	marketSvc := marketplacesapp.NewService(marketRepo, cfg.DefaultTenantID)
