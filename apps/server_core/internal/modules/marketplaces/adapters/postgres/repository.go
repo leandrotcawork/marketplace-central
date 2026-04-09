@@ -27,8 +27,8 @@ func (r *Repository) SaveAccount(ctx context.Context, account domain.Account) er
 	}
 	_, err = r.pool.Exec(ctx, `
         INSERT INTO marketplace_accounts (
-            tenant_id, account_id, marketplace_code, channel_code, display_name, status, connection_mode, credentials_json
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            tenant_id, account_id, marketplace_code, channel_code, display_name, status, connection_mode, credentials_json, integration_installation_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (account_id) DO UPDATE SET
             marketplace_code = EXCLUDED.marketplace_code,
             channel_code = EXCLUDED.channel_code,
@@ -36,8 +36,9 @@ func (r *Repository) SaveAccount(ctx context.Context, account domain.Account) er
             status = EXCLUDED.status,
             connection_mode = EXCLUDED.connection_mode,
             credentials_json = EXCLUDED.credentials_json,
+            integration_installation_id = EXCLUDED.integration_installation_id,
             updated_at = now()
-    `, account.TenantID, account.AccountID, account.MarketplaceCode, account.ChannelCode, account.DisplayName, account.Status, account.ConnectionMode, credsJSON)
+    `, account.TenantID, account.AccountID, account.MarketplaceCode, account.ChannelCode, account.DisplayName, account.Status, account.ConnectionMode, credsJSON, account.IntegrationInstallationID)
 	return err
 }
 
@@ -66,7 +67,7 @@ func (r *Repository) SavePolicy(ctx context.Context, policy domain.Policy) error
 
 func (r *Repository) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 	rows, err := r.pool.Query(ctx, `
-        SELECT tenant_id, account_id, COALESCE(marketplace_code, ''), channel_code, display_name, status, connection_mode
+        SELECT tenant_id, account_id, COALESCE(marketplace_code, ''), channel_code, display_name, status, connection_mode, COALESCE(integration_installation_id, '')
         FROM marketplace_accounts
         WHERE tenant_id = $1
         ORDER BY account_id
@@ -79,7 +80,7 @@ func (r *Repository) ListAccounts(ctx context.Context) ([]domain.Account, error)
 	accounts := make([]domain.Account, 0)
 	for rows.Next() {
 		var a domain.Account
-		if err := rows.Scan(&a.TenantID, &a.AccountID, &a.MarketplaceCode, &a.ChannelCode, &a.DisplayName, &a.Status, &a.ConnectionMode); err != nil {
+		if err := rows.Scan(&a.TenantID, &a.AccountID, &a.MarketplaceCode, &a.ChannelCode, &a.DisplayName, &a.Status, &a.ConnectionMode, &a.IntegrationInstallationID); err != nil {
 			return nil, err
 		}
 		accounts = append(accounts, a)
