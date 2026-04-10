@@ -452,6 +452,7 @@ func (s *AuthFlowService) RefreshCredential(ctx context.Context, input RefreshCr
 		LastVerifiedAt:       &now,
 		RefreshFailureCode:   "",
 		ConsecutiveFailures:  0,
+		NextRetryAt:          nil,
 	}); err != nil {
 		return AuthStatus{}, err
 	}

@@ -124,6 +124,7 @@ func TestUpsertAuthSession(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(123, 0).UTC()
+	nextRetry := now.Add(30 * time.Second)
 	store := &stubAuthSessionStore{}
 	svc := NewAuthService(store, "tenant-default")
 
@@ -132,6 +133,7 @@ func TestUpsertAuthSession(t *testing.T) {
 		InstallationID:     "inst_001",
 		ProviderAccountID:  "acct_001",
 		AccessTokenExpiresAt: &now,
+		NextRetryAt:        &nextRetry,
 	})
 	if err != nil {
 		t.Fatalf("Upsert() error = %v", err)
@@ -154,6 +156,9 @@ func TestUpsertAuthSession(t *testing.T) {
 	}
 	if session.AccessTokenExpiresAt == nil || !session.AccessTokenExpiresAt.Equal(now) {
 		t.Fatalf("access_token_expires_at = %v, want %v", session.AccessTokenExpiresAt, now)
+	}
+	if session.NextRetryAt == nil || !session.NextRetryAt.Equal(nextRetry) {
+		t.Fatalf("next_retry_at = %v, want %v", session.NextRetryAt, nextRetry)
 	}
 	if len(store.saved) != 1 {
 		t.Fatalf("saved sessions = %d, want 1", len(store.saved))

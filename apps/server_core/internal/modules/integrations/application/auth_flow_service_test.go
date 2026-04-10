@@ -89,6 +89,7 @@ func (s *flowAuthWriter) Upsert(ctx context.Context, input UpsertAuthSessionInpu
 		LastVerifiedAt:       input.LastVerifiedAt,
 		RefreshFailureCode:   input.RefreshFailureCode,
 		ConsecutiveFailures:  input.ConsecutiveFailures,
+		NextRetryAt:          input.NextRetryAt,
 	}
 	s.sessions = append(s.sessions, session)
 	return session, nil

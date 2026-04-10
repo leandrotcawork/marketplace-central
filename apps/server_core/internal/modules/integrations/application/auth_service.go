@@ -18,6 +18,7 @@ type UpsertAuthSessionInput struct {
 	LastVerifiedAt      *time.Time
 	RefreshFailureCode  string
 	ConsecutiveFailures int
+	NextRetryAt         *time.Time
 }
 
 type AuthService struct {
@@ -56,6 +57,7 @@ func (s *AuthService) Upsert(ctx context.Context, input UpsertAuthSessionInput) 
 		LastVerifiedAt:      cloneTimePtr(input.LastVerifiedAt),
 		RefreshFailureCode:  input.RefreshFailureCode,
 		ConsecutiveFailures: input.ConsecutiveFailures,
+		NextRetryAt:         cloneTimePtr(input.NextRetryAt),
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
