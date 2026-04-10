@@ -21,13 +21,7 @@ type AuthFlowReader interface {
 	Disconnect(ctx context.Context, input application.DisconnectInput) (application.AuthStatus, error)
 	StartReauth(ctx context.Context, input application.StartReauthInput) (application.AuthorizeStart, error)
 	GetAuthStatus(ctx context.Context, input application.GetAuthStatusInput) (application.AuthStatus, error)
-}
-
-type feeSyncStarter interface {
 	StartSync(ctx context.Context, input application.StartFeeSyncInput) (application.FeeSyncAccepted, error)
-}
-
-type operationRunLister interface {
 	ListOperationRuns(ctx context.Context, installationID string) ([]domain.OperationRun, error)
 }
 
@@ -204,12 +198,7 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 			writeIntegrationError(w, http.StatusMethodNotAllowed, "INTEGRATIONS_AUTH_METHOD_NOT_ALLOWED", "method not allowed")
 			return
 		}
-		starter, ok := h.flow.(feeSyncStarter)
-		if !ok {
-			writeIntegrationError(w, http.StatusBadRequest, "INTEGRATIONS_FEE_SYNC_UNSUPPORTED", "INTEGRATIONS_FEE_SYNC_UNSUPPORTED")
-			return
-		}
-		result, err := starter.StartSync(r.Context(), application.StartFeeSyncInput{
+		result, err := h.flow.StartSync(r.Context(), application.StartFeeSyncInput{
 			InstallationID: installationID,
 			ActorType:      "user",
 		})
@@ -226,12 +215,7 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 			writeIntegrationError(w, http.StatusMethodNotAllowed, "INTEGRATIONS_AUTH_METHOD_NOT_ALLOWED", "method not allowed")
 			return
 		}
-		lister, ok := h.flow.(operationRunLister)
-		if !ok {
-			writeIntegrationError(w, http.StatusBadRequest, "INTEGRATIONS_OPERATION_INVALID", "INTEGRATIONS_OPERATION_INVALID")
-			return
-		}
-		items, err := lister.ListOperationRuns(r.Context(), installationID)
+		items, err := h.flow.ListOperationRuns(r.Context(), installationID)
 		if err != nil {
 			status, code, message := mapIntegrationError(err)
 			writeIntegrationError(w, status, code, message)

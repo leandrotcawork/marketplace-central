@@ -22,6 +22,8 @@ type stubAuthFlow struct {
 	operations    []domain.OperationRun
 }
 
+var _ AuthFlowReader = (*stubAuthFlow)(nil)
+
 func (s *stubAuthFlow) StartAuthorize(ctx context.Context, input application.StartAuthorizeInput) (application.AuthorizeStart, error) {
 	s.startInput = input
 	return application.AuthorizeStart{InstallationID: input.InstallationID, ProviderCode: "mercado_livre", State: "state-1", AuthURL: "https://provider.test/auth"}, nil
@@ -81,6 +83,19 @@ func (s *stubAuthFlow) ListOperationRuns(ctx context.Context, installationID str
 		}, nil
 	}
 	return s.operations, nil
+}
+
+func TestAuthHandlerCompileTimeFeeSyncContract(t *testing.T) {
+	t.Parallel()
+
+	assertFeeSyncTransportContract(t, &stubAuthFlow{})
+}
+
+func assertFeeSyncTransportContract(t *testing.T, flow AuthFlowReader) {
+	t.Helper()
+
+	_, _ = flow.StartSync(context.Background(), application.StartFeeSyncInput{InstallationID: "inst_001"})
+	_, _ = flow.ListOperationRuns(context.Background(), "inst_001")
 }
 
 func TestAuthHandlerStartAuthorizeDelegatesToService(t *testing.T) {
