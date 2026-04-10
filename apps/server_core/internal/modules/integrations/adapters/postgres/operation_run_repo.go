@@ -52,6 +52,33 @@ func (r *OperationRunRepository) SaveOperationRun(ctx context.Context, run domai
 	return err
 }
 
+func (r *OperationRunRepository) ListByInstallation(ctx context.Context, installationID string) ([]domain.OperationRun, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			operation_run_id, tenant_id, installation_id, operation_type, status,
+			result_code, failure_code, attempt_count, actor_type, actor_id,
+			started_at, completed_at, created_at, updated_at
+		FROM integration_operation_runs
+		WHERE tenant_id = $1
+		  AND installation_id = $2
+		ORDER BY created_at DESC, operation_run_id DESC
+	`, r.tenantID, installationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	runs := make([]domain.OperationRun, 0)
+	for rows.Next() {
+		run, _, err := scanOperationRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, run)
+	}
+	return runs, rows.Err()
+}
+
 func scanOperationRun(scanner interface {
 	Scan(dest ...any) error
 }) (domain.OperationRun, bool, error) {

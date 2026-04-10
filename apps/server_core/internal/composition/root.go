@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	catalogmetalshopping "marketplace-central/apps/server_core/internal/modules/catalog/adapters/metalshopping"
@@ -22,9 +23,14 @@ import (
 	connectorshttp "marketplace-central/apps/server_core/internal/modules/connectors/adapters/vtex/http"
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	connectorstransport "marketplace-central/apps/server_core/internal/modules/connectors/transport"
+	integrationscrypto "marketplace-central/apps/server_core/internal/modules/integrations/adapters/crypto"
+	integrationsmagalu "marketplace-central/apps/server_core/internal/modules/integrations/adapters/magalu"
+	integrationsml "marketplace-central/apps/server_core/internal/modules/integrations/adapters/mercadolivre"
 	integrationspostgres "marketplace-central/apps/server_core/internal/modules/integrations/adapters/postgres"
 	integrationsproviders "marketplace-central/apps/server_core/internal/modules/integrations/adapters/providers"
+	integrationsshopee "marketplace-central/apps/server_core/internal/modules/integrations/adapters/shopee"
 	integrationsapp "marketplace-central/apps/server_core/internal/modules/integrations/application"
+	integrationsbg "marketplace-central/apps/server_core/internal/modules/integrations/background"
 	integrationstransport "marketplace-central/apps/server_core/internal/modules/integrations/transport"
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
@@ -77,13 +83,48 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	capabilitySvc := integrationsapp.NewCapabilityService(capabilityStateRepo, cfg.DefaultTenantID)
 	operationRunRepo := integrationspostgres.NewOperationRunRepository(pool, cfg.DefaultTenantID)
 	operationSvc := integrationsapp.NewOperationService(operationRunRepo, cfg.DefaultTenantID)
+	oauthStateRepo := integrationspostgres.NewOAuthStateRepository(pool, cfg.DefaultTenantID)
 
-	_ = credentialSvc
-	_ = authSvc
 	_ = capabilitySvc
 	_ = operationSvc
+	_ = oauthStateRepo
+
+	encryptionSvc, err := integrationscrypto.NewLocalKeyService(cfg.EncryptionKey, "local-key-v1")
+	if err != nil {
+		log.Fatalf("encryption service: %v", err)
+	}
+
+	mlAuth := integrationsml.NewAdapter(integrationsml.Config{
+		ClientID:     os.Getenv("MPC_PROVIDER_MERCADOLIVRE_CLIENT_ID"),
+		ClientSecret: os.Getenv("MPC_PROVIDER_MERCADOLIVRE_CLIENT_SECRET"),
+		AuthorizeURL: "https://auth.mercadolivre.com.br/authorization",
+		TokenURL:     "https://api.mercadolibre.com/oauth/token",
+	})
+	magaluAuth := integrationsmagalu.NewAdapter(integrationsmagalu.Config{
+		ClientID:     os.Getenv("MPC_PROVIDER_MAGALU_CLIENT_ID"),
+		ClientSecret: os.Getenv("MPC_PROVIDER_MAGALU_CLIENT_SECRET"),
+		AuthorizeURL: "https://auth.magalu.com/oauth/authorize",
+		TokenURL:     "https://auth.magalu.com/oauth/token",
+	})
+	shopeeAuth := integrationsshopee.NewAdapter(integrationsshopee.Config{})
+
+	authFlowSvc := integrationsapp.NewAuthFlowService(integrationsapp.AuthFlowConfig{
+		Installations: installationSvc,
+		Credentials:   credentialSvc,
+		AuthSessions:  authSvc,
+		Encryptor:     encryptionSvc,
+		Adapters: []integrationsapp.MarketplaceAuthAdapter{
+			mlAuth,
+			magaluAuth,
+			shopeeAuth,
+		},
+	})
 
 	integrationstransport.NewHandler(providerSvc, installationSvc).Register(mux)
+	integrationstransport.NewAuthHandler(authFlowSvc).Register(mux)
+
+	go integrationsbg.NewRefreshTicker(installationSvc, authFlowSvc, 5*time.Minute).Start(context.Background())
+	go integrationsbg.NewStateCleanup(installationSvc, time.Hour).Start(context.Background())
 
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
 	marketSvc := marketplacesapp.NewService(marketRepo, cfg.DefaultTenantID)

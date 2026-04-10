@@ -299,6 +299,126 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /integrations/installations/{id}/auth/authorize:
+    post:
+      summary: Start OAuth authorization flow
+      operationId: startIntegrationAuthorization
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Authorization URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizeResponse'
+        "409":
+          description: Invalid installation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /integrations/auth/callback:
+    get:
+      summary: OAuth callback endpoint
+      operationId: handleIntegrationAuthCallback
+      parameters:
+        - name: installation_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirects to frontend connection status page
+  /integrations/installations/{id}/auth/credentials:
+    post:
+      summary: Submit API key credentials
+      operationId: submitIntegrationCredentials
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAPIKeyRequest'
+      responses:
+        "200":
+          description: Credentials accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatusResponse'
+  /integrations/installations/{id}/disconnect:
+    post:
+      summary: Disconnect integration installation
+      operationId: disconnectIntegrationInstallation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Installation disconnected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatusResponse'
+  /integrations/installations/{id}/reauth/authorize:
+    post:
+      summary: Start reauthorization flow
+      operationId: startIntegrationReauthorization
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reauthorization URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizeResponse'
+  /integrations/installations/{id}/auth/status:
+    get:
+      summary: Read integration auth status
+      operationId: getIntegrationAuthStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Installation auth status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatusResponse'
   /marketplaces/definitions:
     get:
       operationId: listMarketplaceDefinitions
@@ -1560,6 +1680,61 @@ components:
           type: string
           enum: [marketplace]
         display_name:
+          type: string
+
+    AuthorizeResponse:
+      type: object
+      required:
+        - installation_id
+        - provider_code
+        - state
+        - auth_url
+        - expires_in
+      properties:
+        installation_id:
+          type: string
+        provider_code:
+          type: string
+        state:
+          type: string
+        auth_url:
+          type: string
+          format: uri
+        expires_in:
+          type: integer
+
+    SubmitAPIKeyRequest:
+      type: object
+      properties:
+        api_key:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        credentials:
+          type: object
+          additionalProperties:
+            type: string
+
+    AuthStatusResponse:
+      type: object
+      required:
+        - installation_id
+        - status
+        - health_status
+      properties:
+        installation_id:
+          type: string
+        status:
+          type: string
+          enum: [draft, pending_connection, connected, degraded, requires_reauth, disconnected, suspended, failed]
+        health_status:
+          type: string
+          enum: [healthy, warning, critical]
+        provider_code:
+          type: string
+        external_account_id:
           type: string
 
     CapabilityProfile:

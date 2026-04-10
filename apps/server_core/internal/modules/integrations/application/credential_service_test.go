@@ -27,6 +27,21 @@ func (s *stubCredentialStore) NextCredentialVersion(_ context.Context, installat
 	return s.version, nil
 }
 
+func (s *stubCredentialStore) GetActiveCredential(_ context.Context, _ string) (domain.Credential, bool, error) {
+	if len(s.saved) == 0 {
+		return domain.Credential{}, false, nil
+	}
+	return s.saved[len(s.saved)-1], true, nil
+}
+
+func (s *stubCredentialStore) DeactivateCredential(_ context.Context, _ string) error {
+	return nil
+}
+
+func (s *stubCredentialStore) DeactivateAllForInstallation(_ context.Context, _ string) error {
+	return nil
+}
+
 type stubAuthSessionStore struct {
 	saved []domain.AuthSession
 }
@@ -36,6 +51,17 @@ func (s *stubAuthSessionStore) UpsertAuthSession(_ context.Context, session doma
 	return nil
 }
 
+func (s *stubAuthSessionStore) GetAuthSession(_ context.Context, _ string) (domain.AuthSession, bool, error) {
+	if len(s.saved) == 0 {
+		return domain.AuthSession{}, false, nil
+	}
+	return s.saved[len(s.saved)-1], true, nil
+}
+
+func (s *stubAuthSessionStore) ListExpiringSessions(_ context.Context, _ time.Duration) ([]domain.AuthSession, error) {
+	return append([]domain.AuthSession(nil), s.saved...), nil
+}
+
 type stubOperationRunStore struct {
 	saved []domain.OperationRun
 }
@@ -43,6 +69,10 @@ type stubOperationRunStore struct {
 func (s *stubOperationRunStore) SaveOperationRun(_ context.Context, run domain.OperationRun) error {
 	s.saved = append(s.saved, run)
 	return nil
+}
+
+func (s *stubOperationRunStore) ListByInstallation(_ context.Context, _ string) ([]domain.OperationRun, error) {
+	return append([]domain.OperationRun(nil), s.saved...), nil
 }
 
 func TestRotateCredentialCreatesNewVersion(t *testing.T) {

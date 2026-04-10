@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"marketplace-central/apps/server_core/internal/modules/integrations/domain"
@@ -31,6 +32,31 @@ func (r *CredentialRepository) NextCredentialVersion(ctx context.Context, instal
 	return nextVersion, err
 }
 
+func (r *CredentialRepository) GetActiveCredential(ctx context.Context, installationID string) (domain.Credential, bool, error) {
+	row := r.pool.QueryRow(ctx, `
+		SELECT
+			credential_id, tenant_id, installation_id, version, secret_type,
+			encrypted_payload, encryption_key_id, is_active, revoked_at,
+			created_at, updated_at
+		FROM integration_credentials
+		WHERE tenant_id = $1
+		  AND installation_id = $2
+		  AND is_active = true
+		  AND revoked_at IS NULL
+		ORDER BY version DESC, credential_id DESC
+		LIMIT 1
+	`, r.tenantID, installationID)
+
+	credential, found, err := scanCredential(row)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return domain.Credential{}, false, nil
+		}
+		return domain.Credential{}, false, err
+	}
+	return credential, found, nil
+}
+
 func (r *CredentialRepository) SaveCredentialVersion(ctx context.Context, credential domain.Credential) error {
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO integration_credentials (
@@ -55,6 +81,31 @@ func (r *CredentialRepository) SaveCredentialVersion(ctx context.Context, creden
 	`, r.tenantID, credential.CredentialID, credential.InstallationID, credential.Version, credential.SecretType,
 		credential.EncryptedPayload, credential.EncryptionKeyID, credential.IsActive, credential.RevokedAt,
 		credential.CreatedAt, credential.UpdatedAt)
+	return err
+}
+
+func (r *CredentialRepository) DeactivateCredential(ctx context.Context, credentialID string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE integration_credentials
+		SET is_active = false,
+		    revoked_at = now(),
+		    updated_at = now()
+		WHERE tenant_id = $1
+		  AND credential_id = $2
+	`, r.tenantID, credentialID)
+	return err
+}
+
+func (r *CredentialRepository) DeactivateAllForInstallation(ctx context.Context, installationID string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE integration_credentials
+		SET is_active = false,
+		    revoked_at = COALESCE(revoked_at, now()),
+		    updated_at = now()
+		WHERE tenant_id = $1
+		  AND installation_id = $2
+		  AND is_active = true
+	`, r.tenantID, installationID)
 	return err
 }
 

@@ -8,4 +8,5 @@ import (
 
 type OperationRunStore interface {
 	SaveOperationRun(ctx context.Context, run domain.OperationRun) error
+	ListByInstallation(ctx context.Context, installationID string) ([]domain.OperationRun, error)
 }

@@ -107,6 +107,29 @@ func (r *InstallationRepository) UpdateInstallationStatus(ctx context.Context, i
 	return err
 }
 
+func (r *InstallationRepository) UpdateActiveCredentialID(ctx context.Context, installationID string, credentialID string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE integration_installations
+		SET active_credential_id = NULLIF($3, ''),
+		    updated_at = now()
+		WHERE tenant_id = $1
+		  AND installation_id = $2
+	`, r.tenantID, installationID, credentialID)
+	return err
+}
+
+func (r *InstallationRepository) SetProviderAccountID(ctx context.Context, installationID, providerAccountID, providerAccountName string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE integration_installations
+		SET external_account_id = $3,
+		    external_account_name = $4,
+		    updated_at = now()
+		WHERE tenant_id = $1
+		  AND installation_id = $2
+	`, r.tenantID, installationID, providerAccountID, providerAccountName)
+	return err
+}
+
 func scanInstallation(scanner interface {
 	Scan(dest ...any) error
 }) (domain.Installation, bool, error) {

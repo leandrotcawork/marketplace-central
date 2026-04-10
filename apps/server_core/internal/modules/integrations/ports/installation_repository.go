@@ -11,4 +11,6 @@ type InstallationRepository interface {
 	GetInstallation(ctx context.Context, installationID string) (domain.Installation, bool, error)
 	ListInstallations(ctx context.Context) ([]domain.Installation, error)
 	UpdateInstallationStatus(ctx context.Context, installationID string, status domain.InstallationStatus, health domain.HealthStatus) error
+	UpdateActiveCredentialID(ctx context.Context, installationID string, credentialID string) error
+	SetProviderAccountID(ctx context.Context, installationID, providerAccountID, providerAccountName string) error
 }

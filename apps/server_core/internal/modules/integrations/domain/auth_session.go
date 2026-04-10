@@ -10,6 +10,7 @@ type AuthSession struct {
 	ProviderAccountID    string     `json:"provider_account_id"`
 	AccessTokenExpiresAt *time.Time `json:"access_token_expires_at,omitempty"`
 	LastVerifiedAt       *time.Time `json:"last_verified_at,omitempty"`
+	NextRetryAt          *time.Time `json:"next_retry_at,omitempty"`
 	RefreshFailureCode   string     `json:"refresh_failure_code"`
 	ConsecutiveFailures  int        `json:"consecutive_failures"`
 	CreatedAt            time.Time  `json:"created_at"`
