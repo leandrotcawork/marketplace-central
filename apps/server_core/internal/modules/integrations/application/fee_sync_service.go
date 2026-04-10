@@ -16,6 +16,7 @@ const (
 	feeSyncOperationType             = "pricing_fee_sync"
 	feeSyncUnsupportedErrorCode      = "INTEGRATIONS_FEE_SYNC_UNSUPPORTED"
 	feeSyncRetryCooldownErrorCode    = "INTEGRATIONS_FEE_SYNC_RETRY_COOLDOWN"
+	feeSyncRetryCooldown             = time.Hour
 	feeSyncInvalidConfigErrorCode    = "INTEGRATIONS_FEE_SYNC_INVALID_CONFIG"
 	feeSyncRunIDGenerationErrorCode  = "INTEGRATIONS_FEE_SYNC_RUN_ID_GENERATION_FAILED"
 	feeSyncOperationInvalidErrorCode = "INTEGRATIONS_OPERATION_INVALID"
@@ -130,6 +131,12 @@ func (s *FeeSyncService) StartSync(ctx context.Context, input StartFeeSyncInput)
 	}
 	if !found {
 		return FeeSyncAccepted{}, domain.ErrInstallationNotFound
+	}
+	if inst.Status == domain.InstallationStatusRequiresReauth {
+		return FeeSyncAccepted{}, domain.ErrReauthCooldownActive
+	}
+	if inst.Status != domain.InstallationStatusConnected && inst.Status != domain.InstallationStatusDegraded {
+		return FeeSyncAccepted{}, domain.ErrInstallationWrongStatus
 	}
 
 	provider, found, err := s.providers.GetProviderDefinition(ctx, inst.ProviderCode)
@@ -263,7 +270,6 @@ func (s *FeeSyncService) checkRetryCooldown(ctx context.Context, installationID 
 	}
 
 	now := s.clock.Now().UTC()
-	cooldown := domain.DefaultRefreshPolicy().CooldownAfterTerminal
 	for _, run := range runs {
 		if strings.TrimSpace(run.OperationType) != feeSyncOperationType {
 			continue
@@ -272,7 +278,7 @@ func (s *FeeSyncService) checkRetryCooldown(ctx context.Context, installationID 
 		case domain.OperationRunStatusQueued, domain.OperationRunStatusRunning:
 			return errors.New(feeSyncRetryCooldownErrorCode)
 		case domain.OperationRunStatusSucceeded, domain.OperationRunStatusFailed, domain.OperationRunStatusCancelled:
-			if recentOperationRun(run, now, cooldown) {
+			if recentOperationRun(run, now, feeSyncRetryCooldown) {
 				return errors.New(feeSyncRetryCooldownErrorCode)
 			}
 		}

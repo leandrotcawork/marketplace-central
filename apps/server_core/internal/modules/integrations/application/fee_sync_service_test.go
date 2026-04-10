@@ -232,6 +232,48 @@ func TestStartSyncRejectsMissingFeeSyncCapability(t *testing.T) {
 	}
 }
 
+func TestStartSyncRejectsRequiresReauthInstallationStatus(t *testing.T) {
+	t.Parallel()
+
+	h := newFeeSyncHarness(t)
+	h.installations.items["inst_001"] = domain.Installation{
+		InstallationID: "inst_001",
+		ProviderCode:   "mercado_livre",
+		Status:         domain.InstallationStatusRequiresReauth,
+		HealthStatus:   domain.HealthStatusWarning,
+	}
+
+	_, err := h.service.StartSync(context.Background(), StartFeeSyncInput{
+		InstallationID: "inst_001",
+		ActorType:      "user",
+		ActorID:        "user_123",
+	})
+	if !errors.Is(err, domain.ErrReauthCooldownActive) {
+		t.Fatalf("error = %v, want %v", err, domain.ErrReauthCooldownActive)
+	}
+}
+
+func TestStartSyncRejectsWrongInstallationStatus(t *testing.T) {
+	t.Parallel()
+
+	h := newFeeSyncHarness(t)
+	h.installations.items["inst_001"] = domain.Installation{
+		InstallationID: "inst_001",
+		ProviderCode:   "mercado_livre",
+		Status:         domain.InstallationStatusSuspended,
+		HealthStatus:   domain.HealthStatusWarning,
+	}
+
+	_, err := h.service.StartSync(context.Background(), StartFeeSyncInput{
+		InstallationID: "inst_001",
+		ActorType:      "user",
+		ActorID:        "user_123",
+	})
+	if !errors.Is(err, domain.ErrInstallationWrongStatus) {
+		t.Fatalf("error = %v, want %v", err, domain.ErrInstallationWrongStatus)
+	}
+}
+
 func TestStartSyncRejectsRetryCooldownFromOperationHistory(t *testing.T) {
 	t.Parallel()
 
