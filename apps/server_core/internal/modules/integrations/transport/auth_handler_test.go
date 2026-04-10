@@ -17,6 +17,9 @@ type stubAuthFlow struct {
 	callbackInput application.HandleCallbackInput
 	submitInput   application.SubmitAPIKeyInput
 	statusInput   application.GetAuthStatusInput
+	feeSyncInput  application.StartFeeSyncInput
+	feeSyncAccept application.FeeSyncAccepted
+	operations    []domain.OperationRun
 }
 
 func (s *stubAuthFlow) StartAuthorize(ctx context.Context, input application.StartAuthorizeInput) (application.AuthorizeStart, error) {
@@ -49,6 +52,35 @@ func (s *stubAuthFlow) StartReauth(ctx context.Context, input application.StartR
 func (s *stubAuthFlow) GetAuthStatus(ctx context.Context, input application.GetAuthStatusInput) (application.AuthStatus, error) {
 	s.statusInput = input
 	return application.AuthStatus{InstallationID: input.InstallationID, Status: domain.InstallationStatusConnected}, nil
+}
+
+func (s *stubAuthFlow) StartSync(ctx context.Context, input application.StartFeeSyncInput) (application.FeeSyncAccepted, error) {
+	s.feeSyncInput = input
+	if s.feeSyncAccept.OperationRunID == "" {
+		s.feeSyncAccept = application.FeeSyncAccepted{
+			InstallationID: input.InstallationID,
+			OperationRunID: "op_001",
+			Status:         domain.OperationRunStatusQueued,
+		}
+	}
+	return s.feeSyncAccept, nil
+}
+
+func (s *stubAuthFlow) ListOperationRuns(ctx context.Context, installationID string) ([]domain.OperationRun, error) {
+	if len(s.operations) == 0 {
+		return []domain.OperationRun{
+			{
+				OperationRunID: "op_001",
+				InstallationID: installationID,
+				OperationType:  "pricing_fee_sync",
+				Status:         domain.OperationRunStatusQueued,
+				ResultCode:     "INTEGRATIONS_FEE_SYNC_QUEUED",
+				AttemptCount:   1,
+				ActorType:      "user",
+			},
+		}, nil
+	}
+	return s.operations, nil
 }
 
 func TestAuthHandlerStartAuthorizeDelegatesToService(t *testing.T) {
@@ -130,5 +162,53 @@ func TestAuthHandlerSubmitAPIKeyDelegatesToService(t *testing.T) {
 	}
 	if flow.submitInput.InstallationID != "inst-shopee" || flow.submitInput.APIKey != "secret" || flow.submitInput.Metadata["shop_id"] != "shop-1" {
 		t.Fatalf("submit input = %#v, want api key payload", flow.submitInput)
+	}
+}
+
+func TestHandleInstallationFeeSyncReturnsAccepted(t *testing.T) {
+	t.Parallel()
+
+	flow := &stubAuthFlow{
+		feeSyncAccept: application.FeeSyncAccepted{
+			InstallationID: "inst_001",
+			OperationRunID: "op_001",
+			Status:         domain.OperationRunStatusQueued,
+		},
+	}
+	h := NewAuthHandler(flow)
+	req := httptest.NewRequest(http.MethodPost, "/integrations/installations/inst_001/fee-sync", bytes.NewReader([]byte(`{}`)))
+	rr := httptest.NewRecorder()
+
+	h.handleInstallationAuth(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if flow.feeSyncInput.InstallationID != "inst_001" || flow.feeSyncInput.ActorType != "user" {
+		t.Fatalf("fee sync input = %#v", flow.feeSyncInput)
+	}
+}
+
+func TestHandleInstallationOperationsReturnsItems(t *testing.T) {
+	t.Parallel()
+
+	flow := &stubAuthFlow{}
+	h := NewAuthHandler(flow)
+	req := httptest.NewRequest(http.MethodGet, "/integrations/installations/inst_001/operations", nil)
+	rr := httptest.NewRecorder()
+
+	h.handleInstallationAuth(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Items []domain.OperationRun `json:"items"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode operations response: %v", err)
+	}
+	if len(payload.Items) != 1 || payload.Items[0].InstallationID != "inst_001" {
+		t.Fatalf("items=%#v", payload.Items)
 	}
 }

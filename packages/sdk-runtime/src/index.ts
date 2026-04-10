@@ -137,6 +137,28 @@ export interface IntegrationInstallation {
   updated_at: string;
 }
 
+export interface IntegrationOperationRun {
+  operation_run_id: string;
+  installation_id: string;
+  operation_type: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  result_code: string;
+  failure_code: string;
+  attempt_count: number;
+  actor_type: string;
+  actor_id: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntegrationFeeSyncAccepted {
+  installation_id: string;
+  operation_run_id: string;
+  status: "queued";
+}
+
 export interface CreateIntegrationInstallationRequest {
   installation_id: string;
   provider_code: string;
@@ -377,6 +399,10 @@ export function createMarketplaceCentralClient(options: {
     listMarketplaceDefinitions: () => getJson<ListResponse<MarketplaceDefinition>>("/marketplaces/definitions"),
     listIntegrationProviders: () => getJson<ListResponse<IntegrationProviderDefinition>>("/integrations/providers"),
     listIntegrationInstallations: () => getJson<ListResponse<IntegrationInstallation>>("/integrations/installations"),
+    listIntegrationOperationRuns: (installationId: string) =>
+      getJson<ListResponse<IntegrationOperationRun>>(`/integrations/installations/${installationId}/operations`),
+    startIntegrationFeeSync: (installationId: string) =>
+      postJson<IntegrationFeeSyncAccepted>(`/integrations/installations/${installationId}/fee-sync`, {}),
     listMarketplaceFeeSchedules: (marketplaceCode: string) =>
       getJson<ListResponse<MarketplaceFeeSchedule>>(`/marketplaces/fee-schedules?marketplace_code=${encodeURIComponent(marketplaceCode)}`),
     listPricingSimulations: () => getJson<ListResponse<PricingSimulation>>("/pricing/simulations"),

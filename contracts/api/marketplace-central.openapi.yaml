@@ -414,6 +414,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthStatusResponse'
+  /integrations/installations/{id}/fee-sync:
+    post:
+      summary: Start installation fee sync
+      operationId: startIntegrationFeeSync
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Fee sync accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationFeeSyncAccepted'
+        "400":
+          description: Invalid request or unsupported installation state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /integrations/installations/{id}/operations:
+    get:
+      summary: List installation operation runs
+      operationId: listIntegrationOperationRuns
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Installation operation runs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListIntegrationOperationRunsResponse'
   /marketplaces/definitions:
     get:
       operationId: listMarketplaceDefinitions
@@ -1731,6 +1771,78 @@ components:
           type: string
         external_account_id:
           type: string
+
+    IntegrationFeeSyncAccepted:
+      type: object
+      required:
+        - installation_id
+        - operation_run_id
+        - status
+      properties:
+        installation_id:
+          type: string
+        operation_run_id:
+          type: string
+        status:
+          type: string
+          enum: [queued]
+
+    IntegrationOperationRun:
+      type: object
+      required:
+        - operation_run_id
+        - installation_id
+        - operation_type
+        - status
+        - result_code
+        - failure_code
+        - attempt_count
+        - actor_type
+        - actor_id
+        - created_at
+        - updated_at
+      properties:
+        operation_run_id:
+          type: string
+        installation_id:
+          type: string
+        operation_type:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed, cancelled]
+        result_code:
+          type: string
+        failure_code:
+          type: string
+        attempt_count:
+          type: integer
+        actor_type:
+          type: string
+        actor_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListIntegrationOperationRunsResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationOperationRun'
 
     CapabilityProfile:
       type: object

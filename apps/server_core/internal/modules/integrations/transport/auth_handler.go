@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"marketplace-central/apps/server_core/internal/modules/integrations/application"
+	"marketplace-central/apps/server_core/internal/modules/integrations/domain"
 	"marketplace-central/apps/server_core/internal/platform/httpx"
 )
 
@@ -20,6 +21,14 @@ type AuthFlowReader interface {
 	Disconnect(ctx context.Context, input application.DisconnectInput) (application.AuthStatus, error)
 	StartReauth(ctx context.Context, input application.StartReauthInput) (application.AuthorizeStart, error)
 	GetAuthStatus(ctx context.Context, input application.GetAuthStatusInput) (application.AuthStatus, error)
+}
+
+type feeSyncStarter interface {
+	StartSync(ctx context.Context, input application.StartFeeSyncInput) (application.FeeSyncAccepted, error)
+}
+
+type operationRunLister interface {
+	ListOperationRuns(ctx context.Context, installationID string) ([]domain.OperationRun, error)
 }
 
 type AuthHandler struct {
@@ -70,7 +79,7 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 
 	path := strings.TrimPrefix(r.URL.Path, "/integrations/installations/")
 	segments := strings.Split(path, "/")
-	if len(segments) < 3 {
+	if len(segments) < 2 {
 		http.NotFound(w, r)
 		return
 	}
@@ -189,6 +198,47 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 		}
 		slog.Info("integrations.auth.status", "action", "get_status", "result", "200", "duration_ms", time.Since(start).Milliseconds())
 		httpx.WriteJSON(w, http.StatusOK, result)
+	case "fee-sync":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			writeIntegrationError(w, http.StatusMethodNotAllowed, "INTEGRATIONS_AUTH_METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		starter, ok := h.flow.(feeSyncStarter)
+		if !ok {
+			writeIntegrationError(w, http.StatusBadRequest, "INTEGRATIONS_FEE_SYNC_UNSUPPORTED", "INTEGRATIONS_FEE_SYNC_UNSUPPORTED")
+			return
+		}
+		result, err := starter.StartSync(r.Context(), application.StartFeeSyncInput{
+			InstallationID: installationID,
+			ActorType:      "user",
+		})
+		if err != nil {
+			status, code, message := mapIntegrationError(err)
+			writeIntegrationError(w, status, code, message)
+			return
+		}
+		slog.Info("integrations.fee_sync.start", "action", "start_sync", "result", "202", "duration_ms", time.Since(start).Milliseconds())
+		httpx.WriteJSON(w, http.StatusAccepted, result)
+	case "operations":
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			writeIntegrationError(w, http.StatusMethodNotAllowed, "INTEGRATIONS_AUTH_METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		lister, ok := h.flow.(operationRunLister)
+		if !ok {
+			writeIntegrationError(w, http.StatusBadRequest, "INTEGRATIONS_OPERATION_INVALID", "INTEGRATIONS_OPERATION_INVALID")
+			return
+		}
+		items, err := lister.ListOperationRuns(r.Context(), installationID)
+		if err != nil {
+			status, code, message := mapIntegrationError(err)
+			writeIntegrationError(w, status, code, message)
+			return
+		}
+		slog.Info("integrations.operations.list", "action", "list_operation_runs", "result", "200", "duration_ms", time.Since(start).Milliseconds())
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
 	default:
 		http.NotFound(w, r)
 	}
