@@ -160,3 +160,54 @@ func TestGetProviderDefinitionReturnsNotFoundForMissingRow(t *testing.T) {
 		t.Fatalf("unexpected provider definition: %#v", got)
 	}
 }
+
+func TestGetProviderDefinitionReturnsErrorForMalformedJSON(t *testing.T) {
+	t.Parallel()
+
+	db := &fakeProviderDefinitionDB{
+		row: fakeProviderDefinitionRow{
+			values: []any{
+				"mercado_livre",
+				"system",
+				domain.IntegrationFamilyMarketplace,
+				"Mercado Livre",
+				domain.AuthStrategyOAuth2,
+				domain.InstallModeInteractive,
+				[]byte(`{"region":`),
+				[]byte(`["messages"`),
+				true,
+				time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC),
+				time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	repo := &ProviderDefinitionRepository{db: db}
+
+	_, found, err := repo.GetProviderDefinition(context.Background(), "mercado_livre")
+	if err == nil {
+		t.Fatal("GetProviderDefinition returned nil error")
+	}
+	if found {
+		t.Fatal("GetProviderDefinition returned found=true")
+	}
+}
+
+func TestGetProviderDefinitionReturnsScanError(t *testing.T) {
+	t.Parallel()
+
+	db := &fakeProviderDefinitionDB{
+		row: fakeProviderDefinitionRow{err: errors.New("scan failed")},
+	}
+	repo := &ProviderDefinitionRepository{db: db}
+
+	_, found, err := repo.GetProviderDefinition(context.Background(), "mercado_livre")
+	if err == nil {
+		t.Fatal("GetProviderDefinition returned nil error")
+	}
+	if found {
+		t.Fatal("GetProviderDefinition returned found=true")
+	}
+	if got, want := err.Error(), "scan failed"; got != want {
+		t.Fatalf("unexpected error: got %q want %q", got, want)
+	}
+}
