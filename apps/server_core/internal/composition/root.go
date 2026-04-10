@@ -87,11 +87,14 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 
 	_ = capabilitySvc
 	_ = operationSvc
-	_ = oauthStateRepo
 
 	encryptionSvc, err := integrationscrypto.NewLocalKeyService(cfg.EncryptionKey, "local-key-v1")
 	if err != nil {
 		log.Fatalf("encryption service: %v", err)
+	}
+	oauthStateCodec, err := integrationsapp.NewHMACOAuthStateCodec(cfg.EncryptionKey)
+	if err != nil {
+		log.Fatalf("oauth state codec: %v", err)
 	}
 
 	mlAuth := integrationsml.NewAdapter(integrationsml.Config{
@@ -108,17 +111,23 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	})
 	shopeeAuth := integrationsshopee.NewAdapter(integrationsshopee.Config{})
 
-	authFlowSvc := integrationsapp.NewAuthFlowService(integrationsapp.AuthFlowConfig{
-		Installations: installationSvc,
-		Credentials:   credentialSvc,
-		AuthSessions:  authSvc,
-		Encryptor:     encryptionSvc,
+	authFlowSvc, err := integrationsapp.NewAuthFlowService(integrationsapp.AuthFlowConfig{
+		TenantID:        cfg.DefaultTenantID,
+		Installations:   installationSvc,
+		Credentials:     credentialSvc,
+		AuthSessions:    authSvc,
+		OAuthStates:     oauthStateRepo,
+		OAuthStateCodec: oauthStateCodec,
+		Encryptor:       encryptionSvc,
 		Adapters: []integrationsapp.MarketplaceAuthAdapter{
 			mlAuth,
 			magaluAuth,
 			shopeeAuth,
 		},
 	})
+	if err != nil {
+		log.Fatalf("auth flow service: %v", err)
+	}
 
 	integrationstransport.NewHandler(providerSvc, installationSvc).Register(mux)
 	integrationstransport.NewAuthHandler(authFlowSvc).Register(mux)

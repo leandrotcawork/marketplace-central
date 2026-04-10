@@ -111,9 +111,11 @@ func TestHandleCallbackRejectsConsumedNonce(t *testing.T) {
 	consumedAt := now.Add(-time.Minute)
 	store := &securityOAuthStateStore{
 		state: domain.OAuthState{
+			TenantID:       "tenant_default",
 			ID:             "oauth-state-1",
 			InstallationID: "inst-ml",
 			Nonce:          "nonce-1",
+			HMACSignature:  "signed_state",
 			ExpiresAt:      now.Add(time.Minute),
 			ConsumedAt:     &consumedAt,
 		},
@@ -137,9 +139,11 @@ func TestHandleCallbackRejectsExpiredNonce(t *testing.T) {
 	now := time.Unix(1000, 0).UTC()
 	store := &securityOAuthStateStore{
 		state: domain.OAuthState{
+			TenantID:       "tenant_default",
 			ID:             "oauth-state-1",
 			InstallationID: "inst-ml",
 			Nonce:          "nonce-1",
+			HMACSignature:  "signed_state",
 			ExpiresAt:      now.Add(-time.Minute),
 		},
 		found: true,
@@ -180,7 +184,8 @@ func TestStartAuthorizeHandleCallbackAcceptsPersistedSignedState(t *testing.T) {
 			ProviderAccountID: "seller-1",
 		},
 	}
-	svc := NewAuthFlowService(AuthFlowConfig{
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:        "tenant_default",
 		Installations:   installations,
 		Credentials:     &flowCredentialRotator{},
 		AuthSessions:    authSessions,
@@ -206,6 +211,9 @@ func TestStartAuthorizeHandleCallbackAcceptsPersistedSignedState(t *testing.T) {
 	if saved.Nonce == "" || saved.CodeVerifier == "" || saved.HMACSignature == "" {
 		t.Fatalf("saved OAuth state = %#v, want nonce, code verifier, and signature", saved)
 	}
+	if saved.TenantID != "tenant_default" {
+		t.Fatalf("saved OAuth state tenant = %q, want tenant_default", saved.TenantID)
+	}
 	if adapter.startInput.State != start.State {
 		t.Fatalf("adapter state = %q, want returned state %q", adapter.startInput.State, start.State)
 	}
@@ -226,15 +234,98 @@ func TestStartAuthorizeHandleCallbackAcceptsPersistedSignedState(t *testing.T) {
 	}
 }
 
+func TestHandleCallbackRejectsSignedStateStringThatDoesNotMatchPersistedState(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1000, 0).UTC()
+	store := &securityOAuthStateStore{
+		state: domain.OAuthState{
+			TenantID:       "tenant_default",
+			ID:             "oauth-state-1",
+			InstallationID: "inst-ml",
+			Nonce:          "nonce-1",
+			CodeVerifier:   "verifier-1",
+			HMACSignature:  "signed_state_original",
+			ExpiresAt:      now.Add(time.Minute),
+		},
+		found:         true,
+		consumeResult: true,
+	}
+	svc := newAuthFlowServiceForSecurityTest(t, securityStateCodec{
+		payloadsByState: map[string]OAuthStatePayload{
+			"signed_state_tampered": {
+				TenantID:       "tenant_default",
+				Nonce:          "nonce-1",
+				InstallationID: "inst-ml",
+			},
+		},
+	}, store, fixedAuthFlowClock{now: now})
+
+	_, err := svc.HandleCallback(context.Background(), HandleCallbackInput{
+		InstallationID: "inst-ml",
+		Code:           "code-1",
+		State:          "signed_state_tampered",
+	})
+
+	if !errors.Is(err, domain.ErrAuthStateInvalid) {
+		t.Fatalf("expected ErrAuthStateInvalid, got %v", err)
+	}
+	if len(store.consumeIDs) != 0 {
+		t.Fatalf("consumed state IDs = %#v, want none for state string mismatch", store.consumeIDs)
+	}
+}
+
+func TestHandleCallbackRejectsTenantMismatchInSignedPayload(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1000, 0).UTC()
+	store := &securityOAuthStateStore{
+		state: domain.OAuthState{
+			TenantID:       "tenant_default",
+			ID:             "oauth-state-1",
+			InstallationID: "inst-ml",
+			Nonce:          "nonce-1",
+			CodeVerifier:   "verifier-1",
+			HMACSignature:  "signed_state",
+			ExpiresAt:      now.Add(time.Minute),
+		},
+		found:         true,
+		consumeResult: true,
+	}
+	svc := newAuthFlowServiceForSecurityTest(t, securityStateCodec{
+		payload: OAuthStatePayload{
+			TenantID:       "tenant_other",
+			Nonce:          "nonce-1",
+			InstallationID: "inst-ml",
+		},
+	}, store, fixedAuthFlowClock{now: now})
+
+	_, err := svc.HandleCallback(context.Background(), HandleCallbackInput{
+		InstallationID: "inst-ml",
+		Code:           "code-1",
+		State:          "signed_state",
+	})
+
+	if !errors.Is(err, domain.ErrAuthStateInvalid) {
+		t.Fatalf("expected ErrAuthStateInvalid, got %v", err)
+	}
+	if len(store.consumeIDs) != 0 {
+		t.Fatalf("consumed state IDs = %#v, want none for tenant mismatch", store.consumeIDs)
+	}
+}
+
 func TestHandleCallbackRejectsReplayRaceWhenConsumeNonceReturnsFalse(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(1000, 0).UTC()
 	store := &securityOAuthStateStore{
 		state: domain.OAuthState{
+			TenantID:       "tenant_default",
 			ID:             "oauth-state-1",
 			InstallationID: "inst-ml",
 			Nonce:          "nonce-1",
+			CodeVerifier:   "verifier-1",
+			HMACSignature:  "signed_state",
 			ExpiresAt:      now.Add(time.Minute),
 		},
 		found:         true,
@@ -255,7 +346,8 @@ func TestHandleCallbackRejectsReplayRaceWhenConsumeNonceReturnsFalse(t *testing.
 func newAuthFlowServiceForSecurityTest(t *testing.T, codec securityStateCodec, store *securityOAuthStateStore, clock fixedAuthFlowClock) *AuthFlowService {
 	t.Helper()
 
-	return NewAuthFlowService(AuthFlowConfig{
+	return mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:        "tenant_default",
 		OAuthStateCodec: codec,
 		OAuthStates:     store,
 		Clock:           clock,
@@ -270,6 +362,7 @@ func newAuthFlowServiceForSecurityTest(t *testing.T, codec securityStateCodec, s
 func validSecurityStateCodec() securityStateCodec {
 	return securityStateCodec{
 		payload: OAuthStatePayload{
+			TenantID:       "tenant_default",
 			Nonce:          "nonce-1",
 			InstallationID: "inst-ml",
 		},

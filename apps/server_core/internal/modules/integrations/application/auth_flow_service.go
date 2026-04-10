@@ -2,11 +2,15 @@ package application
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
-	"encoding/hex"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	"marketplace-central/apps/server_core/internal/modules/integrations/domain"
@@ -70,17 +74,20 @@ type StartAuthorizeAdapterInput struct {
 	State          string
 	RedirectURI    string
 	Scopes         []string
+	CodeChallenge  string
 }
 
 type HandleCallbackAdapterInput struct {
 	InstallationID string
 	Code           string
 	RedirectURI    string
+	CodeVerifier   string
 }
 
 type OAuthStatePayload struct {
-	Nonce          string
-	InstallationID string
+	TenantID       string `json:"tenant_id"`
+	Nonce          string `json:"nonce"`
+	InstallationID string `json:"installation_id"`
 }
 
 type SubmitAPIKeyAdapterInput struct {
@@ -153,6 +160,7 @@ func (systemAuthFlowClock) Now() time.Time {
 }
 
 type AuthFlowConfig struct {
+	TenantID        string
 	Installations   authFlowInstallationStore
 	Credentials     authFlowCredentialRotator
 	AuthSessions    authFlowSessionWriter
@@ -160,10 +168,12 @@ type AuthFlowConfig struct {
 	OAuthStateCodec authFlowOAuthStateCodec
 	Encryptor       authFlowEncryptor
 	Clock           authFlowClock
+	RandomReader    io.Reader
 	Adapters        []MarketplaceAuthAdapter
 }
 
 type AuthFlowService struct {
+	tenantID        string
 	installations   authFlowInstallationStore
 	credentials     authFlowCredentialRotator
 	authSessions    authFlowSessionWriter
@@ -171,20 +181,57 @@ type AuthFlowService struct {
 	oauthStateCodec authFlowOAuthStateCodec
 	encryptor       authFlowEncryptor
 	clock           authFlowClock
+	randomReader    io.Reader
 	adapters        map[string]MarketplaceAuthAdapter
 }
 
-func NewAuthFlowService(cfg AuthFlowConfig) *AuthFlowService {
+func NewAuthFlowService(cfg AuthFlowConfig) (*AuthFlowService, error) {
+	if cfg.Installations == nil {
+		return nil, fmt.Errorf("%w: installations", errAuthFlowInvalidConfig)
+	}
+	if cfg.Credentials == nil {
+		return nil, fmt.Errorf("%w: credentials", errAuthFlowInvalidConfig)
+	}
+	if cfg.AuthSessions == nil {
+		return nil, fmt.Errorf("%w: auth sessions", errAuthFlowInvalidConfig)
+	}
+	if cfg.OAuthStates == nil {
+		return nil, fmt.Errorf("%w: oauth states", errAuthFlowInvalidConfig)
+	}
+	if cfg.OAuthStateCodec == nil {
+		return nil, fmt.Errorf("%w: oauth state codec", errAuthFlowInvalidConfig)
+	}
+	if cfg.Encryptor == nil {
+		return nil, fmt.Errorf("%w: encryptor", errAuthFlowInvalidConfig)
+	}
+
 	byProvider := make(map[string]MarketplaceAuthAdapter, len(cfg.Adapters))
 	for _, adapter := range cfg.Adapters {
-		byProvider[adapter.ProviderCode()] = adapter
+		if adapter == nil {
+			return nil, fmt.Errorf("%w: auth adapter", errAuthFlowInvalidConfig)
+		}
+		providerCode := strings.TrimSpace(adapter.ProviderCode())
+		if providerCode == "" {
+			return nil, fmt.Errorf("%w: auth adapter provider code", errAuthFlowInvalidConfig)
+		}
+		byProvider[providerCode] = adapter
+	}
+
+	tenantID := strings.TrimSpace(cfg.TenantID)
+	if tenantID == "" {
+		tenantID = "tenant_default"
 	}
 	clock := cfg.Clock
 	if clock == nil {
 		clock = systemAuthFlowClock{}
 	}
+	randomReader := cfg.RandomReader
+	if randomReader == nil {
+		randomReader = rand.Reader
+	}
 
 	return &AuthFlowService{
+		tenantID:        tenantID,
 		installations:   cfg.Installations,
 		credentials:     cfg.Credentials,
 		authSessions:    cfg.AuthSessions,
@@ -192,8 +239,9 @@ func NewAuthFlowService(cfg AuthFlowConfig) *AuthFlowService {
 		oauthStateCodec: cfg.OAuthStateCodec,
 		encryptor:       cfg.Encryptor,
 		clock:           clock,
+		randomReader:    randomReader,
 		adapters:        byProvider,
-	}
+	}, nil
 }
 
 func (s *AuthFlowService) StartAuthorize(ctx context.Context, input StartAuthorizeInput) (AuthorizeStart, error) {
@@ -201,12 +249,17 @@ func (s *AuthFlowService) StartAuthorize(ctx context.Context, input StartAuthori
 	if err != nil {
 		return AuthorizeStart{}, err
 	}
-	if s.oauthStateCodec == nil || s.oauthStates == nil {
-		return AuthorizeStart{}, domain.ErrAuthStateInvalid
-	}
 
-	nonce := randomState()
+	nonce, err := randomOAuthToken(s.randomReader)
+	if err != nil {
+		return AuthorizeStart{}, fmt.Errorf("%w: nonce entropy: %v", domain.ErrAuthStateInvalid, err)
+	}
+	codeVerifier, err := randomOAuthToken(s.randomReader)
+	if err != nil {
+		return AuthorizeStart{}, fmt.Errorf("%w: verifier entropy: %v", domain.ErrAuthStateInvalid, err)
+	}
 	statePayload := OAuthStatePayload{
+		TenantID:       s.tenantID,
 		Nonce:          nonce,
 		InstallationID: inst.InstallationID,
 	}
@@ -218,9 +271,10 @@ func (s *AuthFlowService) StartAuthorize(ctx context.Context, input StartAuthori
 	now := s.clock.Now().UTC()
 	if err := s.oauthStates.Save(ctx, domain.OAuthState{
 		ID:             fmt.Sprintf("oauth_state_%s", nonce),
+		TenantID:       s.tenantID,
 		InstallationID: inst.InstallationID,
 		Nonce:          nonce,
-		CodeVerifier:   randomState(),
+		CodeVerifier:   codeVerifier,
 		HMACSignature:  state,
 		ExpiresAt:      now.Add(10 * time.Minute),
 		CreatedAt:      now,
@@ -233,6 +287,7 @@ func (s *AuthFlowService) StartAuthorize(ctx context.Context, input StartAuthori
 		State:          state,
 		RedirectURI:    input.RedirectURI,
 		Scopes:         input.Scopes,
+		CodeChallenge:  pkceChallenge(codeVerifier),
 	})
 	if err != nil {
 		return AuthorizeStart{}, err
@@ -252,7 +307,7 @@ func (s *AuthFlowService) StartAuthorize(ctx context.Context, input StartAuthori
 }
 
 func (s *AuthFlowService) HandleCallback(ctx context.Context, input HandleCallbackInput) (AuthStatus, error) {
-	statePayload, err := s.verifyAndConsumeCallbackState(ctx, input.State, input.InstallationID)
+	statePayload, codeVerifier, err := s.verifyAndConsumeCallbackState(ctx, input.State, input.InstallationID)
 	if err != nil {
 		return AuthStatus{}, err
 	}
@@ -266,6 +321,7 @@ func (s *AuthFlowService) HandleCallback(ctx context.Context, input HandleCallba
 		InstallationID: statePayload.InstallationID,
 		Code:           input.Code,
 		RedirectURI:    input.RedirectURI,
+		CodeVerifier:   codeVerifier,
 	})
 	if err != nil {
 		return AuthStatus{}, err
@@ -416,48 +472,56 @@ func (s *AuthFlowService) loadInstallationWithAdapter(ctx context.Context, insta
 	return inst, adapter, nil
 }
 
-func (s *AuthFlowService) verifyAndConsumeCallbackState(ctx context.Context, state string, expectedInstallationID string) (OAuthStatePayload, error) {
-	if s.oauthStateCodec == nil || s.oauthStates == nil {
-		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
-	}
-
+func (s *AuthFlowService) verifyAndConsumeCallbackState(ctx context.Context, state string, expectedInstallationID string) (OAuthStatePayload, string, error) {
 	payload, err := s.oauthStateCodec.DecodeAndVerify(state)
 	if err != nil {
-		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
 	}
-	if payload.Nonce == "" || payload.InstallationID == "" {
-		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	if payload.TenantID == "" || payload.Nonce == "" || payload.InstallationID == "" {
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
+	}
+	if payload.TenantID != s.tenantID {
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
 	}
 	if expectedInstallationID != "" && expectedInstallationID != payload.InstallationID {
-		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
 	}
 
 	stored, found, err := s.oauthStates.GetByNonce(ctx, payload.Nonce)
 	if err != nil {
-		return OAuthStatePayload{}, err
+		return OAuthStatePayload{}, "", err
 	}
 	if !found {
-		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
 	}
 	if stored.IsExpired(s.clock.Now().UTC()) {
-		return OAuthStatePayload{}, domain.ErrAuthStateExpired
+		return OAuthStatePayload{}, "", domain.ErrAuthStateExpired
 	}
 	if stored.IsConsumed() {
-		return OAuthStatePayload{}, domain.ErrAuthStateConsumed
+		return OAuthStatePayload{}, "", domain.ErrAuthStateConsumed
 	}
 	if stored.Nonce != payload.Nonce || stored.InstallationID != payload.InstallationID {
-		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
+	}
+	if stored.TenantID != "" && stored.TenantID != payload.TenantID {
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
+	}
+	if stored.HMACSignature != state {
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
+	}
+	if stored.CodeVerifier == "" {
+		return OAuthStatePayload{}, "", domain.ErrAuthStateInvalid
 	}
 
 	consumed, err := s.oauthStates.ConsumeNonce(ctx, stored.ID)
 	if err != nil {
-		return OAuthStatePayload{}, err
+		return OAuthStatePayload{}, "", err
 	}
 	if !consumed {
-		return OAuthStatePayload{}, domain.ErrAuthStateConsumed
+		return OAuthStatePayload{}, "", domain.ErrAuthStateConsumed
 	}
 
-	return payload, nil
+	return payload, stored.CodeVerifier, nil
 }
 
 func (s *AuthFlowService) saveCredential(ctx context.Context, installationID string, payload CredentialPayload) error {
@@ -469,6 +533,9 @@ func (s *AuthFlowService) saveCredential(ctx context.Context, installationID str
 		"provider_account_id": payload.ProviderAccountID,
 	}
 	for k, v := range payload.Extra {
+		if _, reserved := reservedCredentialPayloadKeys[k]; reserved {
+			continue
+		}
 		secret[k] = v
 	}
 
@@ -487,12 +554,17 @@ func (s *AuthFlowService) saveCredential(ctx context.Context, installationID str
 	return err
 }
 
-func randomState() string {
-	var buf [16]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return fmt.Sprintf("state_%d", time.Now().UTC().UnixNano())
+func randomOAuthToken(reader io.Reader) (string, error) {
+	var buf [32]byte
+	if _, err := io.ReadFull(reader, buf[:]); err != nil {
+		return "", err
 	}
-	return hex.EncodeToString(buf[:])
+	return base64.RawURLEncoding.EncodeToString(buf[:]), nil
+}
+
+func pkceChallenge(codeVerifier string) string {
+	digest := sha256.Sum256([]byte(codeVerifier))
+	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 func ptrTime(v time.Time) *time.Time {
@@ -520,3 +592,68 @@ func decodePayload(raw []byte) map[string]any {
 }
 
 var errAdapterNotFound = errors.New("INTEGRATIONS_AUTH_ADAPTER_NOT_FOUND")
+var errAuthFlowInvalidConfig = errors.New("INTEGRATIONS_AUTH_FLOW_INVALID_CONFIG")
+
+var reservedCredentialPayloadKeys = map[string]struct{}{
+	"type":                {},
+	"access_token":        {},
+	"refresh_token":       {},
+	"api_key":             {},
+	"provider_account_id": {},
+}
+
+type HMACOAuthStateCodec struct {
+	key []byte
+}
+
+func NewHMACOAuthStateCodec(secret string) (*HMACOAuthStateCodec, error) {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return nil, fmt.Errorf("%w: oauth state secret", errAuthFlowInvalidConfig)
+	}
+	return &HMACOAuthStateCodec{key: []byte(secret)}, nil
+}
+
+func (c *HMACOAuthStateCodec) EncodeAndSign(payload OAuthStatePayload) (string, error) {
+	if payload.TenantID == "" || payload.Nonce == "" || payload.InstallationID == "" {
+		return "", domain.ErrAuthStateInvalid
+	}
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	signature := c.sign(raw)
+	return base64.RawURLEncoding.EncodeToString(raw) + "." + base64.RawURLEncoding.EncodeToString(signature), nil
+}
+
+func (c *HMACOAuthStateCodec) DecodeAndVerify(state string) (OAuthStatePayload, error) {
+	parts := strings.Split(state, ".")
+	if len(parts) != 2 {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+	if !hmac.Equal(signature, c.sign(raw)) {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+
+	var payload OAuthStatePayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+	return payload, nil
+}
+
+func (c *HMACOAuthStateCodec) sign(payload []byte) []byte {
+	mac := hmac.New(sha256.New, c.key)
+	mac.Write(payload)
+	return mac.Sum(nil)
+}

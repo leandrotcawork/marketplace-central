@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -82,11 +83,12 @@ func (s *flowEncryptor) EncryptJSON(payload map[string]any) ([]byte, string, err
 }
 
 type flowAdapter struct {
-	providerCode string
-	startInput   StartAuthorizeAdapterInput
-	callback     CredentialPayload
-	apiKey       CredentialPayload
-	refresh      CredentialPayload
+	providerCode  string
+	startInput    StartAuthorizeAdapterInput
+	callbackInput HandleCallbackAdapterInput
+	callback      CredentialPayload
+	apiKey        CredentialPayload
+	refresh       CredentialPayload
 }
 
 func (s *flowAdapter) ProviderCode() string { return s.providerCode }
@@ -97,6 +99,7 @@ func (s *flowAdapter) StartAuthorize(ctx context.Context, input StartAuthorizeAd
 }
 
 func (s *flowAdapter) ExchangeCallback(ctx context.Context, input HandleCallbackAdapterInput) (CredentialPayload, error) {
+	s.callbackInput = input
 	return s.callback, nil
 }
 
@@ -117,7 +120,8 @@ func TestAuthFlowStartAuthorizeMarksInstallationPending(t *testing.T) {
 	adapter := &flowAdapter{providerCode: "mercado_livre"}
 	oauthStates := &securityOAuthStateStore{}
 	codec := roundTripSecurityStateCodec{payloadsByState: map[string]OAuthStatePayload{}}
-	svc := NewAuthFlowService(AuthFlowConfig{
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:        "tenant_default",
 		Installations:   installations,
 		Credentials:     &flowCredentialRotator{},
 		AuthSessions:    &flowAuthWriter{},
@@ -144,6 +148,19 @@ func TestAuthFlowStartAuthorizeMarksInstallationPending(t *testing.T) {
 	}
 	if len(oauthStates.savedStates) != 1 {
 		t.Fatalf("saved OAuth states = %d, want 1", len(oauthStates.savedStates))
+	}
+	savedState := oauthStates.savedStates[0]
+	if savedState.TenantID != "tenant_default" {
+		t.Fatalf("saved OAuth state tenant = %q, want tenant_default", savedState.TenantID)
+	}
+	if savedState.CodeVerifier == "" {
+		t.Fatal("saved OAuth state code verifier is empty")
+	}
+	if adapter.startInput.CodeChallenge == "" {
+		t.Fatal("adapter code challenge is empty")
+	}
+	if adapter.startInput.CodeChallenge != pkceChallenge(savedState.CodeVerifier) {
+		t.Fatalf("adapter code challenge = %q, want challenge for persisted verifier", adapter.startInput.CodeChallenge)
 	}
 	if got, want := installations.statuses, []domain.InstallationStatus{domain.InstallationStatusPendingConnection}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("statuses = %#v, want %#v", got, want)
@@ -174,15 +191,19 @@ func TestAuthFlowHandleCallbackRotatesCredentialAndMarksConnected(t *testing.T) 
 	}
 	oauthStates := &securityOAuthStateStore{
 		state: domain.OAuthState{
+			TenantID:       "tenant_default",
 			ID:             "oauth-state-1",
 			InstallationID: "inst-ml",
 			Nonce:          "nonce-1",
+			CodeVerifier:   "verifier-1",
+			HMACSignature:  "signed_state",
 			ExpiresAt:      now.Add(time.Minute),
 		},
 		found:         true,
 		consumeResult: true,
 	}
-	svc := NewAuthFlowService(AuthFlowConfig{
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:        "tenant_default",
 		Installations:   installations,
 		Credentials:     credentials,
 		AuthSessions:    authSessions,
@@ -214,8 +235,64 @@ func TestAuthFlowHandleCallbackRotatesCredentialAndMarksConnected(t *testing.T) 
 	if len(oauthStates.consumeIDs) != 1 || oauthStates.consumeIDs[0] != "oauth-state-1" {
 		t.Fatalf("consumed oauth state IDs = %#v, want oauth-state-1", oauthStates.consumeIDs)
 	}
+	if adapter.callbackInput.CodeVerifier != "verifier-1" {
+		t.Fatalf("adapter callback code verifier = %q, want verifier-1", adapter.callbackInput.CodeVerifier)
+	}
 	if len(encryptor.payloads) != 1 || encryptor.payloads[0]["access_token"] != "access" || encryptor.payloads[0]["refresh_token"] != "refresh" {
 		t.Fatalf("encrypted payloads = %#v, want token payload", encryptor.payloads)
+	}
+}
+
+func TestNewAuthFlowServiceFailsWhenOAuthStateDependenciesAreMissing(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewAuthFlowService(AuthFlowConfig{
+		TenantID:      "tenant_default",
+		Installations: &flowInstallationStore{installations: map[string]domain.Installation{}},
+		Credentials:   &flowCredentialRotator{},
+		AuthSessions:  &flowAuthWriter{},
+		Encryptor:     &flowEncryptor{},
+		Adapters:      []MarketplaceAuthAdapter{&flowAdapter{providerCode: "mercado_livre"}},
+	})
+
+	if err == nil {
+		t.Fatal("NewAuthFlowService() error = nil, want missing OAuth state dependency error")
+	}
+	if svc != nil {
+		t.Fatalf("NewAuthFlowService() service = %#v, want nil on invalid config", svc)
+	}
+}
+
+func TestAuthFlowStartAuthorizeReturnsErrorWhenEntropyUnavailable(t *testing.T) {
+	t.Parallel()
+
+	installations := &flowInstallationStore{installations: map[string]domain.Installation{
+		"inst-ml": {InstallationID: "inst-ml", ProviderCode: "mercado_livre", Status: domain.InstallationStatusDraft, HealthStatus: domain.HealthStatusHealthy},
+	}}
+	oauthStates := &securityOAuthStateStore{}
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:        "tenant_default",
+		Installations:   installations,
+		Credentials:     &flowCredentialRotator{},
+		AuthSessions:    &flowAuthWriter{},
+		OAuthStates:     oauthStates,
+		OAuthStateCodec: roundTripSecurityStateCodec{payloadsByState: map[string]OAuthStatePayload{}},
+		Encryptor:       &flowEncryptor{},
+		Clock:           fixedAuthFlowClock{now: time.Unix(1000, 0).UTC()},
+		RandomReader:    failingRandomReader{},
+		Adapters:        []MarketplaceAuthAdapter{&flowAdapter{providerCode: "mercado_livre"}},
+	})
+
+	_, err := svc.StartAuthorize(context.Background(), StartAuthorizeInput{
+		InstallationID: "inst-ml",
+		RedirectURI:    "https://app.test/callback",
+	})
+
+	if err == nil {
+		t.Fatal("StartAuthorize() error = nil, want entropy error")
+	}
+	if len(oauthStates.savedStates) != 0 {
+		t.Fatalf("saved OAuth states = %d, want 0 when entropy fails", len(oauthStates.savedStates))
 	}
 }
 
@@ -235,12 +312,17 @@ func TestAuthFlowSubmitAPIKeyConnectsManualInstallation(t *testing.T) {
 			ProviderAccountName: "Shopee Loja",
 		},
 	}
-	svc := NewAuthFlowService(AuthFlowConfig{
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:      "tenant_default",
 		Installations: installations,
 		Credentials:   credentials,
 		AuthSessions:  &flowAuthWriter{},
-		Encryptor:     &flowEncryptor{},
-		Adapters:      []MarketplaceAuthAdapter{adapter},
+		OAuthStates:   &securityOAuthStateStore{},
+		OAuthStateCodec: roundTripSecurityStateCodec{
+			payloadsByState: map[string]OAuthStatePayload{},
+		},
+		Encryptor: &flowEncryptor{},
+		Adapters:  []MarketplaceAuthAdapter{adapter},
 	})
 
 	result, err := svc.SubmitAPIKey(context.Background(), SubmitAPIKeyInput{
@@ -259,18 +341,80 @@ func TestAuthFlowSubmitAPIKeyConnectsManualInstallation(t *testing.T) {
 	}
 }
 
+func TestAuthFlowCredentialPayloadExtraCannotOverrideReservedSecretKeys(t *testing.T) {
+	t.Parallel()
+
+	installations := &flowInstallationStore{installations: map[string]domain.Installation{
+		"inst-shopee": {InstallationID: "inst-shopee", ProviderCode: "shopee", Status: domain.InstallationStatusDraft, HealthStatus: domain.HealthStatusHealthy},
+	}}
+	encryptor := &flowEncryptor{}
+	adapter := &flowAdapter{
+		providerCode: "shopee",
+		apiKey: CredentialPayload{
+			SecretType:        "api_key",
+			APIKey:            "safe-api-key",
+			ProviderAccountID: "shop-1",
+			Extra: map[string]any{
+				"api_key":             "attacker-api-key",
+				"provider_account_id": "attacker-shop",
+				"seller_id":           "seller-1",
+			},
+		},
+	}
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:      "tenant_default",
+		Installations: installations,
+		Credentials:   &flowCredentialRotator{},
+		AuthSessions:  &flowAuthWriter{},
+		OAuthStates:   &securityOAuthStateStore{},
+		OAuthStateCodec: roundTripSecurityStateCodec{
+			payloadsByState: map[string]OAuthStatePayload{},
+		},
+		Encryptor: encryptor,
+		Adapters:  []MarketplaceAuthAdapter{adapter},
+	})
+
+	_, err := svc.SubmitAPIKey(context.Background(), SubmitAPIKeyInput{
+		InstallationID: "inst-shopee",
+		APIKey:         "safe-api-key",
+		Metadata:       map[string]string{"shop_id": "shop-1"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitAPIKey() error = %v", err)
+	}
+
+	if len(encryptor.payloads) != 1 {
+		t.Fatalf("encrypted payloads = %d, want 1", len(encryptor.payloads))
+	}
+	payload := encryptor.payloads[0]
+	if payload["api_key"] != "safe-api-key" {
+		t.Fatalf("api_key = %v, want safe-api-key", payload["api_key"])
+	}
+	if payload["provider_account_id"] != "shop-1" {
+		t.Fatalf("provider_account_id = %v, want shop-1", payload["provider_account_id"])
+	}
+	if payload["seller_id"] != "seller-1" {
+		t.Fatalf("seller_id = %v, want seller-1", payload["seller_id"])
+	}
+}
+
 func TestAuthFlowDisconnectMarksInstallationDisconnected(t *testing.T) {
 	t.Parallel()
 
 	installations := &flowInstallationStore{installations: map[string]domain.Installation{
 		"inst-ml": {InstallationID: "inst-ml", ProviderCode: "mercado_livre", Status: domain.InstallationStatusConnected, HealthStatus: domain.HealthStatusHealthy},
 	}}
-	svc := NewAuthFlowService(AuthFlowConfig{
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:      "tenant_default",
 		Installations: installations,
 		Credentials:   &flowCredentialRotator{},
 		AuthSessions:  &flowAuthWriter{},
-		Encryptor:     &flowEncryptor{},
-		Adapters:      []MarketplaceAuthAdapter{&flowAdapter{providerCode: "mercado_livre"}},
+		OAuthStates:   &securityOAuthStateStore{},
+		OAuthStateCodec: roundTripSecurityStateCodec{
+			payloadsByState: map[string]OAuthStatePayload{},
+		},
+		Encryptor: &flowEncryptor{},
+		Adapters:  []MarketplaceAuthAdapter{&flowAdapter{providerCode: "mercado_livre"}},
 	})
 
 	status, err := svc.Disconnect(context.Background(), DisconnectInput{InstallationID: "inst-ml"})
@@ -280,4 +424,20 @@ func TestAuthFlowDisconnectMarksInstallationDisconnected(t *testing.T) {
 	if status.Status != domain.InstallationStatusDisconnected || status.HealthStatus != domain.HealthStatusWarning {
 		t.Fatalf("status = %#v, want disconnected warning", status)
 	}
+}
+
+type failingRandomReader struct{}
+
+func (failingRandomReader) Read([]byte) (int, error) {
+	return 0, errors.New("entropy unavailable")
+}
+
+func mustNewAuthFlowService(t *testing.T, cfg AuthFlowConfig) *AuthFlowService {
+	t.Helper()
+
+	svc, err := NewAuthFlowService(cfg)
+	if err != nil {
+		t.Fatalf("NewAuthFlowService() error = %v", err)
+	}
+	return svc
 }
