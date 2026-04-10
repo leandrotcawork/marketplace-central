@@ -40,7 +40,16 @@ func (s *flowInstallationStore) UpdateStatus(ctx context.Context, installationID
 }
 
 type flowCredentialRotator struct {
-	inputs []RotateCredentialInput
+	activeCredential domain.Credential
+	activeFound      bool
+	inputs           []RotateCredentialInput
+}
+
+func (s *flowCredentialRotator) GetActiveCredential(ctx context.Context, installationID string) (domain.Credential, bool, error) {
+	if !s.activeFound || s.activeCredential.InstallationID != installationID {
+		return domain.Credential{}, false, nil
+	}
+	return s.activeCredential, true, nil
 }
 
 func (s *flowCredentialRotator) Rotate(ctx context.Context, input RotateCredentialInput) (domain.Credential, error) {
@@ -56,12 +65,22 @@ func (s *flowCredentialRotator) Rotate(ctx context.Context, input RotateCredenti
 }
 
 type flowAuthWriter struct {
-	inputs []UpsertAuthSessionInput
+	session      domain.AuthSession
+	sessionFound bool
+	inputs       []UpsertAuthSessionInput
+	sessions     []domain.AuthSession
+}
+
+func (s *flowAuthWriter) GetAuthSession(ctx context.Context, installationID string) (domain.AuthSession, bool, error) {
+	if !s.sessionFound || s.session.InstallationID != installationID {
+		return domain.AuthSession{}, false, nil
+	}
+	return s.session, true, nil
 }
 
 func (s *flowAuthWriter) Upsert(ctx context.Context, input UpsertAuthSessionInput) (domain.AuthSession, error) {
 	s.inputs = append(s.inputs, input)
-	return domain.AuthSession{
+	session := domain.AuthSession{
 		AuthSessionID:        input.AuthSessionID,
 		InstallationID:       input.InstallationID,
 		ProviderAccountID:    input.ProviderAccountID,
@@ -70,11 +89,15 @@ func (s *flowAuthWriter) Upsert(ctx context.Context, input UpsertAuthSessionInpu
 		LastVerifiedAt:       input.LastVerifiedAt,
 		RefreshFailureCode:   input.RefreshFailureCode,
 		ConsecutiveFailures:  input.ConsecutiveFailures,
-	}, nil
+	}
+	s.sessions = append(s.sessions, session)
+	return session, nil
 }
 
 type flowEncryptor struct {
-	payloads []map[string]any
+	payloads         []map[string]any
+	decryptedPayload map[string]any
+	decryptKeyID     string
 }
 
 func (s *flowEncryptor) EncryptJSON(payload map[string]any) ([]byte, string, error) {
@@ -82,13 +105,22 @@ func (s *flowEncryptor) EncryptJSON(payload map[string]any) ([]byte, string, err
 	return []byte("ciphertext"), "key-1", nil
 }
 
+func (s *flowEncryptor) DecryptJSON(encoded []byte) (map[string]any, string, error) {
+	if string(encoded) != "active-ciphertext" {
+		return nil, "", domain.ErrCredentialDecryptionFailed
+	}
+	return s.decryptedPayload, s.decryptKeyID, nil
+}
+
 type flowAdapter struct {
 	providerCode  string
 	startInput    StartAuthorizeAdapterInput
 	callbackInput HandleCallbackAdapterInput
+	refreshInput  RefreshCredentialAdapterInput
 	callback      CredentialPayload
 	apiKey        CredentialPayload
 	refresh       CredentialPayload
+	refreshCalls  int
 }
 
 func (s *flowAdapter) ProviderCode() string { return s.providerCode }
@@ -108,6 +140,8 @@ func (s *flowAdapter) VerifyAPIKey(ctx context.Context, input SubmitAPIKeyAdapte
 }
 
 func (s *flowAdapter) Refresh(ctx context.Context, input RefreshCredentialAdapterInput) (CredentialPayload, error) {
+	s.refreshInput = input
+	s.refreshCalls++
 	return s.refresh, nil
 }
 
@@ -338,6 +372,113 @@ func TestAuthFlowSubmitAPIKeyConnectsManualInstallation(t *testing.T) {
 	}
 	if len(credentials.inputs) != 1 || credentials.inputs[0].SecretType != "api_key" {
 		t.Fatalf("credential inputs = %#v, want api_key credential", credentials.inputs)
+	}
+}
+
+func TestRefreshCredentialRotatesAndResetsFailures(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1700, 0).UTC()
+	expiresAt := time.Unix(2600, 0).UTC()
+	retryAt := now.Add(5 * time.Minute)
+	installations := &flowInstallationStore{installations: map[string]domain.Installation{
+		"inst-ml": {
+			InstallationID:     "inst-ml",
+			ProviderCode:       "mercado_livre",
+			Status:             domain.InstallationStatusDegraded,
+			HealthStatus:       domain.HealthStatusWarning,
+			ExternalAccountID:  "seller-1",
+			ActiveCredentialID: "cred-active",
+		},
+	}}
+	credentials := &flowCredentialRotator{
+		activeFound: true,
+		activeCredential: domain.Credential{
+			CredentialID:     "cred-active",
+			InstallationID:   "inst-ml",
+			SecretType:       "oauth2",
+			EncryptedPayload: []byte("active-ciphertext"),
+			EncryptionKeyID:  "key-1",
+			IsActive:         true,
+		},
+	}
+	authSessions := &flowAuthWriter{
+		sessionFound: true,
+		session: domain.AuthSession{
+			AuthSessionID:        "auth_inst-ml",
+			InstallationID:       "inst-ml",
+			ProviderAccountID:    "seller-1",
+			State:                domain.AuthStateRefreshFailed,
+			RefreshFailureCode:   domain.ErrRefreshProviderError.Error(),
+			ConsecutiveFailures:  3,
+			NextRetryAt:          &retryAt,
+			AccessTokenExpiresAt: ptrTime(now.Add(time.Minute)),
+		},
+	}
+	encryptor := &flowEncryptor{
+		decryptedPayload: map[string]any{
+			"type":                "oauth2",
+			"access_token":        "old-access",
+			"refresh_token":       "old-refresh",
+			"provider_account_id": "seller-1",
+		},
+		decryptKeyID: "key-1",
+	}
+	adapter := &flowAdapter{
+		providerCode: "mercado_livre",
+		refresh: CredentialPayload{
+			SecretType:        "oauth2",
+			AccessToken:       "new-access",
+			RefreshToken:      "new-refresh",
+			ProviderAccountID: "seller-1",
+			ExpiresAt:         &expiresAt,
+		},
+	}
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:        "tenant_default",
+		Installations:   installations,
+		Credentials:     credentials,
+		AuthSessions:    authSessions,
+		OAuthStates:     &securityOAuthStateStore{},
+		OAuthStateCodec: roundTripSecurityStateCodec{payloadsByState: map[string]OAuthStatePayload{}},
+		Encryptor:       encryptor,
+		Clock:           fixedAuthFlowClock{now: now},
+		Adapters:        []MarketplaceAuthAdapter{adapter},
+	})
+
+	status, err := svc.RefreshCredential(context.Background(), RefreshCredentialInput{InstallationID: "inst-ml"})
+	if err != nil {
+		t.Fatalf("RefreshCredential() error = %v", err)
+	}
+
+	if status.Status != domain.InstallationStatusConnected || status.HealthStatus != domain.HealthStatusHealthy {
+		t.Fatalf("status = %#v, want connected healthy", status)
+	}
+	if adapter.refreshCalls != 1 || adapter.refreshInput.RefreshToken != "old-refresh" {
+		t.Fatalf("refresh calls = %d input = %#v, want old refresh token", adapter.refreshCalls, adapter.refreshInput)
+	}
+	if len(credentials.inputs) != 1 {
+		t.Fatalf("rotated credentials = %d, want 1", len(credentials.inputs))
+	}
+	rotatedCredential := credentials.inputs[0]
+	if rotatedCredential.InstallationID != "inst-ml" || rotatedCredential.SecretType != "oauth2" || string(rotatedCredential.EncryptedPayload) != "ciphertext" {
+		t.Fatalf("rotated credential = %#v, want persisted encrypted oauth2 credential", rotatedCredential)
+	}
+	if len(encryptor.payloads) != 1 || encryptor.payloads[0]["access_token"] != "new-access" || encryptor.payloads[0]["refresh_token"] != "new-refresh" {
+		t.Fatalf("encrypted payloads = %#v, want refreshed tokens", encryptor.payloads)
+	}
+	if len(authSessions.sessions) != 1 {
+		t.Fatalf("auth sessions = %d, want 1 reset session", len(authSessions.sessions))
+	}
+	resetSession := authSessions.sessions[0]
+	if resetSession.ConsecutiveFailures != 0 || resetSession.RefreshFailureCode != "" || resetSession.NextRetryAt != nil {
+		t.Fatalf("reset session = %#v, want failures cleared and next retry nil", resetSession)
+	}
+	if resetSession.State != domain.AuthStateValid || resetSession.AccessTokenExpiresAt == nil || !resetSession.AccessTokenExpiresAt.Equal(expiresAt) {
+		t.Fatalf("reset session = %#v, want valid session with refreshed expiry", resetSession)
+	}
+	if got := installations.installations["inst-ml"]; got.Status != domain.InstallationStatusConnected || got.HealthStatus != domain.HealthStatusHealthy {
+		t.Fatalf("installation = %#v, want connected healthy", got)
 	}
 }
 

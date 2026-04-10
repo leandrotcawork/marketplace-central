@@ -127,10 +127,12 @@ type authFlowInstallationStore interface {
 }
 
 type authFlowCredentialRotator interface {
+	GetActiveCredential(ctx context.Context, installationID string) (domain.Credential, bool, error)
 	Rotate(ctx context.Context, input RotateCredentialInput) (domain.Credential, error)
 }
 
 type authFlowSessionWriter interface {
+	GetAuthSession(ctx context.Context, installationID string) (domain.AuthSession, bool, error)
 	Upsert(ctx context.Context, input UpsertAuthSessionInput) (domain.AuthSession, error)
 }
 
@@ -147,6 +149,7 @@ type authFlowOAuthStateCodec interface {
 
 type authFlowEncryptor interface {
 	EncryptJSON(payload map[string]any) ([]byte, string, error)
+	DecryptJSON(encoded []byte) (map[string]any, string, error)
 }
 
 type authFlowClock interface {
@@ -388,16 +391,81 @@ func (s *AuthFlowService) SubmitAPIKey(ctx context.Context, input SubmitAPIKeyIn
 }
 
 func (s *AuthFlowService) RefreshCredential(ctx context.Context, input RefreshCredentialInput) (AuthStatus, error) {
-	inst, _, err := s.loadInstallationWithAdapter(ctx, input.InstallationID)
+	inst, adapter, err := s.loadInstallationWithAdapter(ctx, input.InstallationID)
 	if err != nil {
 		return AuthStatus{}, err
 	}
 
-	return AuthStatus{
+	session, found, err := s.authSessions.GetAuthSession(ctx, input.InstallationID)
+	if err != nil {
+		return AuthStatus{}, err
+	}
+	if !found {
+		return AuthStatus{}, domain.ErrCredentialValidationFailed
+	}
+
+	activeCredential, found, err := s.credentials.GetActiveCredential(ctx, input.InstallationID)
+	if err != nil {
+		return AuthStatus{}, err
+	}
+	if !found {
+		return AuthStatus{}, domain.ErrCredentialNotFound
+	}
+
+	activePayload, keyID, err := s.encryptor.DecryptJSON(activeCredential.EncryptedPayload)
+	if err != nil {
+		return AuthStatus{}, fmt.Errorf("%w: %v", domain.ErrCredentialDecryptionFailed, err)
+	}
+	if activeCredential.EncryptionKeyID != "" && keyID != "" && activeCredential.EncryptionKeyID != keyID {
+		return AuthStatus{}, domain.ErrCredentialDecryptionFailed
+	}
+	refreshToken, ok := credentialPayloadString(activePayload, "refresh_token")
+	if !ok {
+		return AuthStatus{}, domain.ErrRefreshTokenInvalid
+	}
+
+	payload, err := adapter.Refresh(ctx, RefreshCredentialAdapterInput{
 		InstallationID: input.InstallationID,
-		Status:         inst.Status,
-		HealthStatus:   inst.HealthStatus,
-		ProviderCode:   inst.ProviderCode,
+		RefreshToken:   refreshToken,
+	})
+	if err != nil {
+		return AuthStatus{}, err
+	}
+	if strings.TrimSpace(payload.RefreshToken) == "" {
+		payload.RefreshToken = refreshToken
+	}
+	if strings.TrimSpace(payload.ProviderAccountID) == "" {
+		payload.ProviderAccountID = firstNonEmpty(session.ProviderAccountID, inst.ExternalAccountID)
+	}
+
+	if err := s.saveCredential(ctx, input.InstallationID, payload); err != nil {
+		return AuthStatus{}, err
+	}
+
+	now := s.clock.Now().UTC()
+	if _, err := s.authSessions.Upsert(ctx, UpsertAuthSessionInput{
+		AuthSessionID:        firstNonEmpty(session.AuthSessionID, fmt.Sprintf("auth_%s", input.InstallationID)),
+		InstallationID:       input.InstallationID,
+		ProviderAccountID:    payload.ProviderAccountID,
+		State:                domain.AuthStateValid,
+		AccessTokenExpiresAt: payload.ExpiresAt,
+		LastVerifiedAt:       &now,
+		RefreshFailureCode:   "",
+		ConsecutiveFailures:  0,
+	}); err != nil {
+		return AuthStatus{}, err
+	}
+
+	if err := s.installations.UpdateStatus(ctx, input.InstallationID, domain.InstallationStatusConnected, domain.HealthStatusHealthy); err != nil {
+		return AuthStatus{}, err
+	}
+
+	return AuthStatus{
+		InstallationID:  input.InstallationID,
+		Status:          domain.InstallationStatusConnected,
+		HealthStatus:    domain.HealthStatusHealthy,
+		ProviderCode:    inst.ProviderCode,
+		ExternalAccount: payload.ProviderAccountID,
 	}, nil
 }
 
@@ -443,6 +511,14 @@ func (s *AuthFlowService) GetAuthStatus(ctx context.Context, input GetAuthStatus
 		ProviderCode:    inst.ProviderCode,
 		ExternalAccount: inst.ExternalAccountID,
 	}, nil
+}
+
+func (s *CredentialService) GetActiveCredential(ctx context.Context, installationID string) (domain.Credential, bool, error) {
+	return s.store.GetActiveCredential(ctx, installationID)
+}
+
+func (s *AuthService) GetAuthSession(ctx context.Context, installationID string) (domain.AuthSession, bool, error) {
+	return s.store.GetAuthSession(ctx, installationID)
 }
 
 func (s *AuthFlowService) loadOAuthInstallation(ctx context.Context, installationID string) (domain.Installation, MarketplaceAuthAdapter, error) {
@@ -552,6 +628,28 @@ func (s *AuthFlowService) saveCredential(ctx context.Context, installationID str
 		EncryptionKeyID:  keyID,
 	})
 	return err
+}
+
+func credentialPayloadString(payload map[string]any, key string) (string, bool) {
+	value, ok := payload[key]
+	if !ok {
+		return "", false
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	text = strings.TrimSpace(text)
+	return text, text != ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func randomOAuthToken(reader io.Reader) (string, error) {
