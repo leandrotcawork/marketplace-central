@@ -24,7 +24,7 @@ func LoadConfig() (Config, error) {
 		cfg.DefaultTenantID = "tenant_default"
 	}
 	if cfg.EncryptionKey == "" {
-		cfg.EncryptionKey = "0123456789abcdef0123456789abcdef"
+		return Config{}, errors.New("MPC_ENCRYPTION_KEY is required")
 	}
 	return cfg, nil
 }
