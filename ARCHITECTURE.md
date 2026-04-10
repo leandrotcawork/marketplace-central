@@ -203,6 +203,6 @@ The merge should be a module migration, not a rewrite. This is why structure com
 ## Related documents
 
 - `AGENTS.md` — daily operational rules
-- `docs/IMPLEMENTATION_PLAN.md` — phased execution plan
+- `IMPLEMENTATION_PLAN.md` — phased execution plan
 - `contracts/api/marketplace-central.openapi.yaml` — API source of truth
 - `docs/marketplaces/*.md` — per-marketplace API reference

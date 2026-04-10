@@ -2,7 +2,7 @@
 
 ## On every session start
 
-1. Read `docs/IMPLEMENTATION_PLAN.md` — know current phase and scope
+1. Read `IMPLEMENTATION_PLAN.md` — know current phase and scope
 2. Read `ARCHITECTURE.md` — know frozen decisions before touching code
 3. After any correction: document the lesson in commit message or PR description
 
@@ -31,6 +31,7 @@ Every decision passes this filter:
 - `pgxpool.Pool` is the only database access mechanism — no raw `sql.DB`
 - No `panic()` in production code — return errors
 - All monetary values use `float64` in domain, `numeric(14,2)` in Postgres
+- Use local Go cache for test/build commands: `GOCACHE=.gocache`
 
 ### Frontend
 
@@ -97,7 +98,7 @@ Examples:
 | Database changes | `apps/server_core/migrations/` |
 | API contract changes | `contracts/api/marketplace-central.openapi.yaml` |
 | Frontend feature | `packages/feature-*/` + `packages/sdk-runtime/` |
-| Phase planning | `docs/IMPLEMENTATION_PLAN.md` |
+| Phase planning | `IMPLEMENTATION_PLAN.md` |
 
 ## Integration with MetalShopping
 
