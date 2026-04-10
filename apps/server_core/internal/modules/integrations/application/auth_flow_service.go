@@ -124,11 +124,13 @@ type authFlowInstallationStore interface {
 	Get(ctx context.Context, installationID string) (domain.Installation, bool, error)
 	List(ctx context.Context) ([]domain.Installation, error)
 	UpdateStatus(ctx context.Context, installationID string, status domain.InstallationStatus, health domain.HealthStatus) error
+	UpdateActiveCredentialID(ctx context.Context, installationID string, credentialID string) error
 }
 
 type authFlowCredentialRotator interface {
 	GetActiveCredential(ctx context.Context, installationID string) (domain.Credential, bool, error)
 	Rotate(ctx context.Context, input RotateCredentialInput) (domain.Credential, error)
+	DeactivateAllForInstallation(ctx context.Context, installationID string) error
 }
 
 type authFlowSessionWriter interface {
@@ -330,6 +332,10 @@ func (s *AuthFlowService) HandleCallback(ctx context.Context, input HandleCallba
 		return AuthStatus{}, err
 	}
 
+	if hasReauthAccountMismatch(inst.ExternalAccountID, payload.ProviderAccountID) {
+		return AuthStatus{}, domain.ErrReauthAccountMismatch
+	}
+
 	if err := s.saveCredential(ctx, statePayload.InstallationID, payload); err != nil {
 		return AuthStatus{}, err
 	}
@@ -476,12 +482,27 @@ func (s *AuthFlowService) Disconnect(ctx context.Context, input DisconnectInput)
 		return AuthStatus{}, err
 	}
 
-	if err := s.installations.UpdateStatus(ctx, input.InstallationID, domain.InstallationStatusDisconnected, domain.HealthStatusWarning); err != nil {
+	if inst.Status == domain.InstallationStatusDisconnected {
+		return AuthStatus{
+			InstallationID: inst.InstallationID,
+			Status:         domain.InstallationStatusDisconnected,
+			HealthStatus:   inst.HealthStatus,
+			ProviderCode:   inst.ProviderCode,
+		}, nil
+	}
+
+	if err := s.credentials.DeactivateAllForInstallation(ctx, inst.InstallationID); err != nil {
+		return AuthStatus{}, err
+	}
+	if err := s.installations.UpdateActiveCredentialID(ctx, inst.InstallationID, ""); err != nil {
+		return AuthStatus{}, err
+	}
+	if err := s.installations.UpdateStatus(ctx, inst.InstallationID, domain.InstallationStatusDisconnected, domain.HealthStatusWarning); err != nil {
 		return AuthStatus{}, err
 	}
 
 	return AuthStatus{
-		InstallationID: input.InstallationID,
+		InstallationID: inst.InstallationID,
 		Status:         domain.InstallationStatusDisconnected,
 		HealthStatus:   domain.HealthStatusWarning,
 		ProviderCode:   inst.ProviderCode,
@@ -516,6 +537,22 @@ func (s *AuthFlowService) GetAuthStatus(ctx context.Context, input GetAuthStatus
 
 func (s *CredentialService) GetActiveCredential(ctx context.Context, installationID string) (domain.Credential, bool, error) {
 	return s.store.GetActiveCredential(ctx, installationID)
+}
+
+func (s *CredentialService) DeactivateAllForInstallation(ctx context.Context, installationID string) error {
+	installationID = strings.TrimSpace(installationID)
+	if installationID == "" {
+		return errors.New("INTEGRATIONS_CREDENTIAL_INVALID")
+	}
+	return s.store.DeactivateAllForInstallation(ctx, installationID)
+}
+
+func (s *InstallationService) UpdateActiveCredentialID(ctx context.Context, installationID string, credentialID string) error {
+	installationID = strings.TrimSpace(installationID)
+	if installationID == "" {
+		return errors.New("INTEGRATIONS_INSTALLATION_INVALID")
+	}
+	return s.repo.UpdateActiveCredentialID(ctx, installationID, strings.TrimSpace(credentialID))
 }
 
 func (s *AuthService) GetAuthSession(ctx context.Context, installationID string) (domain.AuthSession, bool, error) {
@@ -651,6 +688,14 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func hasReauthAccountMismatch(existingAccountID string, nextAccountID string) bool {
+	existingAccountID = strings.TrimSpace(existingAccountID)
+	if existingAccountID == "" {
+		return false
+	}
+	return strings.TrimSpace(nextAccountID) != existingAccountID
 }
 
 func randomOAuthToken(reader io.Reader) (string, error) {

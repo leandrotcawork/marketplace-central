@@ -11,9 +11,10 @@ import (
 )
 
 type flowInstallationStore struct {
-	installations map[string]domain.Installation
-	statuses      []domain.InstallationStatus
-	healths       []domain.HealthStatus
+	installations       map[string]domain.Installation
+	statuses            []domain.InstallationStatus
+	healths             []domain.HealthStatus
+	activeCredentialIDs []string
 }
 
 func (s *flowInstallationStore) Get(ctx context.Context, installationID string) (domain.Installation, bool, error) {
@@ -39,10 +40,19 @@ func (s *flowInstallationStore) UpdateStatus(ctx context.Context, installationID
 	return nil
 }
 
+func (s *flowInstallationStore) UpdateActiveCredentialID(ctx context.Context, installationID string, credentialID string) error {
+	inst := s.installations[installationID]
+	inst.ActiveCredentialID = credentialID
+	s.installations[installationID] = inst
+	s.activeCredentialIDs = append(s.activeCredentialIDs, credentialID)
+	return nil
+}
+
 type flowCredentialRotator struct {
-	activeCredential domain.Credential
-	activeFound      bool
-	inputs           []RotateCredentialInput
+	activeCredential         domain.Credential
+	activeFound              bool
+	inputs                   []RotateCredentialInput
+	deactivatedInstallations []string
 }
 
 func (s *flowCredentialRotator) GetActiveCredential(ctx context.Context, installationID string) (domain.Credential, bool, error) {
@@ -62,6 +72,15 @@ func (s *flowCredentialRotator) Rotate(ctx context.Context, input RotateCredenti
 		EncryptionKeyID:  input.EncryptionKeyID,
 		IsActive:         true,
 	}, nil
+}
+
+func (s *flowCredentialRotator) DeactivateAllForInstallation(ctx context.Context, installationID string) error {
+	s.deactivatedInstallations = append(s.deactivatedInstallations, installationID)
+	if s.activeCredential.InstallationID == installationID {
+		s.activeFound = false
+		s.activeCredential.IsActive = false
+	}
+	return nil
 }
 
 type flowAuthWriter struct {
@@ -275,6 +294,86 @@ func TestAuthFlowHandleCallbackRotatesCredentialAndMarksConnected(t *testing.T) 
 	}
 	if len(encryptor.payloads) != 1 || encryptor.payloads[0]["access_token"] != "access" || encryptor.payloads[0]["refresh_token"] != "refresh" {
 		t.Fatalf("encrypted payloads = %#v, want token payload", encryptor.payloads)
+	}
+}
+
+func TestStartReauthRejectsDifferentProviderAccount(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1550, 0).UTC()
+	expiresAt := time.Unix(2500, 0).UTC()
+	installations := &flowInstallationStore{installations: map[string]domain.Installation{
+		"inst-ml": {
+			InstallationID:    "inst-ml",
+			ProviderCode:      "mercado_livre",
+			Status:            domain.InstallationStatusRequiresReauth,
+			HealthStatus:      domain.HealthStatusWarning,
+			ExternalAccountID: "seller-original",
+		},
+	}}
+	credentials := &flowCredentialRotator{}
+	authSessions := &flowAuthWriter{}
+	encryptor := &flowEncryptor{}
+	adapter := &flowAdapter{
+		providerCode: "mercado_livre",
+		callback: CredentialPayload{
+			SecretType:        "oauth2",
+			AccessToken:       "access",
+			RefreshToken:      "refresh",
+			ProviderAccountID: "seller-other",
+			ExpiresAt:         &expiresAt,
+		},
+	}
+	oauthStates := &securityOAuthStateStore{
+		state: domain.OAuthState{
+			TenantID:       "tenant_default",
+			ID:             "oauth-state-reauth",
+			InstallationID: "inst-ml",
+			Nonce:          "nonce-reauth",
+			CodeVerifier:   "verifier-reauth",
+			HMACSignature:  "signed_state",
+			ExpiresAt:      now.Add(time.Minute),
+		},
+		found:         true,
+		consumeResult: true,
+	}
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:      "tenant_default",
+		Installations: installations,
+		Credentials:   credentials,
+		AuthSessions:  authSessions,
+		OAuthStates:   oauthStates,
+		OAuthStateCodec: securityStateCodec{payload: OAuthStatePayload{
+			TenantID:       "tenant_default",
+			Nonce:          "nonce-reauth",
+			InstallationID: "inst-ml",
+		}},
+		Encryptor: encryptor,
+		Clock:     fixedAuthFlowClock{now: now},
+		Adapters:  []MarketplaceAuthAdapter{adapter},
+	})
+
+	_, err := svc.HandleCallback(context.Background(), HandleCallbackInput{
+		InstallationID: "inst-ml",
+		State:          "signed_state",
+		Code:           "code-1",
+		RedirectURI:    "https://app.test/callback",
+	})
+
+	if !errors.Is(err, domain.ErrReauthAccountMismatch) {
+		t.Fatalf("HandleCallback() error = %v, want %v", err, domain.ErrReauthAccountMismatch)
+	}
+	if len(credentials.inputs) != 0 {
+		t.Fatalf("credential rotations = %#v, want none on account mismatch", credentials.inputs)
+	}
+	if len(authSessions.inputs) != 0 {
+		t.Fatalf("auth session inputs = %#v, want none on account mismatch", authSessions.inputs)
+	}
+	if len(encryptor.payloads) != 0 {
+		t.Fatalf("encrypted payloads = %#v, want none on account mismatch", encryptor.payloads)
+	}
+	if len(installations.statuses) != 0 {
+		t.Fatalf("installation status updates = %#v, want none on account mismatch", installations.statuses)
 	}
 }
 
@@ -565,6 +664,66 @@ func TestAuthFlowDisconnectMarksInstallationDisconnected(t *testing.T) {
 	}
 	if status.Status != domain.InstallationStatusDisconnected || status.HealthStatus != domain.HealthStatusWarning {
 		t.Fatalf("status = %#v, want disconnected warning", status)
+	}
+}
+
+func TestAuthFlowDisconnectIdempotentDeactivatesCredentialsAndClearsActivePointer(t *testing.T) {
+	t.Parallel()
+
+	installations := &flowInstallationStore{installations: map[string]domain.Installation{
+		"inst-ml": {
+			InstallationID:     "inst-ml",
+			ProviderCode:       "mercado_livre",
+			Status:             domain.InstallationStatusConnected,
+			HealthStatus:       domain.HealthStatusHealthy,
+			ExternalAccountID:  "seller-1",
+			ActiveCredentialID: "cred-active",
+		},
+	}}
+	credentials := &flowCredentialRotator{
+		activeFound: true,
+		activeCredential: domain.Credential{
+			CredentialID:   "cred-active",
+			InstallationID: "inst-ml",
+			IsActive:       true,
+		},
+	}
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:      "tenant_default",
+		Installations: installations,
+		Credentials:   credentials,
+		AuthSessions:  &flowAuthWriter{},
+		OAuthStates:   &securityOAuthStateStore{},
+		OAuthStateCodec: roundTripSecurityStateCodec{
+			payloadsByState: map[string]OAuthStatePayload{},
+		},
+		Encryptor: &flowEncryptor{},
+		Adapters:  []MarketplaceAuthAdapter{&flowAdapter{providerCode: "mercado_livre"}},
+	})
+
+	firstStatus, err := svc.Disconnect(context.Background(), DisconnectInput{InstallationID: "inst-ml"})
+	if err != nil {
+		t.Fatalf("first Disconnect() error = %v", err)
+	}
+	secondStatus, err := svc.Disconnect(context.Background(), DisconnectInput{InstallationID: "inst-ml"})
+	if err != nil {
+		t.Fatalf("second Disconnect() error = %v, want idempotent success", err)
+	}
+
+	if firstStatus.Status != domain.InstallationStatusDisconnected || secondStatus.Status != domain.InstallationStatusDisconnected {
+		t.Fatalf("disconnect statuses = %#v then %#v, want disconnected both times", firstStatus, secondStatus)
+	}
+	if got := credentials.deactivatedInstallations; !reflect.DeepEqual(got, []string{"inst-ml"}) {
+		t.Fatalf("deactivated installations = %#v, want only first disconnect deactivating credentials", got)
+	}
+	if got := installations.activeCredentialIDs; !reflect.DeepEqual(got, []string{""}) {
+		t.Fatalf("active credential updates = %#v, want active pointer cleared once", got)
+	}
+	if got := installations.installations["inst-ml"]; got.ActiveCredentialID != "" {
+		t.Fatalf("installation active credential = %q, want cleared", got.ActiveCredentialID)
+	}
+	if got := installations.statuses; !reflect.DeepEqual(got, []domain.InstallationStatus{domain.InstallationStatusDisconnected}) {
+		t.Fatalf("status updates = %#v, want first disconnect status update only", got)
 	}
 }
 
