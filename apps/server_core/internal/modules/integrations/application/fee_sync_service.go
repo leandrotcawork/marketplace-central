@@ -17,6 +17,7 @@ const (
 	feeSyncUnsupportedErrorCode      = "INTEGRATIONS_FEE_SYNC_UNSUPPORTED"
 	feeSyncRetryCooldownErrorCode    = "INTEGRATIONS_FEE_SYNC_RETRY_COOLDOWN"
 	feeSyncRetryCooldown             = time.Hour
+	feeSyncMaxAutomaticAttempts      = 3
 	feeSyncInvalidConfigErrorCode    = "INTEGRATIONS_FEE_SYNC_INVALID_CONFIG"
 	feeSyncRunIDGenerationErrorCode  = "INTEGRATIONS_FEE_SYNC_RUN_ID_GENERATION_FAILED"
 	feeSyncOperationInvalidErrorCode = "INTEGRATIONS_OPERATION_INVALID"
@@ -150,7 +151,8 @@ func (s *FeeSyncService) StartSync(ctx context.Context, input StartFeeSyncInput)
 		return FeeSyncAccepted{}, errors.New(feeSyncUnsupportedErrorCode)
 	}
 
-	if err := s.checkRetryCooldown(ctx, inst.InstallationID); err != nil {
+	attemptCount, err := s.nextAttemptCount(ctx, inst.InstallationID)
+	if err != nil {
 		return FeeSyncAccepted{}, err
 	}
 
@@ -165,7 +167,7 @@ func (s *FeeSyncService) StartSync(ctx context.Context, input StartFeeSyncInput)
 		OperationType:  feeSyncOperationType,
 		Status:         domain.OperationRunStatusQueued,
 		ResultCode:     feeSyncQueuedResultCode,
-		AttemptCount:   1,
+		AttemptCount:   attemptCount,
 		ActorType:      strings.TrimSpace(input.ActorType),
 		ActorID:        strings.TrimSpace(input.ActorID),
 	})
@@ -263,28 +265,44 @@ func (s *FeeSyncService) ExecuteSync(ctx context.Context, run domain.OperationRu
 	return nil
 }
 
-func (s *FeeSyncService) checkRetryCooldown(ctx context.Context, installationID string) error {
+func (s *FeeSyncService) nextAttemptCount(ctx context.Context, installationID string) (int, error) {
 	runs, err := s.operations.ListByInstallation(ctx, installationID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	now := s.clock.Now().UTC()
+	lastAttemptCount := 0
 	for _, run := range runs {
 		if strings.TrimSpace(run.OperationType) != feeSyncOperationType {
 			continue
 		}
 		switch run.Status {
 		case domain.OperationRunStatusQueued, domain.OperationRunStatusRunning:
-			return errors.New(feeSyncRetryCooldownErrorCode)
-		case domain.OperationRunStatusSucceeded, domain.OperationRunStatusFailed, domain.OperationRunStatusCancelled:
-			if recentOperationRun(run, now, feeSyncRetryCooldown) {
-				return errors.New(feeSyncRetryCooldownErrorCode)
+			return 0, errors.New(feeSyncRetryCooldownErrorCode)
+		case domain.OperationRunStatusFailed:
+			if strings.TrimSpace(run.FailureCode) != feeSyncProviderErrorCode {
+				continue
+			}
+			if !recentOperationRun(run, now, feeSyncRetryCooldown) {
+				continue
+			}
+			if run.AttemptCount > lastAttemptCount {
+				lastAttemptCount = run.AttemptCount
 			}
 		}
 	}
 
-	return nil
+	if lastAttemptCount >= feeSyncMaxAutomaticAttempts {
+		return 0, errors.New(feeSyncRetryCooldownErrorCode)
+	}
+
+	nextAttempt := lastAttemptCount + 1
+	if nextAttempt < 1 {
+		nextAttempt = 1
+	}
+
+	return nextAttempt, nil
 }
 
 func recentOperationRun(run domain.OperationRun, now time.Time, cooldown time.Duration) bool {
