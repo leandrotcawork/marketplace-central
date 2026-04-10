@@ -26,14 +26,17 @@ import (
 	integrationscrypto "marketplace-central/apps/server_core/internal/modules/integrations/adapters/crypto"
 	integrationsmagalu "marketplace-central/apps/server_core/internal/modules/integrations/adapters/magalu"
 	integrationsml "marketplace-central/apps/server_core/internal/modules/integrations/adapters/mercadolivre"
+	integrationsfeesync "marketplace-central/apps/server_core/internal/modules/integrations/adapters/feesync"
 	integrationspostgres "marketplace-central/apps/server_core/internal/modules/integrations/adapters/postgres"
 	integrationsproviders "marketplace-central/apps/server_core/internal/modules/integrations/adapters/providers"
 	integrationsshopee "marketplace-central/apps/server_core/internal/modules/integrations/adapters/shopee"
 	integrationsapp "marketplace-central/apps/server_core/internal/modules/integrations/application"
 	integrationsbg "marketplace-central/apps/server_core/internal/modules/integrations/background"
+	integrationsdomain "marketplace-central/apps/server_core/internal/modules/integrations/domain"
 	integrationstransport "marketplace-central/apps/server_core/internal/modules/integrations/transport"
 	marketplacespostgres "marketplace-central/apps/server_core/internal/modules/marketplaces/adapters/postgres"
 	marketplacesapp "marketplace-central/apps/server_core/internal/modules/marketplaces/application"
+	marketplacesports "marketplace-central/apps/server_core/internal/modules/marketplaces/ports"
 	marketplacesregistry "marketplace-central/apps/server_core/internal/modules/marketplaces/registry"
 	marketplacestransport "marketplace-central/apps/server_core/internal/modules/marketplaces/transport"
 	pricingcatalog "marketplace-central/apps/server_core/internal/modules/pricing/adapters/catalog"
@@ -47,6 +50,48 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type authFlowFacade struct {
+	flow       *integrationsapp.AuthFlowService
+	feeSync    *integrationsapp.FeeSyncService
+	operations *integrationsapp.OperationService
+}
+
+func (f authFlowFacade) StartAuthorize(ctx context.Context, input integrationsapp.StartAuthorizeInput) (integrationsapp.AuthorizeStart, error) {
+	return f.flow.StartAuthorize(ctx, input)
+}
+
+func (f authFlowFacade) HandleCallback(ctx context.Context, input integrationsapp.HandleCallbackInput) (integrationsapp.AuthStatus, error) {
+	return f.flow.HandleCallback(ctx, input)
+}
+
+func (f authFlowFacade) SubmitAPIKey(ctx context.Context, input integrationsapp.SubmitAPIKeyInput) (integrationsapp.AuthStatus, error) {
+	return f.flow.SubmitAPIKey(ctx, input)
+}
+
+func (f authFlowFacade) RefreshCredential(ctx context.Context, input integrationsapp.RefreshCredentialInput) (integrationsapp.AuthStatus, error) {
+	return f.flow.RefreshCredential(ctx, input)
+}
+
+func (f authFlowFacade) Disconnect(ctx context.Context, input integrationsapp.DisconnectInput) (integrationsapp.AuthStatus, error) {
+	return f.flow.Disconnect(ctx, input)
+}
+
+func (f authFlowFacade) StartReauth(ctx context.Context, input integrationsapp.StartReauthInput) (integrationsapp.AuthorizeStart, error) {
+	return f.flow.StartReauth(ctx, input)
+}
+
+func (f authFlowFacade) GetAuthStatus(ctx context.Context, input integrationsapp.GetAuthStatusInput) (integrationsapp.AuthStatus, error) {
+	return f.flow.GetAuthStatus(ctx, input)
+}
+
+func (f authFlowFacade) StartSync(ctx context.Context, input integrationsapp.StartFeeSyncInput) (integrationsapp.FeeSyncAccepted, error) {
+	return f.feeSync.StartSync(ctx, input)
+}
+
+func (f authFlowFacade) ListOperationRuns(ctx context.Context, installationID string) ([]integrationsdomain.OperationRun, error) {
+	return f.operations.ListByInstallation(ctx, installationID)
+}
 
 func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) http.Handler {
 	mux := http.NewServeMux()
@@ -84,9 +129,19 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	operationRunRepo := integrationspostgres.NewOperationRunRepository(pool, cfg.DefaultTenantID)
 	operationSvc := integrationsapp.NewOperationService(operationRunRepo, cfg.DefaultTenantID)
 	oauthStateRepo := integrationspostgres.NewOAuthStateRepository(pool, cfg.DefaultTenantID)
-
-	_ = capabilitySvc
-	_ = operationSvc
+	feeRepo := marketplacespostgres.NewFeeScheduleRepository(pool)
+	feeSyncExecutor := integrationsfeesync.NewMarketplaceExecutor(feeRepo, []marketplacesports.FeeScheduleSyncer{
+		connml.NewFeeSyncer(),
+		connshopee.NewFeeSyncer(),
+		connmagalu.NewFeeSyncer(),
+	})
+	feeSyncSvc := integrationsapp.NewFeeSyncService(integrationsapp.FeeSyncServiceConfig{
+		Installations: installationSvc,
+		Providers:     providerSvc,
+		Operations:    operationSvc,
+		Capabilities:  capabilitySvc,
+		Executor:      feeSyncExecutor,
+	})
 
 	encryptionSvc, err := integrationscrypto.NewLocalKeyService(cfg.EncryptionKey, "local-key-v1")
 	if err != nil {
@@ -129,16 +184,22 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 		log.Fatalf("auth flow service: %v", err)
 	}
 
+	flowFacade := authFlowFacade{
+		flow:       authFlowSvc,
+		feeSync:    feeSyncSvc,
+		operations: operationSvc,
+	}
+
 	integrationstransport.NewHandler(providerSvc, installationSvc).Register(mux)
-	integrationstransport.NewAuthHandler(authFlowSvc).Register(mux)
+	integrationstransport.NewAuthHandler(flowFacade).Register(mux)
 
 	go integrationsbg.NewRefreshTicker(authSessionRepo, authFlowSvc, 5*time.Minute).Start(context.Background())
 	go integrationsbg.NewStateCleanup(oauthStateRepo, time.Hour).Start(context.Background())
+	go integrationsbg.NewFeeSyncScheduler(installationSvc, providerSvc, feeSyncSvc, 15*time.Minute).Start(context.Background())
 
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
 	marketSvc := marketplacesapp.NewService(marketRepo, cfg.DefaultTenantID)
 
-	feeRepo := marketplacespostgres.NewFeeScheduleRepository(pool)
 	feeSvc := marketplacesapp.NewFeeScheduleService(feeRepo)
 
 	if pool != nil {
@@ -147,7 +208,7 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 		}
 	}
 
-	feeSyncSvc := connectorsapp.NewFeeSyncService(feeRepo,
+	connectorsFeeSyncSvc := connectorsapp.NewFeeSyncService(feeRepo,
 		connml.NewFeeSyncer(),
 		connshopee.NewFeeSyncer(),
 		connmagalu.NewFeeSyncer(),
@@ -157,7 +218,7 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
-			feeSyncSvc.SeedAll(ctx)
+			connectorsFeeSyncSvc.SeedAll(ctx)
 		}()
 	}
 
@@ -173,7 +234,7 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 		}()
 	}
 
-	marketplacestransport.NewHandler(marketSvc, feeSvc, feeSyncSvc).Register(mux)
+	marketplacestransport.NewHandler(marketSvc, feeSvc, connectorsFeeSyncSvc).Register(mux)
 
 	pricingRepo := pricingpostgres.NewRepository(pool, cfg.DefaultTenantID)
 	pricingSvc := pricingapp.NewService(pricingRepo, cfg.DefaultTenantID)
