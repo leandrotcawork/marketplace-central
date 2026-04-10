@@ -87,6 +87,62 @@ func TestMarketplaceExecutorFallsBackToInstallationProviderCode(t *testing.T) {
 	}
 }
 
+func TestMarketplaceExecutorReturnsUnsupportedForAPISourceWithoutSyncer(t *testing.T) {
+	t.Parallel()
+
+	executor := NewMarketplaceExecutor(&stubFeeScheduleRepo{}, nil)
+
+	result, err := executor.Execute(context.Background(), integrationsdomain.Installation{ProviderCode: "mercado_livre"}, integrationsdomain.ProviderDefinition{
+		ProviderCode: "mercado_livre",
+		Metadata:     map[string]any{"fee_source": "api_sync"},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v, want nil", err)
+	}
+	if got, want := result.ResultCode, "INTEGRATIONS_FEE_SYNC_UNSUPPORTED"; got != want {
+		t.Fatalf("ResultCode = %q, want %q", got, want)
+	}
+	if got, want := result.FailureCode, "INTEGRATIONS_FEE_SYNC_UNSUPPORTED"; got != want {
+		t.Fatalf("FailureCode = %q, want %q", got, want)
+	}
+}
+
+func TestMarketplaceExecutorSeedsDeterministicallyWhenSeedSourceHasNoSyncer(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubFeeScheduleRepo{}
+	executor := NewMarketplaceExecutor(repo, nil)
+
+	result, err := executor.Execute(context.Background(), integrationsdomain.Installation{ProviderCode: "amazon"}, integrationsdomain.ProviderDefinition{
+		ProviderCode: "amazon",
+		Metadata:     map[string]any{"fee_source": "seed"},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got, want := result.ResultCode, "INTEGRATIONS_FEE_SYNC_OK"; got != want {
+		t.Fatalf("ResultCode = %q, want %q", got, want)
+	}
+	if result.RowsSynced <= 0 {
+		t.Fatalf("RowsSynced = %d, want > 0", result.RowsSynced)
+	}
+	if len(repo.upserted) != 1 {
+		t.Fatalf("UpsertSchedules rows = %d, want 1", len(repo.upserted))
+	}
+	if got, want := repo.upserted[0].MarketplaceCode, "amazon"; got != want {
+		t.Fatalf("MarketplaceCode = %q, want %q", got, want)
+	}
+	if got, want := repo.upserted[0].CategoryID, "default"; got != want {
+		t.Fatalf("CategoryID = %q, want %q", got, want)
+	}
+	if got, want := repo.upserted[0].CommissionPercent, 0.12; got != want {
+		t.Fatalf("CommissionPercent = %v, want %v", got, want)
+	}
+	if got, want := repo.upserted[0].Source, "seeded"; got != want {
+		t.Fatalf("Source = %q, want %q", got, want)
+	}
+}
+
 func TestMarketplaceExecutorClassifiesProviderErrors(t *testing.T) {
 	t.Parallel()
 
@@ -206,9 +262,12 @@ func TestMarketplaceExecutorReturnsUnsupportedWhenNoSyncerMatches(t *testing.T) 
 	}
 }
 
-type stubFeeScheduleRepo struct{}
+type stubFeeScheduleRepo struct {
+	upserted []marketplacesdomain.FeeSchedule
+}
 
-func (s *stubFeeScheduleRepo) UpsertSchedules(context.Context, []marketplacesdomain.FeeSchedule) error {
+func (s *stubFeeScheduleRepo) UpsertSchedules(_ context.Context, rows []marketplacesdomain.FeeSchedule) error {
+	s.upserted = append([]marketplacesdomain.FeeSchedule(nil), rows...)
 	return nil
 }
 func (s *stubFeeScheduleRepo) LookupFee(context.Context, string, string, string) (marketplacesdomain.FeeSchedule, bool, error) {
