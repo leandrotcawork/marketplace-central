@@ -84,9 +84,9 @@ func (s *flowEncryptor) EncryptJSON(payload map[string]any) ([]byte, string, err
 type flowAdapter struct {
 	providerCode string
 	startInput   StartAuthorizeAdapterInput
-	callback    CredentialPayload
-	apiKey      CredentialPayload
-	refresh     CredentialPayload
+	callback     CredentialPayload
+	apiKey       CredentialPayload
+	refresh      CredentialPayload
 }
 
 func (s *flowAdapter) ProviderCode() string { return s.providerCode }
@@ -145,6 +145,7 @@ func TestAuthFlowStartAuthorizeMarksInstallationPending(t *testing.T) {
 func TestAuthFlowHandleCallbackRotatesCredentialAndMarksConnected(t *testing.T) {
 	t.Parallel()
 
+	now := time.Unix(1500, 0).UTC()
 	expiresAt := time.Unix(2000, 0).UTC()
 	installations := &flowInstallationStore{installations: map[string]domain.Installation{
 		"inst-ml": {InstallationID: "inst-ml", ProviderCode: "mercado_livre", Status: domain.InstallationStatusPendingConnection, HealthStatus: domain.HealthStatusHealthy},
@@ -163,17 +164,30 @@ func TestAuthFlowHandleCallbackRotatesCredentialAndMarksConnected(t *testing.T) 
 			ExpiresAt:           &expiresAt,
 		},
 	}
+	oauthStates := &securityOAuthStateStore{
+		state: domain.OAuthState{
+			ID:             "oauth-state-1",
+			InstallationID: "inst-ml",
+			Nonce:          "nonce-1",
+			ExpiresAt:      now.Add(time.Minute),
+		},
+		found:         true,
+		consumeResult: true,
+	}
 	svc := NewAuthFlowService(AuthFlowConfig{
-		Installations: installations,
-		Credentials:   credentials,
-		AuthSessions:  authSessions,
-		Encryptor:     encryptor,
-		Adapters:      []MarketplaceAuthAdapter{adapter},
+		Installations:   installations,
+		Credentials:     credentials,
+		AuthSessions:    authSessions,
+		OAuthStates:     oauthStates,
+		OAuthStateCodec: validSecurityStateCodec(),
+		Encryptor:       encryptor,
+		Clock:           fixedAuthFlowClock{now: now},
+		Adapters:        []MarketplaceAuthAdapter{adapter},
 	})
 
 	result, err := svc.HandleCallback(context.Background(), HandleCallbackInput{
 		InstallationID: "inst-ml",
-		State:          "state-1",
+		State:          "signed_state",
 		Code:           "code-1",
 		RedirectURI:    "https://app.test/callback",
 	})
@@ -188,6 +202,9 @@ func TestAuthFlowHandleCallbackRotatesCredentialAndMarksConnected(t *testing.T) 
 	}
 	if len(authSessions.inputs) != 1 || authSessions.inputs[0].ProviderAccountID != "seller-1" || authSessions.inputs[0].State != domain.AuthStateValid {
 		t.Fatalf("auth session inputs = %#v, want valid seller session", authSessions.inputs)
+	}
+	if len(oauthStates.consumeIDs) != 1 || oauthStates.consumeIDs[0] != "oauth-state-1" {
+		t.Fatalf("consumed oauth state IDs = %#v, want oauth-state-1", oauthStates.consumeIDs)
 	}
 	if len(encryptor.payloads) != 1 || encryptor.payloads[0]["access_token"] != "access" || encryptor.payloads[0]["refresh_token"] != "refresh" {
 		t.Fatalf("encrypted payloads = %#v, want token payload", encryptor.payloads)

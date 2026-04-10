@@ -78,6 +78,11 @@ type HandleCallbackAdapterInput struct {
 	RedirectURI    string
 }
 
+type OAuthStatePayload struct {
+	Nonce          string
+	InstallationID string
+}
+
 type SubmitAPIKeyAdapterInput struct {
 	InstallationID string
 	APIKey         string
@@ -122,24 +127,49 @@ type authFlowSessionWriter interface {
 	Upsert(ctx context.Context, input UpsertAuthSessionInput) (domain.AuthSession, error)
 }
 
+type authFlowOAuthStateStore interface {
+	GetByNonce(ctx context.Context, nonce string) (domain.OAuthState, bool, error)
+	ConsumeNonce(ctx context.Context, id string) (bool, error)
+}
+
+type authFlowOAuthStateCodec interface {
+	DecodeAndVerify(state string) (OAuthStatePayload, error)
+}
+
 type authFlowEncryptor interface {
 	EncryptJSON(payload map[string]any) ([]byte, string, error)
 }
 
+type authFlowClock interface {
+	Now() time.Time
+}
+
+type systemAuthFlowClock struct{}
+
+func (systemAuthFlowClock) Now() time.Time {
+	return time.Now().UTC()
+}
+
 type AuthFlowConfig struct {
-	Installations authFlowInstallationStore
-	Credentials   authFlowCredentialRotator
-	AuthSessions  authFlowSessionWriter
-	Encryptor     authFlowEncryptor
-	Adapters      []MarketplaceAuthAdapter
+	Installations   authFlowInstallationStore
+	Credentials     authFlowCredentialRotator
+	AuthSessions    authFlowSessionWriter
+	OAuthStates     authFlowOAuthStateStore
+	OAuthStateCodec authFlowOAuthStateCodec
+	Encryptor       authFlowEncryptor
+	Clock           authFlowClock
+	Adapters        []MarketplaceAuthAdapter
 }
 
 type AuthFlowService struct {
-	installations authFlowInstallationStore
-	credentials   authFlowCredentialRotator
-	authSessions  authFlowSessionWriter
-	encryptor     authFlowEncryptor
-	adapters      map[string]MarketplaceAuthAdapter
+	installations   authFlowInstallationStore
+	credentials     authFlowCredentialRotator
+	authSessions    authFlowSessionWriter
+	oauthStates     authFlowOAuthStateStore
+	oauthStateCodec authFlowOAuthStateCodec
+	encryptor       authFlowEncryptor
+	clock           authFlowClock
+	adapters        map[string]MarketplaceAuthAdapter
 }
 
 func NewAuthFlowService(cfg AuthFlowConfig) *AuthFlowService {
@@ -147,13 +177,20 @@ func NewAuthFlowService(cfg AuthFlowConfig) *AuthFlowService {
 	for _, adapter := range cfg.Adapters {
 		byProvider[adapter.ProviderCode()] = adapter
 	}
+	clock := cfg.Clock
+	if clock == nil {
+		clock = systemAuthFlowClock{}
+	}
 
 	return &AuthFlowService{
-		installations: cfg.Installations,
-		credentials:   cfg.Credentials,
-		authSessions:  cfg.AuthSessions,
-		encryptor:     cfg.Encryptor,
-		adapters:      byProvider,
+		installations:   cfg.Installations,
+		credentials:     cfg.Credentials,
+		authSessions:    cfg.AuthSessions,
+		oauthStates:     cfg.OAuthStates,
+		oauthStateCodec: cfg.OAuthStateCodec,
+		encryptor:       cfg.Encryptor,
+		clock:           clock,
+		adapters:        byProvider,
 	}
 }
 
@@ -188,13 +225,18 @@ func (s *AuthFlowService) StartAuthorize(ctx context.Context, input StartAuthori
 }
 
 func (s *AuthFlowService) HandleCallback(ctx context.Context, input HandleCallbackInput) (AuthStatus, error) {
-	inst, adapter, err := s.loadInstallationWithAdapter(ctx, input.InstallationID)
+	statePayload, err := s.verifyAndConsumeCallbackState(ctx, input.State, input.InstallationID)
+	if err != nil {
+		return AuthStatus{}, err
+	}
+
+	inst, adapter, err := s.loadInstallationWithAdapter(ctx, statePayload.InstallationID)
 	if err != nil {
 		return AuthStatus{}, err
 	}
 
 	payload, err := adapter.ExchangeCallback(ctx, HandleCallbackAdapterInput{
-		InstallationID: input.InstallationID,
+		InstallationID: statePayload.InstallationID,
 		Code:           input.Code,
 		RedirectURI:    input.RedirectURI,
 	})
@@ -202,13 +244,13 @@ func (s *AuthFlowService) HandleCallback(ctx context.Context, input HandleCallba
 		return AuthStatus{}, err
 	}
 
-	if err := s.saveCredential(ctx, input.InstallationID, payload); err != nil {
+	if err := s.saveCredential(ctx, statePayload.InstallationID, payload); err != nil {
 		return AuthStatus{}, err
 	}
 
 	if _, err := s.authSessions.Upsert(ctx, UpsertAuthSessionInput{
-		AuthSessionID:        fmt.Sprintf("auth_%s", input.InstallationID),
-		InstallationID:       input.InstallationID,
+		AuthSessionID:        fmt.Sprintf("auth_%s", statePayload.InstallationID),
+		InstallationID:       statePayload.InstallationID,
 		ProviderAccountID:    payload.ProviderAccountID,
 		State:                domain.AuthStateValid,
 		AccessTokenExpiresAt: payload.ExpiresAt,
@@ -222,7 +264,7 @@ func (s *AuthFlowService) HandleCallback(ctx context.Context, input HandleCallba
 	}
 
 	return AuthStatus{
-		InstallationID:  input.InstallationID,
+		InstallationID:  statePayload.InstallationID,
 		Status:          domain.InstallationStatusConnected,
 		HealthStatus:    domain.HealthStatusHealthy,
 		ProviderCode:    inst.ProviderCode,
@@ -345,6 +387,50 @@ func (s *AuthFlowService) loadInstallationWithAdapter(ctx context.Context, insta
 		return domain.Installation{}, nil, domain.ErrAuthProviderNotOAuth
 	}
 	return inst, adapter, nil
+}
+
+func (s *AuthFlowService) verifyAndConsumeCallbackState(ctx context.Context, state string, expectedInstallationID string) (OAuthStatePayload, error) {
+	if s.oauthStateCodec == nil || s.oauthStates == nil {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+
+	payload, err := s.oauthStateCodec.DecodeAndVerify(state)
+	if err != nil {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+	if payload.Nonce == "" || payload.InstallationID == "" {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+	if expectedInstallationID != "" && expectedInstallationID != payload.InstallationID {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+
+	stored, found, err := s.oauthStates.GetByNonce(ctx, payload.Nonce)
+	if err != nil {
+		return OAuthStatePayload{}, err
+	}
+	if !found {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+	if stored.IsExpired(s.clock.Now().UTC()) {
+		return OAuthStatePayload{}, domain.ErrAuthStateExpired
+	}
+	if stored.IsConsumed() {
+		return OAuthStatePayload{}, domain.ErrAuthStateConsumed
+	}
+	if stored.Nonce != payload.Nonce || stored.InstallationID != payload.InstallationID {
+		return OAuthStatePayload{}, domain.ErrAuthStateInvalid
+	}
+
+	consumed, err := s.oauthStates.ConsumeNonce(ctx, stored.ID)
+	if err != nil {
+		return OAuthStatePayload{}, err
+	}
+	if !consumed {
+		return OAuthStatePayload{}, domain.ErrAuthStateConsumed
+	}
+
+	return payload, nil
 }
 
 func (s *AuthFlowService) saveCredential(ctx context.Context, installationID string, payload CredentialPayload) error {
