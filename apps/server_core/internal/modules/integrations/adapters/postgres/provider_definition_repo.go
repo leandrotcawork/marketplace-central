@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"marketplace-central/apps/server_core/internal/modules/integrations/domain"
 	"marketplace-central/apps/server_core/internal/modules/integrations/ports"
@@ -13,12 +14,18 @@ import (
 
 var _ ports.ProviderDefinitionRepository = (*ProviderDefinitionRepository)(nil)
 
+type providerDefinitionDB interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 type ProviderDefinitionRepository struct {
-	pool *pgxpool.Pool
+	db providerDefinitionDB
 }
 
 func NewProviderDefinitionRepository(pool *pgxpool.Pool) *ProviderDefinitionRepository {
-	return &ProviderDefinitionRepository{pool: pool}
+	return &ProviderDefinitionRepository{db: pool}
 }
 
 func (r *ProviderDefinitionRepository) UpsertProviderDefinitions(ctx context.Context, defs []domain.ProviderDefinition) error {
@@ -32,7 +39,7 @@ func (r *ProviderDefinitionRepository) UpsertProviderDefinitions(ctx context.Con
 			return err
 		}
 
-		_, err = r.pool.Exec(ctx, `
+		_, err = r.db.Exec(ctx, `
 			INSERT INTO integration_provider_definitions (
 				tenant_id, provider_code, family, display_name, auth_strategy,
 				install_mode, metadata_json, declared_caps_json, is_active,
@@ -58,7 +65,7 @@ func (r *ProviderDefinitionRepository) UpsertProviderDefinitions(ctx context.Con
 }
 
 func (r *ProviderDefinitionRepository) ListProviderDefinitions(ctx context.Context) ([]domain.ProviderDefinition, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		SELECT
 			provider_code, tenant_id, family, display_name, auth_strategy,
 			install_mode, metadata_json, declared_caps_json, is_active,
@@ -107,7 +114,7 @@ func (r *ProviderDefinitionRepository) GetProviderDefinition(ctx context.Context
 	var def domain.ProviderDefinition
 	var metadataRaw, capsRaw []byte
 
-	err := r.pool.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT
 			provider_code, tenant_id, family, display_name, auth_strategy,
 			install_mode, metadata_json, declared_caps_json, is_active,
