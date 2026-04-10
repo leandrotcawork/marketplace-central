@@ -21,11 +21,17 @@ func NewCapabilityService(store ports.CapabilityStateStore, tenantID string) *Ca
 }
 
 func (s *CapabilityService) Upsert(ctx context.Context, states []domain.CapabilityState) error {
-	for i := range states {
-		states[i].TenantID = s.tenantID
+	copied := make([]domain.CapabilityState, len(states))
+	for i, state := range states {
+		if strings.TrimSpace(state.InstallationID) == "" || strings.TrimSpace(state.CapabilityCode) == "" || !isValidCapabilityStatus(state.Status) {
+			return errors.New(capabilityInvalidErrorCode)
+		}
+
+		state.TenantID = s.tenantID
+		copied[i] = state
 	}
 
-	return s.store.UpsertCapabilityStates(ctx, states)
+	return s.store.UpsertCapabilityStates(ctx, copied)
 }
 
 func (s *CapabilityService) Resolve(ctx context.Context, installationID string, declared ports.MarketplaceCapabilities) ([]domain.CapabilityState, error) {
@@ -82,4 +88,17 @@ func (s *CapabilityService) Resolve(ctx context.Context, installationID string, 
 	}
 
 	return resolved, nil
+}
+
+func isValidCapabilityStatus(status domain.CapabilityStatus) bool {
+	switch status {
+	case domain.CapabilityStatusEnabled,
+		domain.CapabilityStatusDegraded,
+		domain.CapabilityStatusDisabled,
+		domain.CapabilityStatusRequiresReauth,
+		domain.CapabilityStatusUnsupported:
+		return true
+	default:
+		return false
+	}
 }

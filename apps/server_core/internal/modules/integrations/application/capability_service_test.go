@@ -116,6 +116,7 @@ func TestUpsertCapabilityStatesPersistsInput(t *testing.T) {
 		{
 			InstallationID: "inst_001",
 			CapabilityCode: "pricing_fee_sync",
+			Status:         domain.CapabilityStatusEnabled,
 		},
 	})
 	if err != nil {
@@ -133,5 +134,8 @@ func TestUpsertCapabilityStatesPersistsInput(t *testing.T) {
 	}
 	if got, want := store.states[0].CapabilityCode, "pricing_fee_sync"; got != want {
 		t.Fatalf("capability_code = %q, want %q", got, want)
+	}
+	if got, want := store.states[0].Status, domain.CapabilityStatusEnabled; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
 	}
 }
