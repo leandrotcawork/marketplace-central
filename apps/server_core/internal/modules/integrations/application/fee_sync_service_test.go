@@ -329,7 +329,7 @@ func TestStartSyncDoesNotCooldownAfterSuccessfulRun(t *testing.T) {
 	}
 }
 
-func TestStartSyncRejectsAfterMaxTransientFailedAttempts(t *testing.T) {
+func TestStartSyncRejectsAfterMaxTransientFailedAttemptsForSystemActor(t *testing.T) {
 	t.Parallel()
 
 	h := newFeeSyncHarness(t)
@@ -366,14 +366,65 @@ func TestStartSyncRejectsAfterMaxTransientFailedAttempts(t *testing.T) {
 
 	_, err := h.service.StartSync(context.Background(), StartFeeSyncInput{
 		InstallationID: "inst_001",
-		ActorType:      "user",
-		ActorID:        "user_123",
+		ActorType:      "system",
+		ActorID:        "system_123",
 	})
 	if err == nil {
 		t.Fatal("StartSync() error = nil, want retry cooldown")
 	}
 	if got, want := err.Error(), feeSyncRetryCooldownErrorCode; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestStartSyncAllowsManualTriggerAfterMaxTransientFailedAttempts(t *testing.T) {
+	t.Parallel()
+
+	h := newFeeSyncHarness(t)
+	now := time.Unix(1000, 0).UTC()
+	h.operations.history["inst_001"] = []domain.OperationRun{
+		{
+			OperationRunID: "run_fail_1",
+			InstallationID: "inst_001",
+			OperationType:  feeSyncOperationType,
+			Status:         domain.OperationRunStatusFailed,
+			FailureCode:    feeSyncProviderErrorCode,
+			AttemptCount:   1,
+			CompletedAt:    ptrTime(now.Add(-5 * time.Minute)),
+		},
+		{
+			OperationRunID: "run_fail_2",
+			InstallationID: "inst_001",
+			OperationType:  feeSyncOperationType,
+			Status:         domain.OperationRunStatusFailed,
+			FailureCode:    feeSyncProviderErrorCode,
+			AttemptCount:   2,
+			CompletedAt:    ptrTime(now.Add(-2 * time.Minute)),
+		},
+		{
+			OperationRunID: "run_fail_3",
+			InstallationID: "inst_001",
+			OperationType:  feeSyncOperationType,
+			Status:         domain.OperationRunStatusFailed,
+			FailureCode:    feeSyncProviderErrorCode,
+			AttemptCount:   3,
+			CompletedAt:    ptrTime(now.Add(-1 * time.Minute)),
+		},
+	}
+
+	accepted, err := h.service.StartSync(context.Background(), StartFeeSyncInput{
+		InstallationID: "inst_001",
+		ActorType:      "user",
+		ActorID:        "user_123",
+	})
+	if err != nil {
+		t.Fatalf("StartSync() error = %v, want nil", err)
+	}
+	if got, want := accepted.Status, domain.OperationRunStatusQueued; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+	if got, want := h.operations.records[0].AttemptCount, 4; got != want {
+		t.Fatalf("queued attempt_count = %d, want %d", got, want)
 	}
 }
 

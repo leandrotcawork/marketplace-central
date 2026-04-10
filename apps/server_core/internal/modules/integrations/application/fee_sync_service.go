@@ -151,7 +151,8 @@ func (s *FeeSyncService) StartSync(ctx context.Context, input StartFeeSyncInput)
 		return FeeSyncAccepted{}, errors.New(feeSyncUnsupportedErrorCode)
 	}
 
-	attemptCount, err := s.nextAttemptCount(ctx, inst.InstallationID)
+	actorType := strings.TrimSpace(input.ActorType)
+	attemptCount, err := s.nextAttemptCount(ctx, inst.InstallationID, actorType)
 	if err != nil {
 		return FeeSyncAccepted{}, err
 	}
@@ -168,7 +169,7 @@ func (s *FeeSyncService) StartSync(ctx context.Context, input StartFeeSyncInput)
 		Status:         domain.OperationRunStatusQueued,
 		ResultCode:     feeSyncQueuedResultCode,
 		AttemptCount:   attemptCount,
-		ActorType:      strings.TrimSpace(input.ActorType),
+		ActorType:      actorType,
 		ActorID:        strings.TrimSpace(input.ActorID),
 	})
 	if err != nil {
@@ -265,7 +266,7 @@ func (s *FeeSyncService) ExecuteSync(ctx context.Context, run domain.OperationRu
 	return nil
 }
 
-func (s *FeeSyncService) nextAttemptCount(ctx context.Context, installationID string) (int, error) {
+func (s *FeeSyncService) nextAttemptCount(ctx context.Context, installationID, actorType string) (int, error) {
 	runs, err := s.operations.ListByInstallation(ctx, installationID)
 	if err != nil {
 		return 0, err
@@ -293,7 +294,7 @@ func (s *FeeSyncService) nextAttemptCount(ctx context.Context, installationID st
 		}
 	}
 
-	if lastAttemptCount >= feeSyncMaxAutomaticAttempts {
+	if lastAttemptCount >= feeSyncMaxAutomaticAttempts && strings.TrimSpace(actorType) != "user" {
 		return 0, errors.New(feeSyncRetryCooldownErrorCode)
 	}
 
