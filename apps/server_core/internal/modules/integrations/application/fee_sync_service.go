@@ -2,8 +2,9 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -11,7 +12,19 @@ import (
 	"marketplace-central/apps/server_core/internal/modules/integrations/ports"
 )
 
-const feeSyncOperationType = "pricing_fee_sync"
+const (
+	feeSyncOperationType             = "pricing_fee_sync"
+	feeSyncUnsupportedErrorCode      = "INTEGRATIONS_FEE_SYNC_UNSUPPORTED"
+	feeSyncRetryCooldownErrorCode    = "INTEGRATIONS_FEE_SYNC_RETRY_COOLDOWN"
+	feeSyncInvalidConfigErrorCode    = "INTEGRATIONS_FEE_SYNC_INVALID_CONFIG"
+	feeSyncRunIDGenerationErrorCode  = "INTEGRATIONS_FEE_SYNC_RUN_ID_GENERATION_FAILED"
+	feeSyncOperationInvalidErrorCode = "INTEGRATIONS_OPERATION_INVALID"
+	feeSyncProviderInvalidErrorCode  = "INTEGRATIONS_PROVIDER_INVALID"
+	feeSyncProviderErrorCode         = "INTEGRATIONS_FEE_SYNC_PROVIDER_ERROR"
+	feeSyncQueuedResultCode          = "INTEGRATIONS_FEE_SYNC_QUEUED"
+	feeSyncRunningResultCode         = "INTEGRATIONS_FEE_SYNC_RUNNING"
+	feeSyncSucceededResultCode       = "INTEGRATIONS_FEE_SYNC_OK"
+)
 
 type StartFeeSyncInput struct {
 	InstallationID string
@@ -43,7 +56,7 @@ type FeeSyncService struct {
 	executor      ports.FeeSyncExecutor
 	asyncRunner   func(func())
 	clock         feeSyncClock
-	nextRunNumber int
+	configErr     error
 }
 
 type feeSyncClock interface {
@@ -64,6 +77,7 @@ type feeSyncProviderReader interface {
 
 type feeSyncOperationRecorder interface {
 	Record(ctx context.Context, input RecordOperationInput) (domain.OperationRun, error)
+	ListByInstallation(ctx context.Context, installationID string) ([]domain.OperationRun, error)
 }
 
 type feeSyncCapabilityWriter interface {
@@ -71,31 +85,43 @@ type feeSyncCapabilityWriter interface {
 }
 
 func NewFeeSyncService(cfg FeeSyncServiceConfig) *FeeSyncService {
-	asyncRunner := cfg.AsyncRunner
-	if asyncRunner == nil {
-		asyncRunner = func(fn func()) { fn() }
-	}
-
-	clock := cfg.Clock
-	if clock == nil {
-		clock = systemFeeSyncClock{}
-	}
-
-	return &FeeSyncService{
+	svc := &FeeSyncService{
 		installations: cfg.Installations,
 		providers:     cfg.Providers,
 		operations:    cfg.Operations,
 		capabilities:  cfg.Capabilities,
 		executor:      cfg.Executor,
-		asyncRunner:   asyncRunner,
-		clock:         clock,
+		asyncRunner:   cfg.AsyncRunner,
+		clock:         cfg.Clock,
 	}
+
+	switch {
+	case cfg.Installations == nil,
+		cfg.Providers == nil,
+		cfg.Operations == nil,
+		cfg.Capabilities == nil,
+		cfg.Executor == nil:
+		svc.configErr = errors.New(feeSyncInvalidConfigErrorCode)
+	}
+
+	if svc.asyncRunner == nil {
+		svc.asyncRunner = func(fn func()) { fn() }
+	}
+	if svc.clock == nil {
+		svc.clock = systemFeeSyncClock{}
+	}
+
+	return svc
 }
 
 func (s *FeeSyncService) StartSync(ctx context.Context, input StartFeeSyncInput) (FeeSyncAccepted, error) {
+	if err := s.configError(); err != nil {
+		return FeeSyncAccepted{}, err
+	}
+
 	installationID := strings.TrimSpace(input.InstallationID)
 	if installationID == "" {
-		return FeeSyncAccepted{}, errors.New("INTEGRATIONS_INSTALLATION_INVALID")
+		return FeeSyncAccepted{}, errors.New(feeSyncOperationInvalidErrorCode)
 	}
 
 	inst, found, err := s.installations.Get(ctx, installationID)
@@ -105,29 +131,33 @@ func (s *FeeSyncService) StartSync(ctx context.Context, input StartFeeSyncInput)
 	if !found {
 		return FeeSyncAccepted{}, domain.ErrInstallationNotFound
 	}
-	if inst.Status == domain.InstallationStatusRequiresReauth {
-		return FeeSyncAccepted{}, domain.ErrReauthCooldownActive
-	}
-	if inst.Status != domain.InstallationStatusConnected && inst.Status != domain.InstallationStatusDegraded {
-		return FeeSyncAccepted{}, domain.ErrInstallationWrongStatus
-	}
 
 	provider, found, err := s.providers.GetProviderDefinition(ctx, inst.ProviderCode)
 	if err != nil {
 		return FeeSyncAccepted{}, err
 	}
 	if !found {
-		return FeeSyncAccepted{}, errors.New("INTEGRATIONS_PROVIDER_INVALID")
+		return FeeSyncAccepted{}, errors.New(feeSyncProviderInvalidErrorCode)
 	}
-	_ = provider
+	if !providerDeclaresFeeSync(provider) {
+		return FeeSyncAccepted{}, errors.New(feeSyncUnsupportedErrorCode)
+	}
 
-	runID := s.nextOperationRunID()
-	run, err := s.operations.Record(ctx, RecordOperationInput{
+	if err := s.checkRetryCooldown(ctx, inst.InstallationID); err != nil {
+		return FeeSyncAccepted{}, err
+	}
+
+	runID, err := newFeeSyncRunID()
+	if err != nil {
+		return FeeSyncAccepted{}, err
+	}
+
+	queuedRun, err := s.operations.Record(ctx, RecordOperationInput{
 		OperationRunID: runID,
 		InstallationID: inst.InstallationID,
 		OperationType:  feeSyncOperationType,
 		Status:         domain.OperationRunStatusQueued,
-		ResultCode:     "INTEGRATIONS_FEE_SYNC_QUEUED",
+		ResultCode:     feeSyncQueuedResultCode,
 		AttemptCount:   1,
 		ActorType:      strings.TrimSpace(input.ActorType),
 		ActorID:        strings.TrimSpace(input.ActorID),
@@ -137,20 +167,27 @@ func (s *FeeSyncService) StartSync(ctx context.Context, input StartFeeSyncInput)
 	}
 
 	s.asyncRunner(func() {
-		_ = s.ExecuteSync(context.Background(), run)
+		bg := context.Background()
+		if execErr := s.ExecuteSync(bg, queuedRun); execErr != nil {
+			_ = s.persistFailedOperationRun(bg, queuedRun, execErr)
+		}
 	})
 
 	return FeeSyncAccepted{
 		InstallationID: inst.InstallationID,
-		OperationRunID: run.OperationRunID,
+		OperationRunID: queuedRun.OperationRunID,
 		Status:         domain.OperationRunStatusQueued,
 	}, nil
 }
 
 func (s *FeeSyncService) ExecuteSync(ctx context.Context, run domain.OperationRun) error {
+	if err := s.configError(); err != nil {
+		return err
+	}
+
 	installationID := strings.TrimSpace(run.InstallationID)
 	if installationID == "" {
-		return errors.New("INTEGRATIONS_OPERATION_INVALID")
+		return errors.New(feeSyncOperationInvalidErrorCode)
 	}
 
 	inst, found, err := s.installations.Get(ctx, installationID)
@@ -166,65 +203,182 @@ func (s *FeeSyncService) ExecuteSync(ctx context.Context, run domain.OperationRu
 		return err
 	}
 	if !found {
-		return errors.New("INTEGRATIONS_PROVIDER_INVALID")
+		return errors.New(feeSyncProviderInvalidErrorCode)
+	}
+	if !providerDeclaresFeeSync(provider) {
+		return errors.New(feeSyncUnsupportedErrorCode)
+	}
+
+	now := s.clock.Now().UTC()
+	runningRun, err := s.operations.Record(ctx, RecordOperationInput{
+		OperationRunID: run.OperationRunID,
+		InstallationID: run.InstallationID,
+		OperationType:  feeSyncOperationType,
+		Status:         domain.OperationRunStatusRunning,
+		ResultCode:     feeSyncRunningResultCode,
+		AttemptCount:   run.AttemptCount,
+		ActorType:      run.ActorType,
+		ActorID:        run.ActorID,
+		StartedAt:      ptrTime(now),
+	})
+	if err != nil {
+		return err
 	}
 
 	result, execErr := s.executor.Execute(ctx, inst, provider)
-	finalState := capabilityStateFromFeeSync(result, execErr)
-	finalState.TenantID = ""
-	finalState.InstallationID = run.InstallationID
+	finalState := capabilityStateFromFeeSync(inst.InstallationID, result, execErr)
 	if err := s.capabilities.Upsert(ctx, []domain.CapabilityState{finalState}); err != nil {
 		return err
 	}
 
-	finalRunStatus := domain.OperationRunStatusSucceeded
+	finalStatus := domain.OperationRunStatusSucceeded
 	if finalState.Status != domain.CapabilityStatusEnabled {
-		finalRunStatus = domain.OperationRunStatusFailed
+		finalStatus = domain.OperationRunStatusFailed
 	}
 
-	_, recordErr := s.operations.Record(ctx, RecordOperationInput{
-		OperationRunID: run.OperationRunID,
-		InstallationID: run.InstallationID,
+	_, err = s.operations.Record(ctx, RecordOperationInput{
+		OperationRunID: runningRun.OperationRunID,
+		InstallationID: runningRun.InstallationID,
 		OperationType:  feeSyncOperationType,
-		Status:         finalRunStatus,
-		ResultCode:     result.ResultCode,
+		Status:         finalStatus,
+		ResultCode:     firstNonEmpty(result.ResultCode, feeSyncSucceededResultCode),
 		FailureCode:    result.FailureCode,
-		AttemptCount:   run.AttemptCount,
-		ActorType:      run.ActorType,
-		ActorID:        run.ActorID,
-		StartedAt:      ptrTime(s.clock.Now().UTC()),
+		AttemptCount:   runningRun.AttemptCount,
+		ActorType:      runningRun.ActorType,
+		ActorID:        runningRun.ActorID,
+		StartedAt:      runningRun.StartedAt,
 		CompletedAt:    ptrTime(s.clock.Now().UTC()),
 	})
-	if recordErr != nil {
-		return recordErr
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func capabilityStateFromFeeSync(result ports.FeeSyncResult, execErr error) domain.CapabilityState {
+func (s *FeeSyncService) checkRetryCooldown(ctx context.Context, installationID string) error {
+	runs, err := s.operations.ListByInstallation(ctx, installationID)
+	if err != nil {
+		return err
+	}
+
+	now := s.clock.Now().UTC()
+	cooldown := domain.DefaultRefreshPolicy().CooldownAfterTerminal
+	for _, run := range runs {
+		if strings.TrimSpace(run.OperationType) != feeSyncOperationType {
+			continue
+		}
+		switch run.Status {
+		case domain.OperationRunStatusQueued, domain.OperationRunStatusRunning:
+			return errors.New(feeSyncRetryCooldownErrorCode)
+		case domain.OperationRunStatusSucceeded, domain.OperationRunStatusFailed, domain.OperationRunStatusCancelled:
+			if recentOperationRun(run, now, cooldown) {
+				return errors.New(feeSyncRetryCooldownErrorCode)
+			}
+		}
+	}
+
+	return nil
+}
+
+func recentOperationRun(run domain.OperationRun, now time.Time, cooldown time.Duration) bool {
+	if cooldown <= 0 {
+		return false
+	}
+
+	base := run.CompletedAt
+	if base == nil {
+		base = run.StartedAt
+	}
+	if base == nil {
+		return false
+	}
+
+	return now.Sub(base.UTC()) < cooldown
+}
+
+func providerDeclaresFeeSync(provider domain.ProviderDefinition) bool {
+	for _, capability := range provider.DeclaredCapabilities {
+		if strings.TrimSpace(capability) == feeSyncOperationType {
+			return true
+		}
+	}
+	return false
+}
+
+func capabilityStateFromFeeSync(installationID string, result ports.FeeSyncResult, execErr error) domain.CapabilityState {
 	state := domain.CapabilityState{
+		InstallationID: installationID,
 		CapabilityCode: feeSyncOperationType,
 		Status:         domain.CapabilityStatusEnabled,
-		ReasonCode:     "INTEGRATIONS_FEE_SYNC_OK",
+		ReasonCode:     feeSyncSucceededResultCode,
 	}
 
 	switch {
 	case result.RequiresReauth || errors.Is(execErr, domain.ErrReauthAccountMismatch):
 		state.Status = domain.CapabilityStatusRequiresReauth
 		state.ReasonCode = "INTEGRATIONS_FEE_SYNC_REQUIRES_REAUTH"
+	case result.ResultCode == feeSyncUnsupportedErrorCode:
+		state.Status = domain.CapabilityStatusUnsupported
+		state.ReasonCode = feeSyncUnsupportedErrorCode
 	case result.Transient || execErr != nil:
 		state.Status = domain.CapabilityStatusDegraded
-		state.ReasonCode = firstNonEmpty(result.FailureCode, "INTEGRATIONS_FEE_SYNC_PROVIDER_ERROR")
+		state.ReasonCode = firstNonEmpty(result.FailureCode, feeSyncProviderErrorCode)
 	default:
 		state.Status = domain.CapabilityStatusEnabled
-		state.ReasonCode = firstNonEmpty(result.ResultCode, "INTEGRATIONS_FEE_SYNC_OK")
+		state.ReasonCode = firstNonEmpty(result.ResultCode, feeSyncSucceededResultCode)
 	}
 
 	return state
 }
 
-func (s *FeeSyncService) nextOperationRunID() string {
-	s.nextRunNumber++
-	return fmt.Sprintf("run_%03d", s.nextRunNumber)
+func (s *FeeSyncService) persistFailedOperationRun(ctx context.Context, run domain.OperationRun, err error) error {
+	_, recErr := s.operations.Record(ctx, RecordOperationInput{
+		OperationRunID: run.OperationRunID,
+		InstallationID: run.InstallationID,
+		OperationType:  feeSyncOperationType,
+		Status:         domain.OperationRunStatusFailed,
+		ResultCode:     feeSyncProviderErrorCode,
+		FailureCode:    failureCodeForError(err),
+		AttemptCount:   run.AttemptCount,
+		ActorType:      run.ActorType,
+		ActorID:        run.ActorID,
+		StartedAt:      run.StartedAt,
+		CompletedAt:    ptrTime(s.clock.Now().UTC()),
+	})
+	return recErr
+}
+
+func failureCodeForError(err error) string {
+	if err == nil {
+		return feeSyncProviderErrorCode
+	}
+	switch {
+	case strings.Contains(err.Error(), feeSyncUnsupportedErrorCode):
+		return feeSyncUnsupportedErrorCode
+	case strings.Contains(err.Error(), feeSyncRetryCooldownErrorCode):
+		return feeSyncRetryCooldownErrorCode
+	case errors.Is(err, domain.ErrReauthAccountMismatch):
+		return "INTEGRATIONS_FEE_SYNC_REQUIRES_REAUTH"
+	default:
+		return feeSyncProviderErrorCode
+	}
+}
+
+func newFeeSyncRunID() (string, error) {
+	var raw [12]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", errors.New(feeSyncRunIDGenerationErrorCode)
+	}
+	return "fs_" + hex.EncodeToString(raw[:]), nil
+}
+
+func (s *FeeSyncService) configError() error {
+	if s == nil {
+		return errors.New(feeSyncInvalidConfigErrorCode)
+	}
+	if s.configErr != nil {
+		return s.configErr
+	}
+	return nil
 }
