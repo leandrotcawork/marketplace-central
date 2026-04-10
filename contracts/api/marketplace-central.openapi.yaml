@@ -327,11 +327,6 @@ paths:
       summary: OAuth callback endpoint
       operationId: handleIntegrationAuthCallback
       parameters:
-        - name: installation_id
-          in: query
-          required: true
-          schema:
-            type: string
         - name: code
           in: query
           required: true

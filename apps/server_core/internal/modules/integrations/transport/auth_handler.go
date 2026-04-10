@@ -36,29 +36,33 @@ func (h AuthHandler) Register(mux *http.ServeMux) {
 }
 
 func (h AuthHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
 		writeIntegrationError(w, http.StatusMethodNotAllowed, "INTEGRATIONS_AUTH_METHOD_NOT_ALLOWED", "method not allowed")
+		slog.Info("integrations.auth.callback", "action", "handle_callback", "result", "405", "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
-	installationID := r.URL.Query().Get("installation_id")
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
-	if installationID == "" || code == "" || state == "" {
+	if code == "" || state == "" {
 		writeIntegrationError(w, http.StatusBadRequest, "INTEGRATIONS_AUTH_STATE_INVALID", "missing callback params")
+		slog.Info("integrations.auth.callback", "action", "handle_callback", "result", "400", "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
-	_, err := h.flow.HandleCallback(r.Context(), application.HandleCallbackInput{
-		InstallationID: installationID,
-		Code:           code,
-		State:          state,
-		RedirectURI:    "",
+	result, err := h.flow.HandleCallback(r.Context(), application.HandleCallbackInput{
+		Code:        code,
+		State:       state,
+		RedirectURI: "",
 	})
 	if err != nil {
-		http.Redirect(w, r, "/connections/"+installationID+"?status=failed", http.StatusFound)
+		slog.Info("integrations.auth.callback", "action", "handle_callback", "result", "302", "duration_ms", time.Since(start).Milliseconds())
+		http.Redirect(w, r, "/connections?status=failed", http.StatusFound)
 		return
 	}
-	http.Redirect(w, r, "/connections/"+installationID+"?status=connected", http.StatusFound)
+	slog.Info("integrations.auth.callback", "action", "handle_callback", "result", "302", "duration_ms", time.Since(start).Milliseconds())
+	http.Redirect(w, r, "/connections/"+result.InstallationID+"?status=connected", http.StatusFound)
 }
 
 func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +78,7 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 	suffix := strings.Join(segments[1:], "/")
 
 	switch suffix {
-	case "auth/start", "auth/authorize":
+	case "auth/authorize", "auth/start":
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			writeIntegrationError(w, http.StatusMethodNotAllowed, "INTEGRATIONS_AUTH_METHOD_NOT_ALLOWED", "method not allowed")
@@ -97,7 +101,7 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 		}
 		slog.Info("integrations.auth.start", "action", "start_authorize", "result", "200", "duration_ms", time.Since(start).Milliseconds())
 		httpx.WriteJSON(w, http.StatusOK, result)
-	case "auth/api-key", "auth/credentials":
+	case "auth/credentials", "auth/api-key":
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			writeIntegrationError(w, http.StatusMethodNotAllowed, "INTEGRATIONS_AUTH_METHOD_NOT_ALLOWED", "method not allowed")

@@ -13,9 +13,10 @@ import (
 )
 
 type stubAuthFlow struct {
-	startInput  application.StartAuthorizeInput
-	submitInput application.SubmitAPIKeyInput
-	statusInput application.GetAuthStatusInput
+	startInput    application.StartAuthorizeInput
+	callbackInput application.HandleCallbackInput
+	submitInput   application.SubmitAPIKeyInput
+	statusInput   application.GetAuthStatusInput
 }
 
 func (s *stubAuthFlow) StartAuthorize(ctx context.Context, input application.StartAuthorizeInput) (application.AuthorizeStart, error) {
@@ -24,7 +25,8 @@ func (s *stubAuthFlow) StartAuthorize(ctx context.Context, input application.Sta
 }
 
 func (s *stubAuthFlow) HandleCallback(ctx context.Context, input application.HandleCallbackInput) (application.AuthStatus, error) {
-	return application.AuthStatus{InstallationID: input.InstallationID, Status: domain.InstallationStatusConnected}, nil
+	s.callbackInput = input
+	return application.AuthStatus{InstallationID: "inst-from-state", Status: domain.InstallationStatusConnected}, nil
 }
 
 func (s *stubAuthFlow) SubmitAPIKey(ctx context.Context, input application.SubmitAPIKeyInput) (application.AuthStatus, error) {
@@ -54,7 +56,7 @@ func TestAuthHandlerStartAuthorizeDelegatesToService(t *testing.T) {
 
 	flow := &stubAuthFlow{}
 	handler := NewAuthHandler(flow)
-	req := httptest.NewRequest(http.MethodPost, "/integrations/installations/inst-1/auth/start", bytes.NewReader([]byte(`{"redirect_uri":"https://app.test/callback","scopes":["read"]}`)))
+	req := httptest.NewRequest(http.MethodPost, "/integrations/installations/inst-1/auth/authorize", bytes.NewReader([]byte(`{"redirect_uri":"https://app.test/callback","scopes":["read"]}`)))
 	rr := httptest.NewRecorder()
 
 	handler.handleInstallationAuth(rr, req)
@@ -79,7 +81,7 @@ func TestAuthHandlerRejectsWrongMethod(t *testing.T) {
 	t.Parallel()
 
 	handler := NewAuthHandler(&stubAuthFlow{})
-	req := httptest.NewRequest(http.MethodGet, "/integrations/installations/inst-1/auth/start", nil)
+	req := httptest.NewRequest(http.MethodGet, "/integrations/installations/inst-1/auth/authorize", nil)
 	rr := httptest.NewRecorder()
 
 	handler.handleInstallationAuth(rr, req)
@@ -92,12 +94,33 @@ func TestAuthHandlerRejectsWrongMethod(t *testing.T) {
 	}
 }
 
+func TestAuthHandlerCallbackAcceptsProviderCodeAndStateOnly(t *testing.T) {
+	t.Parallel()
+
+	flow := &stubAuthFlow{}
+	handler := NewAuthHandler(flow)
+	req := httptest.NewRequest(http.MethodGet, "/integrations/auth/callback?code=provider-code&state=signed-state", nil)
+	rr := httptest.NewRecorder()
+
+	handler.handleCallback(rr, req)
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body=%s", rr.Code, rr.Body.String())
+	}
+	if flow.callbackInput.InstallationID != "" || flow.callbackInput.Code != "provider-code" || flow.callbackInput.State != "signed-state" {
+		t.Fatalf("callback input = %#v, want code/state without installation id", flow.callbackInput)
+	}
+	if location := rr.Header().Get("Location"); location != "/connections/inst-from-state?status=connected" {
+		t.Fatalf("Location = %q, want service installation redirect", location)
+	}
+}
+
 func TestAuthHandlerSubmitAPIKeyDelegatesToService(t *testing.T) {
 	t.Parallel()
 
 	flow := &stubAuthFlow{}
 	handler := NewAuthHandler(flow)
-	req := httptest.NewRequest(http.MethodPost, "/integrations/installations/inst-shopee/auth/api-key", bytes.NewReader([]byte(`{"api_key":"secret","metadata":{"shop_id":"shop-1"}}`)))
+	req := httptest.NewRequest(http.MethodPost, "/integrations/installations/inst-shopee/auth/credentials", bytes.NewReader([]byte(`{"api_key":"secret","metadata":{"shop_id":"shop-1"}}`)))
 	rr := httptest.NewRecorder()
 
 	handler.handleInstallationAuth(rr, req)
