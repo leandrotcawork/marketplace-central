@@ -20,6 +20,14 @@ func NewCapabilityService(store ports.CapabilityStateStore, tenantID string) *Ca
 	return &CapabilityService{store: store, tenantID: tenantID}
 }
 
+func (s *CapabilityService) Upsert(ctx context.Context, states []domain.CapabilityState) error {
+	for i := range states {
+		states[i].TenantID = s.tenantID
+	}
+
+	return s.store.UpsertCapabilityStates(ctx, states)
+}
+
 func (s *CapabilityService) Resolve(ctx context.Context, installationID string, declared ports.MarketplaceCapabilities) ([]domain.CapabilityState, error) {
 	installationID = strings.TrimSpace(installationID)
 	if installationID == "" {

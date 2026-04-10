@@ -65,14 +65,14 @@ func TestResolveCapabilitiesMergesDeclaredAndEffectiveState(t *testing.T) {
 
 	want := []domain.CapabilityState{
 		{
-			TenantID:         "tenant-default",
-			InstallationID:   "inst_001",
-			CapabilityCode:   "publish",
-			Status:           domain.CapabilityStatusDisabled,
-			ReasonCode:       "",
-			LastEvaluatedAt:  nil,
-			CreatedAt:        time.Time{},
-			UpdatedAt:        time.Time{},
+			TenantID:        "tenant-default",
+			InstallationID:  "inst_001",
+			CapabilityCode:  "publish",
+			Status:          domain.CapabilityStatusDisabled,
+			ReasonCode:      "",
+			LastEvaluatedAt: nil,
+			CreatedAt:       time.Time{},
+			UpdatedAt:       time.Time{},
 		},
 		{
 			CapabilityStateID: "cap_orders",
@@ -103,5 +103,35 @@ func TestResolveCapabilitiesRejectsEmptyInstallationID(t *testing.T) {
 	}
 	if got, want := err.Error(), capabilityInvalidErrorCode; got != want {
 		t.Fatalf("Resolve() error = %q, want %q", got, want)
+	}
+}
+
+func TestUpsertCapabilityStatesPersistsInput(t *testing.T) {
+	t.Parallel()
+
+	store := &stubCapabilityStateStore{}
+	svc := NewCapabilityService(store, "tenant-default")
+
+	err := svc.Upsert(context.Background(), []domain.CapabilityState{
+		{
+			InstallationID: "inst_001",
+			CapabilityCode: "pricing_fee_sync",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	if len(store.states) != 1 {
+		t.Fatalf("saved capability states = %d, want 1", len(store.states))
+	}
+	if got, want := store.states[0].TenantID, "tenant-default"; got != want {
+		t.Fatalf("tenant_id = %q, want %q", got, want)
+	}
+	if got, want := store.states[0].InstallationID, "inst_001"; got != want {
+		t.Fatalf("installation_id = %q, want %q", got, want)
+	}
+	if got, want := store.states[0].CapabilityCode, "pricing_fee_sync"; got != want {
+		t.Fatalf("capability_code = %q, want %q", got, want)
 	}
 }

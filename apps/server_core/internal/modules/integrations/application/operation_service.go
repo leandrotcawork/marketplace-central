@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"marketplace-central/apps/server_core/internal/modules/integrations/domain"
@@ -15,7 +16,12 @@ type RecordOperationInput struct {
 	OperationType  string
 	Status         domain.OperationRunStatus
 	ResultCode     string
+	FailureCode    string
 	AttemptCount   int
+	ActorType      string
+	ActorID        string
+	StartedAt      *time.Time
+	CompletedAt    *time.Time
 }
 
 type OperationService struct {
@@ -40,12 +46,26 @@ func (s *OperationService) Record(ctx context.Context, input RecordOperationInpu
 		OperationType:  input.OperationType,
 		Status:         input.Status,
 		ResultCode:     input.ResultCode,
+		FailureCode:    input.FailureCode,
 		AttemptCount:   input.AttemptCount,
+		ActorType:      input.ActorType,
+		ActorID:        input.ActorID,
+		StartedAt:      cloneTimePtr(input.StartedAt),
+		CompletedAt:    cloneTimePtr(input.CompletedAt),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
 
 	return run, s.store.SaveOperationRun(ctx, run)
+}
+
+func (s *OperationService) ListByInstallation(ctx context.Context, installationID string) ([]domain.OperationRun, error) {
+	installationID = strings.TrimSpace(installationID)
+	if installationID == "" {
+		return nil, errors.New("INTEGRATIONS_OPERATION_INVALID")
+	}
+
+	return s.store.ListByInstallation(ctx, installationID)
 }
 
 func isValidOperationRunStatus(status domain.OperationRunStatus) bool {
