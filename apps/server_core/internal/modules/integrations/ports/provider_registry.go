@@ -9,6 +9,7 @@ import (
 type ProviderDefinitionRepository interface {
 	UpsertProviderDefinitions(ctx context.Context, defs []domain.ProviderDefinition) error
 	ListProviderDefinitions(ctx context.Context) ([]domain.ProviderDefinition, error)
+	GetProviderDefinition(ctx context.Context, providerCode string) (domain.ProviderDefinition, bool, error)
 }
 
 // ProviderRegistry exposes the static provider catalog owned by the integrations module.

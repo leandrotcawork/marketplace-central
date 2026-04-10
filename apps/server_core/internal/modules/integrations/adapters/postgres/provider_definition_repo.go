@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"marketplace-central/apps/server_core/internal/modules/integrations/domain"
 	"marketplace-central/apps/server_core/internal/modules/integrations/ports"
@@ -99,6 +101,46 @@ func (r *ProviderDefinitionRepository) ListProviderDefinitions(ctx context.Conte
 	}
 
 	return defs, rows.Err()
+}
+
+func (r *ProviderDefinitionRepository) GetProviderDefinition(ctx context.Context, providerCode string) (domain.ProviderDefinition, bool, error) {
+	var def domain.ProviderDefinition
+	var metadataRaw, capsRaw []byte
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			provider_code, tenant_id, family, display_name, auth_strategy,
+			install_mode, metadata_json, declared_caps_json, is_active,
+			created_at, updated_at
+		FROM integration_provider_definitions
+		WHERE tenant_id = 'system'
+		  AND provider_code = $1
+		  AND family = 'marketplace'
+		  AND is_active = true
+	`, providerCode).Scan(
+		&def.ProviderCode, &def.TenantID, &def.Family, &def.DisplayName, &def.AuthStrategy,
+		&def.InstallMode, &metadataRaw, &capsRaw, &def.IsActive,
+		&def.CreatedAt, &def.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ProviderDefinition{}, false, nil
+		}
+		return domain.ProviderDefinition{}, false, err
+	}
+
+	if len(metadataRaw) > 0 {
+		if err := json.Unmarshal(metadataRaw, &def.Metadata); err != nil {
+			return domain.ProviderDefinition{}, false, err
+		}
+	}
+	if len(capsRaw) > 0 {
+		if err := json.Unmarshal(capsRaw, &def.DeclaredCapabilities); err != nil {
+			return domain.ProviderDefinition{}, false, err
+		}
+	}
+
+	return def, true, nil
 }
 
 func marshalJSONMap(value map[string]any) ([]byte, error) {

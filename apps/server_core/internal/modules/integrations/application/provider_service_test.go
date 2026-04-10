@@ -10,8 +10,9 @@ import (
 )
 
 type fakeProviderRepository struct {
-	upserted []domain.ProviderDefinition
-	listed   []domain.ProviderDefinition
+	upserted     []domain.ProviderDefinition
+	listed       []domain.ProviderDefinition
+	lookupByCode string
 }
 
 func (f *fakeProviderRepository) UpsertProviderDefinitions(_ context.Context, defs []domain.ProviderDefinition) error {
@@ -21,6 +22,16 @@ func (f *fakeProviderRepository) UpsertProviderDefinitions(_ context.Context, de
 
 func (f *fakeProviderRepository) ListProviderDefinitions(context.Context) ([]domain.ProviderDefinition, error) {
 	return append([]domain.ProviderDefinition(nil), f.listed...), nil
+}
+
+func (f *fakeProviderRepository) GetProviderDefinition(_ context.Context, providerCode string) (domain.ProviderDefinition, bool, error) {
+	f.lookupByCode = providerCode
+	for _, def := range f.listed {
+		if def.ProviderCode == providerCode {
+			return def, true, nil
+		}
+	}
+	return domain.ProviderDefinition{}, false, nil
 }
 
 type fakeProviderRegistry struct {
@@ -82,5 +93,56 @@ func TestProviderServiceSeedsAndListsDefinitions(t *testing.T) {
 	}
 	if got, want := defs, repo.listed; !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected listed definitions: got %#v want %#v", got, want)
+	}
+}
+
+func TestGetProviderDefinitionReturnsRequestedProvider(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeProviderRepository{
+		listed: []domain.ProviderDefinition{
+			{
+				ProviderCode: "mercado_livre",
+				TenantID:     "system",
+				Family:       domain.IntegrationFamilyMarketplace,
+				DisplayName:  "Mercado Livre",
+				IsActive:     true,
+			},
+		},
+	}
+	svc := NewProviderService(repo)
+
+	got, found, err := svc.GetProviderDefinition(context.Background(), "  mercado_livre  ")
+	if err != nil {
+		t.Fatalf("GetProviderDefinition returned error: %v", err)
+	}
+	if !found {
+		t.Fatal("GetProviderDefinition returned found=false")
+	}
+	if got.ProviderCode != "mercado_livre" {
+		t.Fatalf("unexpected provider code: got %q want %q", got.ProviderCode, "mercado_livre")
+	}
+	if got.DisplayName != "Mercado Livre" {
+		t.Fatalf("unexpected provider display name: got %q want %q", got.DisplayName, "Mercado Livre")
+	}
+	if got, want := repo.lookupByCode, "mercado_livre"; got != want {
+		t.Fatalf("unexpected lookup code: got %q want %q", got, want)
+	}
+}
+
+func TestGetProviderDefinitionRejectsMissingProviderCode(t *testing.T) {
+	t.Parallel()
+
+	svc := NewProviderService(&fakeProviderRepository{})
+
+	_, found, err := svc.GetProviderDefinition(context.Background(), "   ")
+	if err == nil {
+		t.Fatal("GetProviderDefinition returned nil error")
+	}
+	if got, want := err.Error(), "INTEGRATIONS_PROVIDER_INVALID"; got != want {
+		t.Fatalf("unexpected error: got %q want %q", got, want)
+	}
+	if found {
+		t.Fatal("GetProviderDefinition returned found=true")
 	}
 }
