@@ -132,8 +132,8 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	integrationstransport.NewHandler(providerSvc, installationSvc).Register(mux)
 	integrationstransport.NewAuthHandler(authFlowSvc).Register(mux)
 
-	go integrationsbg.NewRefreshTicker(installationSvc, authFlowSvc, 5*time.Minute).Start(context.Background())
-	go integrationsbg.NewStateCleanup(installationSvc, time.Hour).Start(context.Background())
+	go integrationsbg.NewRefreshTicker(authSessionRepo, authFlowSvc, 5*time.Minute).Start(context.Background())
+	go integrationsbg.NewStateCleanup(oauthStateRepo, time.Hour).Start(context.Background())
 
 	marketRepo := marketplacespostgres.NewRepository(pool, cfg.DefaultTenantID)
 	marketSvc := marketplacesapp.NewService(marketRepo, cfg.DefaultTenantID)

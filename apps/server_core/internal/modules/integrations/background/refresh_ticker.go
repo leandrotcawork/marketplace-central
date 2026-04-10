@@ -8,8 +8,8 @@ import (
 	"marketplace-central/apps/server_core/internal/modules/integrations/domain"
 )
 
-type installationLister interface {
-	List(ctx context.Context) ([]domain.Installation, error)
+type expiringSessionLister interface {
+	ListExpiringSessions(ctx context.Context, expiresWithin time.Duration) ([]domain.AuthSession, error)
 }
 
 type credentialRefresher interface {
@@ -17,32 +17,31 @@ type credentialRefresher interface {
 }
 
 type RefreshTicker struct {
-	installations installationLister
+	sessions      expiringSessionLister
 	flow          credentialRefresher
 	interval      time.Duration
+	expiresWithin time.Duration
 	stop          chan struct{}
 }
 
-func NewRefreshTicker(installations installationLister, flow credentialRefresher, interval time.Duration) *RefreshTicker {
+func NewRefreshTicker(sessions expiringSessionLister, flow credentialRefresher, interval time.Duration) *RefreshTicker {
 	return &RefreshTicker{
-		installations: installations,
+		sessions:      sessions,
 		flow:          flow,
 		interval:      interval,
+		expiresWithin: 10 * time.Minute,
 		stop:          make(chan struct{}),
 	}
 }
 
 func (t *RefreshTicker) RunOnce(ctx context.Context) error {
-	installations, err := t.installations.List(ctx)
+	sessions, err := t.sessions.ListExpiringSessions(ctx, t.expiresWithin)
 	if err != nil {
 		return err
 	}
-	for _, installation := range installations {
-		if installation.Status != domain.InstallationStatusConnected {
-			continue
-		}
+	for _, session := range sessions {
 		_, err := t.flow.RefreshCredential(ctx, application.RefreshCredentialInput{
-			InstallationID: installation.InstallationID,
+			InstallationID: session.InstallationID,
 		})
 		if err != nil {
 			return err
