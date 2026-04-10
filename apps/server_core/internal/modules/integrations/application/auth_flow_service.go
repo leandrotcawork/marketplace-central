@@ -128,11 +128,13 @@ type authFlowSessionWriter interface {
 }
 
 type authFlowOAuthStateStore interface {
+	Save(ctx context.Context, state domain.OAuthState) error
 	GetByNonce(ctx context.Context, nonce string) (domain.OAuthState, bool, error)
 	ConsumeNonce(ctx context.Context, id string) (bool, error)
 }
 
 type authFlowOAuthStateCodec interface {
+	EncodeAndSign(payload OAuthStatePayload) (string, error)
 	DecodeAndVerify(state string) (OAuthStatePayload, error)
 }
 
@@ -199,10 +201,35 @@ func (s *AuthFlowService) StartAuthorize(ctx context.Context, input StartAuthori
 	if err != nil {
 		return AuthorizeStart{}, err
 	}
+	if s.oauthStateCodec == nil || s.oauthStates == nil {
+		return AuthorizeStart{}, domain.ErrAuthStateInvalid
+	}
 
-	state := randomState()
+	nonce := randomState()
+	statePayload := OAuthStatePayload{
+		Nonce:          nonce,
+		InstallationID: inst.InstallationID,
+	}
+	state, err := s.oauthStateCodec.EncodeAndSign(statePayload)
+	if err != nil {
+		return AuthorizeStart{}, domain.ErrAuthStateInvalid
+	}
+
+	now := s.clock.Now().UTC()
+	if err := s.oauthStates.Save(ctx, domain.OAuthState{
+		ID:             fmt.Sprintf("oauth_state_%s", nonce),
+		InstallationID: inst.InstallationID,
+		Nonce:          nonce,
+		CodeVerifier:   randomState(),
+		HMACSignature:  state,
+		ExpiresAt:      now.Add(10 * time.Minute),
+		CreatedAt:      now,
+	}); err != nil {
+		return AuthorizeStart{}, err
+	}
+
 	start, err := adapter.StartAuthorize(ctx, StartAuthorizeAdapterInput{
-		InstallationID: input.InstallationID,
+		InstallationID: inst.InstallationID,
 		State:          state,
 		RedirectURI:    input.RedirectURI,
 		Scopes:         input.Scopes,
@@ -254,7 +281,7 @@ func (s *AuthFlowService) HandleCallback(ctx context.Context, input HandleCallba
 		ProviderAccountID:    payload.ProviderAccountID,
 		State:                domain.AuthStateValid,
 		AccessTokenExpiresAt: payload.ExpiresAt,
-		LastVerifiedAt:       ptrTime(time.Now().UTC()),
+		LastVerifiedAt:       ptrTime(s.clock.Now().UTC()),
 	}); err != nil {
 		return AuthStatus{}, err
 	}

@@ -115,12 +115,17 @@ func TestAuthFlowStartAuthorizeMarksInstallationPending(t *testing.T) {
 		"inst-ml": {InstallationID: "inst-ml", ProviderCode: "mercado_livre", Status: domain.InstallationStatusDraft, HealthStatus: domain.HealthStatusHealthy},
 	}}
 	adapter := &flowAdapter{providerCode: "mercado_livre"}
+	oauthStates := &securityOAuthStateStore{}
+	codec := roundTripSecurityStateCodec{payloadsByState: map[string]OAuthStatePayload{}}
 	svc := NewAuthFlowService(AuthFlowConfig{
-		Installations: installations,
-		Credentials:   &flowCredentialRotator{},
-		AuthSessions:  &flowAuthWriter{},
-		Encryptor:     &flowEncryptor{},
-		Adapters:      []MarketplaceAuthAdapter{adapter},
+		Installations:   installations,
+		Credentials:     &flowCredentialRotator{},
+		AuthSessions:    &flowAuthWriter{},
+		OAuthStates:     oauthStates,
+		OAuthStateCodec: codec,
+		Encryptor:       &flowEncryptor{},
+		Clock:           fixedAuthFlowClock{now: time.Unix(1000, 0).UTC()},
+		Adapters:        []MarketplaceAuthAdapter{adapter},
 	})
 
 	start, err := svc.StartAuthorize(context.Background(), StartAuthorizeInput{
@@ -136,6 +141,9 @@ func TestAuthFlowStartAuthorizeMarksInstallationPending(t *testing.T) {
 	}
 	if adapter.startInput.State != start.State {
 		t.Fatalf("adapter state = %q, want %q", adapter.startInput.State, start.State)
+	}
+	if len(oauthStates.savedStates) != 1 {
+		t.Fatalf("saved OAuth states = %d, want 1", len(oauthStates.savedStates))
 	}
 	if got, want := installations.statuses, []domain.InstallationStatus{domain.InstallationStatusPendingConnection}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("statuses = %#v, want %#v", got, want)
