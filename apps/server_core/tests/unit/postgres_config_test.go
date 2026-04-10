@@ -9,6 +9,7 @@ import (
 func TestLoadConfigBuildsTenantReadyDefaults(t *testing.T) {
 	t.Setenv("MC_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/marketplace_central?sslmode=disable")
 	t.Setenv("MC_DEFAULT_TENANT_ID", "tenant_default")
+	t.Setenv("MPC_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef")
 
 	cfg, err := pgdb.LoadConfig()
 	if err != nil {
@@ -27,6 +28,7 @@ func TestLoadConfigBuildsTenantReadyDefaults(t *testing.T) {
 func TestLoadConfigDefaultsTenantWhenUnset(t *testing.T) {
 	t.Setenv("MC_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/marketplace_central?sslmode=disable")
 	t.Setenv("MC_DEFAULT_TENANT_ID", "")
+	t.Setenv("MPC_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef")
 
 	cfg, err := pgdb.LoadConfig()
 	if err != nil {
