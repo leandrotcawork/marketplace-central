@@ -1,5 +1,5 @@
 # System Pulse - Marketplace Central
-> Last updated: 2026-04-10 | Session: #12
+> Last updated: 2026-04-11 | Session: #13
 
 ## Project Identity
 
@@ -104,11 +104,11 @@ Next in sequence:
 
 ## Recent Changes
 
+- 2026-04-11: Aligned integrations lifecycle and `sdk-runtime` auth methods with OpenAPI contract (authorize + auth status)
 - 2026-04-10: Completed `T-027` fee-sync implementation end-to-end (executor runtime split, orchestration service, transport/OpenAPI/SDK, scheduler wiring, integration coverage)
 - 2026-04-10: Completed fee-sync audit remediation (bounded transient retry policy, manual-after-cap behavior, compile-time transport contract)
 - 2026-04-10: Added `tests/integration/integrations_fee_sync_test.go` and kept full backend verification green (`go test ./...`, `go build ./...`)
 - 2026-04-10: Completed OAuth lifecycle remediation tasks 6-8, including expiring-session refresh ticker, OAuth state cleanup job, and integration auth-flow security coverage
-- 2026-04-10: Added `tests/integration/integrations_auth_flow_test.go` for connect/callback/disconnect, replay, tenant isolation, mismatch, and idempotency paths
 
 ---
 

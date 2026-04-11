@@ -1,29 +1,23 @@
-# Last Session - Marketplace Central
-> Date: 2026-04-10 | Session: #12
+# Last Session — Marketplace Central
+> Date: 2026-04-11 | Session: #13
 
 ## What Was Accomplished
-- Completed `T-027` fee-sync installation capabilities end-to-end in `apps/server_core` (executor, service, transport, scheduler, integration tests)
-- Added fee-sync runtime split with deterministic `seed` fallback and structured result flags in integrations executor
-- Implemented async fee-sync orchestration with queued/running/final operation lifecycle and capability-state updates
-- Exposed `POST /integrations/installations/{id}/fee-sync` and `GET /integrations/installations/{id}/operations` in transport, OpenAPI, and `packages/sdk-runtime`
-- Wired fee-sync scheduler and service dependencies in `internal/composition/root.go`
-- Added `tests/integration/integrations_fee_sync_test.go` covering manual and seed-provider flows
-- Ran full verification gates repeatedly (`go build ./...`, `go test ./internal/modules/integrations/...`, `go test ./...`) with all green
-- Executed post-audit remediation: bounded transient retry policy + manual-after-cap behavior + compile-time transport contract
+- Fixed integrations lifecycle transition matrix to allow `requires_reauth -> pending_connection` (kept `-> disconnected`)
+- Aligned `packages/sdk-runtime` with OpenAPI for integrations auth endpoints (authorize + auth status)
+- Implemented missing SDK client methods: `startIntegrationAuthorization`, `getIntegrationAuthStatus`
+- Updated SDK unit tests to match the contract response shape (`auth_url`, `status`, `health_status`)
+- Verified gates: `apps/server_core go build ./...`, `apps/server_core go test ./internal/modules/integrations/...`, `npm -w packages/sdk-runtime test`
+- Created commit: `feat(integrations): implement OAuth + credential lifecycle (phases A–I)`
 
 ## What Changed in the System
-- New integrations adapter package path used for runtime fee sync: `internal/modules/integrations/adapters/feesync/`
-- New background scheduler: `internal/modules/integrations/background/fee_sync_scheduler.go`
-- New integration coverage file: `tests/integration/integrations_fee_sync_test.go`
-- Composition now injects fee-sync executor/service and scheduler into integrations runtime
+- `packages/sdk-runtime/src/index.ts` now exposes client calls for `/integrations/installations/{id}/auth/authorize` and `/integrations/installations/{id}/auth/status`
+- Integrations domain lifecycle state machine now supports reauth restart without creating a new installation
 
 ## Decisions Made This Session
-- Keep fee-sync retry policy in application service using operation history and structured failure codes, not in transport/scheduler
-- Enforce fee-sync transport methods at compile time by extending `AuthFlowReader` instead of runtime type assertions
-- Preserve manual trigger availability after automatic retry cap while still blocking in-flight runs
+- Keep SDK method naming and response types contract-first (OpenAPI is source of truth)
 
 ## What's Immediately Next
-- Start `T-028`: implement frontend connection and sync UX on top of the now-stable fee-sync/auth operational backend states
+- Start `T-028`: implement the web UI connection/sync screens using `sdk-runtime` only (no direct fetch)
 
 ## Open Questions
 - None
