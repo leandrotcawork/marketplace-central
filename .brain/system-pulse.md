@@ -1,5 +1,5 @@
 # System Pulse - Marketplace Central
-> Last updated: 2026-04-10 | Session: #10
+> Last updated: 2026-04-10 | Session: #12
 
 ## Project Identity
 
@@ -91,17 +91,24 @@ contracts/api/
 
 ## Current Phase
 
-**Phase 7 - Integrations operationalization** (planning)
+**Phase 7 - Integrations operationalization** (in progress)
 
-Foundation already delivered on `master`:
-- Canonical `integrations` module implemented and wired
-- Marketplace bridge via `integration_installation_id` implemented
-- `/integrations/providers` and `/integrations/installations` exposed in API + SDK
-
-Next execution is intentionally split:
+Completed in this phase:
 1. OAuth + credential lifecycle (provider operational)
-2. Fee sync architecture (installation-scoped)
+2. Fee sync architecture (installation-scoped) with audit remediation
+
+Next in sequence:
 3. Frontend connection/sync UX
+
+---
+
+## Recent Changes
+
+- 2026-04-10: Completed `T-027` fee-sync implementation end-to-end (executor runtime split, orchestration service, transport/OpenAPI/SDK, scheduler wiring, integration coverage)
+- 2026-04-10: Completed fee-sync audit remediation (bounded transient retry policy, manual-after-cap behavior, compile-time transport contract)
+- 2026-04-10: Added `tests/integration/integrations_fee_sync_test.go` and kept full backend verification green (`go test ./...`, `go build ./...`)
+- 2026-04-10: Completed OAuth lifecycle remediation tasks 6-8, including expiring-session refresh ticker, OAuth state cleanup job, and integration auth-flow security coverage
+- 2026-04-10: Added `tests/integration/integrations_auth_flow_test.go` for connect/callback/disconnect, replay, tenant isolation, mismatch, and idempotency paths
 
 ---
 
@@ -124,5 +131,5 @@ Next execution is intentionally split:
 
 - `.brain/` remains gitignored by default (project memory can diverge across machines)
 - Migration runner `cmd/migrate/main.go` still needs production-hardening workflow
-- Operational provider flows (OAuth real flow, fee sync runtime robustness, UX operational states) are not fully delivered yet
+- Frontend operational UX (`T-028`) is not delivered yet for new fee-sync/auth backend states
 - Windows environments may require local absolute `GOCACHE` for stable test runs

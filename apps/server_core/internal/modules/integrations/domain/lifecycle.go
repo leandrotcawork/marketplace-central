@@ -72,7 +72,8 @@ var installationTransitions = map[InstallationStatus]map[InstallationStatus]bool
 		InstallationStatusRequiresReauth: true,
 	},
 	InstallationStatusRequiresReauth: {
-		InstallationStatusDisconnected: true,
+		InstallationStatusPendingConnection: true,
+		InstallationStatusDisconnected:      true,
 	},
 	InstallationStatusFailed: {
 		InstallationStatusDraft: true,

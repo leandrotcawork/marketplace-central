@@ -159,6 +159,30 @@ export interface IntegrationFeeSyncAccepted {
   status: "queued";
 }
 
+export interface IntegrationAuthorizeResponse {
+  installation_id: string;
+  provider_code: string;
+  state: string;
+  auth_url: string;
+  expires_in: number;
+}
+
+export interface IntegrationAuthStatusResponse {
+  installation_id: string;
+  status:
+    | "draft"
+    | "pending_connection"
+    | "connected"
+    | "degraded"
+    | "requires_reauth"
+    | "disconnected"
+    | "suspended"
+    | "failed";
+  health_status: "healthy" | "warning" | "critical";
+  provider_code?: string;
+  external_account_id?: string;
+}
+
 export interface CreateIntegrationInstallationRequest {
   installation_id: string;
   provider_code: string;
@@ -401,6 +425,10 @@ export function createMarketplaceCentralClient(options: {
     listIntegrationInstallations: () => getJson<ListResponse<IntegrationInstallation>>("/integrations/installations"),
     listIntegrationOperationRuns: (installationId: string) =>
       getJson<ListResponse<IntegrationOperationRun>>(`/integrations/installations/${installationId}/operations`),
+    startIntegrationAuthorization: (installationId: string) =>
+      postJson<IntegrationAuthorizeResponse>(`/integrations/installations/${installationId}/auth/authorize`, {}),
+    getIntegrationAuthStatus: (installationId: string) =>
+      getJson<IntegrationAuthStatusResponse>(`/integrations/installations/${installationId}/auth/status`),
     startIntegrationFeeSync: (installationId: string) =>
       postJson<IntegrationFeeSyncAccepted>(`/integrations/installations/${installationId}/fee-sync`, {}),
     listMarketplaceFeeSchedules: (marketplaceCode: string) =>

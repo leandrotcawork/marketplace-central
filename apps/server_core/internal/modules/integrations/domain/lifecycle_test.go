@@ -35,7 +35,8 @@ func TestCanTransitionInstallationStatusMatrix(t *testing.T) {
 			InstallationStatusRequiresReauth: true,
 		},
 		InstallationStatusRequiresReauth: {
-			InstallationStatusDisconnected: true,
+			InstallationStatusPendingConnection: true,
+			InstallationStatusDisconnected:      true,
 		},
 		InstallationStatusDisconnected: {},
 		InstallationStatusSuspended:    {},

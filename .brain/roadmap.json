@@ -1,10 +1,10 @@
 {
     "project":  "marketplace-central",
-    "last_updated":  "2026-04-10T00:00:00Z",
+    "last_updated":  "2026-04-10T23:00:00Z",
     "current_phase_id":  "phase-7",
     "summary":  {
                     "completed_phases":  3,
-                    "completed_tasks":  13,
+                    "completed_tasks":  15,
                     "total_tasks":  26
                 },
     "phases":  [
@@ -203,13 +203,13 @@
                                          "id":  "T-026",
                                          "title":  "OAuth and credential lifecycle spec + execution",
                                          "description":  "Implement provider OAuth authorization, callback, token exchange/refresh, and credential rotation flows on integrations installations.",
-                                         "status":  "planned",
+                                         "status":  "done",
                                          "priority":  "high",
                                          "depends_on":  [
 
                                                         ],
-                                         "started_at":  null,
-                                         "completed_at":  null,
+                                         "started_at":  "2026-04-09T12:00:00Z",
+                                         "completed_at":  "2026-04-10T03:00:00Z",
                                          "notes":  null,
                                          "subtasks":  [
                                                           "Define provider OAuth contract and callback endpoint behavior",
@@ -221,13 +221,13 @@
                                          "id":  "T-027",
                                          "title":  "Fee sync architecture on installation capabilities",
                                          "description":  "Implement installation-scoped fee synchronization using capability states and operation runs.",
-                                         "status":  "planned",
+                                         "status":  "done",
                                          "priority":  "high",
                                          "depends_on":  [
                                                             "T-026"
                                                         ],
-                                         "started_at":  null,
-                                         "completed_at":  null,
+                                         "started_at":  "2026-04-10T10:00:00Z",
+                                         "completed_at":  "2026-04-10T23:00:00Z",
                                          "notes":  null,
                                          "subtasks":  [
                                                           "Define fee sync scheduler and retry policy",

@@ -39,6 +39,60 @@ describe("sdk runtime", () => {
     expect(result.items[0].provider_code).toBe("mercado_livre");
   });
 
+  it("starts integration authorize flow with auth_url and expires_in", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async (input, init) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            installation_id: "inst-1",
+            provider_code: "mercado_livre",
+            state: "opaque-state",
+            auth_url: "https://auth.example.com/authorize",
+            expires_in: 300,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+
+    const result = await client.startIntegrationAuthorization("inst-1");
+
+    expect(String(requests[0].input)).toBe("http://localhost:8080/integrations/installations/inst-1/auth/authorize");
+    expect(requests[0].init?.method).toBe("POST");
+    expect(result.auth_url).toBe("https://auth.example.com/authorize");
+    expect(result.expires_in).toBe(300);
+  });
+
+  it("gets integration auth status", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async (input, init) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            installation_id: "inst-1",
+            status: "connected",
+            health_status: "healthy",
+            provider_code: "mercado_livre",
+            external_account_id: "acct-1",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+
+    const result = await client.getIntegrationAuthStatus("inst-1");
+
+    expect(String(requests[0].input)).toBe("http://localhost:8080/integrations/installations/inst-1/auth/status");
+    expect(requests[0].init?.method).toBe("GET");
+    expect(result.status).toBe("connected");
+    expect(result.health_status).toBe("healthy");
+  });
+
   it("builds canonical pricing simulation requests", async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const client = createMarketplaceCentralClient({
