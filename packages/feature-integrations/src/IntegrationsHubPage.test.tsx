@@ -1,15 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { IntegrationsHubPage } from "./IntegrationsHubPage";
-import type {
-  IntegrationInstallation,
-  IntegrationProviderDefinition,
-} from "@marketplace-central/sdk-runtime";
-
-type IntegrationsHubClient = {
-  listIntegrationProviders: () => Promise<{ items: IntegrationProviderDefinition[] }>;
-  listIntegrationInstallations: () => Promise<{ items: IntegrationInstallation[] }>;
-};
+import { IntegrationsHubPage, type IntegrationsHubClient } from "./IntegrationsHubPage";
+import type { IntegrationInstallation, IntegrationProviderDefinition } from "@marketplace-central/sdk-runtime";
 
 const mockListProviders = vi.fn();
 const mockListInstallations = vi.fn();
@@ -84,5 +76,32 @@ describe("IntegrationsHubPage", () => {
       expect(screen.getByText(/integration registry unavailable/i)).toBeInTheDocument()
     );
     expect(screen.getByText(/failed to load integrations/i)).toBeInTheDocument();
+  });
+
+  it("renders a connected installation with provider details", async () => {
+    mockListInstallations.mockResolvedValue({ items: [sampleInstallation] });
+
+    render(<IntegrationsHubPage client={makeClient()} />);
+
+    expect(await screen.findByText("VTEX Main Store")).toBeInTheDocument();
+    expect(screen.getByText("VTEX")).toBeInTheDocument();
+    expect(screen.getByText(/healthy/i)).toBeInTheDocument();
+  });
+
+  it("still renders installations when provider metadata fails to load", async () => {
+    mockListProviders.mockRejectedValue({
+      status: 503,
+      error: {
+        code: "INTEGRATIONS_PROVIDER_LIST_FAILED",
+        message: "Provider registry unavailable",
+      },
+    });
+    mockListInstallations.mockResolvedValue({ items: [sampleInstallation] });
+
+    render(<IntegrationsHubPage client={makeClient()} />);
+
+    expect(await screen.findByText("VTEX Main Store")).toBeInTheDocument();
+    expect(screen.getByText("vtex")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

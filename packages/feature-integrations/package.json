@@ -6,7 +6,6 @@
   "main": "src/index.ts",
   "dependencies": {
     "@marketplace-central/sdk-runtime": "0.1.0",
-    "@marketplace-central/ui": "0.1.0",
     "react": "^19.2.0"
   }
 }

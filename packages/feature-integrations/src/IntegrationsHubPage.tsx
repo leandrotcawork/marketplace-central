@@ -41,20 +41,16 @@ export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    async function loadInstallations() {
       setState("loading");
 
       try {
-        const [providerResult, installationResult] = await Promise.all([
-          client.listIntegrationProviders(),
-          client.listIntegrationInstallations(),
-        ]);
+        const installationResult = await client.listIntegrationInstallations();
 
         if (cancelled) {
           return;
         }
 
-        setProviders(providerResult.items);
         setInstallations(installationResult.items);
         setState("ready");
       } catch (error) {
@@ -67,7 +63,31 @@ export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
       }
     }
 
-    load();
+    loadInstallations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProviders() {
+      try {
+        const providerResult = await client.listIntegrationProviders();
+
+        if (cancelled) {
+          return;
+        }
+
+        setProviders(providerResult.items);
+      } catch {
+        // Provider metadata is optional for the hub shell.
+      }
+    }
+
+    loadProviders();
 
     return () => {
       cancelled = true;
