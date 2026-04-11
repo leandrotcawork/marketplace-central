@@ -12,6 +12,7 @@
   "dependencies": {
     "@marketplace-central/feature-classifications": "0.1.0",
     "@marketplace-central/feature-connectors": "0.1.0",
+    "@marketplace-central/feature-integrations": "0.1.0",
     "@marketplace-central/feature-marketplaces": "0.1.0",
     "@marketplace-central/feature-products": "0.1.0",
     "@marketplace-central/feature-simulator": "0.1.0",

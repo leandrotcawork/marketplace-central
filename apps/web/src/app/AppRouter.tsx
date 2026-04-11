@@ -4,6 +4,7 @@ import { MarketplaceSettingsPage } from "@marketplace-central/feature-marketplac
 import { PricingSimulatorPage } from "@marketplace-central/feature-simulator";
 import { ProductsPage } from "@marketplace-central/feature-products";
 import { VTEXPublishPage, BatchDetailPage } from "@marketplace-central/feature-connectors";
+import { IntegrationsHubPage } from "@marketplace-central/feature-integrations";
 import { Layout } from "./Layout";
 import { DashboardPage } from "../pages/DashboardPage";
 import { useClient } from "./ClientContext";
@@ -38,6 +39,11 @@ function PricingSimulatorPageWrapper() {
   return <PricingSimulatorPage client={client} />;
 }
 
+function IntegrationsHubPageWrapper() {
+  const client = useClient();
+  return <IntegrationsHubPage client={client} />;
+}
+
 export function AppRouter() {
   return (
     <BrowserRouter>
@@ -49,6 +55,7 @@ export function AppRouter() {
           <Route path="/connectors/vtex" element={<VTEXPublishPageWrapper />} />
           <Route path="/connectors/vtex/batch/:batchId" element={<BatchDetailPageWrapper />} />
           <Route path="/marketplaces" element={<MarketplaceSettingsPageWrapper />} />
+          <Route path="/integrations" element={<IntegrationsHubPageWrapper />} />
           <Route path="/simulator" element={<PricingSimulatorPageWrapper />} />
         </Route>
       </Routes>

@@ -3,6 +3,7 @@
 @source "../../../packages/ui/src";
 @source "../../../packages/feature-products/src";
 @source "../../../packages/feature-connectors/src";
+@source "../../../packages/feature-integrations/src";
 @source "../../../packages/feature-marketplaces/src";
 @source "../../../packages/feature-simulator/src";
 @source "../../../packages/feature-classifications/src";
