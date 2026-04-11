@@ -66,6 +66,98 @@ describe("sdk runtime", () => {
     expect(result.expires_in).toBe(300);
   });
 
+  it("starts integration reauthorization flow with auth_url and expires_in", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async (input, init) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            installation_id: "inst-1",
+            provider_code: "mercado_livre",
+            state: "reauth-state",
+            auth_url: "https://auth.example.com/reauthorize",
+            expires_in: 600,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+
+    const result = await client.startIntegrationReauthorization("inst-1");
+
+    expect(String(requests[0].input)).toBe("http://localhost:8080/integrations/installations/inst-1/reauth/authorize");
+    expect(requests[0].init?.method).toBe("POST");
+    expect(result.state).toBe("reauth-state");
+    expect(result.auth_url).toBe("https://auth.example.com/reauthorize");
+    expect(result.expires_in).toBe(600);
+  });
+
+  it("submits integration credentials as json and parses auth status", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async (input, init) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            installation_id: "inst-1",
+            status: "connected",
+            health_status: "warning",
+            provider_code: "mercado_livre",
+            external_account_id: "acct-1",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+
+    const result = await client.submitIntegrationCredentials("inst-1", {
+      api_key: "secret-key",
+      metadata: { environment: "sandbox" },
+      credentials: { username: "user", password: "pass" },
+    });
+
+    expect(String(requests[0].input)).toBe("http://localhost:8080/integrations/installations/inst-1/auth/credentials");
+    expect(requests[0].init?.method).toBe("POST");
+    expect(requests[0].init?.headers).toEqual({ "Content-Type": "application/json" });
+    expect(requests[0].init?.body).toBe(
+      JSON.stringify({
+        api_key: "secret-key",
+        metadata: { environment: "sandbox" },
+        credentials: { username: "user", password: "pass" },
+      }),
+    );
+    expect(result.status).toBe("connected");
+    expect(result.health_status).toBe("warning");
+  });
+
+  it("disconnects integration installation and parses auth status", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async (input, init) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            installation_id: "inst-1",
+            status: "disconnected",
+            health_status: "critical",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+
+    const result = await client.disconnectIntegrationInstallation("inst-1");
+
+    expect(String(requests[0].input)).toBe("http://localhost:8080/integrations/installations/inst-1/disconnect");
+    expect(requests[0].init?.method).toBe("POST");
+    expect(result.status).toBe("disconnected");
+    expect(result.health_status).toBe("critical");
+  });
+
   it("gets integration auth status", async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const client = createMarketplaceCentralClient({

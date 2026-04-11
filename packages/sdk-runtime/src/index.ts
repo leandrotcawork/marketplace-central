@@ -183,6 +183,12 @@ export interface IntegrationAuthStatusResponse {
   external_account_id?: string;
 }
 
+export interface SubmitAPIKeyRequest {
+  api_key?: string;
+  metadata?: Record<string, string>;
+  credentials?: Record<string, string>;
+}
+
 export interface CreateIntegrationInstallationRequest {
   installation_id: string;
   provider_code: string;
@@ -427,6 +433,12 @@ export function createMarketplaceCentralClient(options: {
       getJson<ListResponse<IntegrationOperationRun>>(`/integrations/installations/${installationId}/operations`),
     startIntegrationAuthorization: (installationId: string) =>
       postJson<IntegrationAuthorizeResponse>(`/integrations/installations/${installationId}/auth/authorize`, {}),
+    startIntegrationReauthorization: (installationId: string) =>
+      postJson<IntegrationAuthorizeResponse>(`/integrations/installations/${installationId}/reauth/authorize`, {}),
+    submitIntegrationCredentials: (installationId: string, req: SubmitAPIKeyRequest) =>
+      postJson<IntegrationAuthStatusResponse>(`/integrations/installations/${installationId}/auth/credentials`, req),
+    disconnectIntegrationInstallation: (installationId: string) =>
+      postJson<IntegrationAuthStatusResponse>(`/integrations/installations/${installationId}/disconnect`, {}),
     getIntegrationAuthStatus: (installationId: string) =>
       getJson<IntegrationAuthStatusResponse>(`/integrations/installations/${installationId}/auth/status`),
     startIntegrationFeeSync: (installationId: string) =>
