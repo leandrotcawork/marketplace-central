@@ -1,23 +1,50 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type {
+  IntegrationAuthStatusResponse,
   IntegrationInstallation,
+  IntegrationOperationRun,
   IntegrationProviderDefinition,
+  SubmitIntegrationCredentialsRequest,
 } from "@marketplace-central/sdk-runtime";
 import { FilterBar } from "./components/FilterBar";
 import { InstallationCard } from "./components/InstallationCard";
+import { InstallationDrawer } from "./components/InstallationDrawer";
 import { OperationalSummary } from "./components/OperationalSummary";
+import type { AuthStatusAction } from "./components/AuthStatusPanel";
 
 export interface IntegrationsHubClient {
   listIntegrationProviders: () => Promise<{ items: IntegrationProviderDefinition[] }>;
   listIntegrationInstallations: () => Promise<{ items: IntegrationInstallation[] }>;
+  listIntegrationOperationRuns: (installationId: string) => Promise<{ items: IntegrationOperationRun[] }>;
+  startIntegrationAuthorization: (installationId: string) => Promise<{ auth_url: string }>;
+  startIntegrationReauthorization: (installationId: string) => Promise<{ auth_url: string }>;
+  getIntegrationAuthStatus: (installationId: string) => Promise<IntegrationAuthStatusResponse>;
+  submitIntegrationCredentials: (
+    installationId: string,
+    request: SubmitIntegrationCredentialsRequest,
+  ) => Promise<IntegrationAuthStatusResponse>;
+  disconnectIntegrationInstallation: (installationId: string) => Promise<IntegrationAuthStatusResponse>;
+  startIntegrationFeeSync: (installationId: string) => Promise<{ installation_id: string; operation_run_id: string; status: "queued" }>;
 }
 
 export interface IntegrationsHubPageProps {
   client: IntegrationsHubClient;
+  onAuthRedirect?: (authUrl: string) => void;
 }
 
 type LoadState = "loading" | "ready" | "error";
+
+type DrawerSnapshot = {
+  authStatus: IntegrationAuthStatusResponse | null;
+  authStatusLoading: boolean;
+  authStatusError: string | null;
+  operationRuns: IntegrationOperationRun[];
+  operationRunsLoading: boolean;
+  operationRunsError: string | null;
+  actionError: string | null;
+  pendingAction: string | null;
+};
 
 const NEEDS_ACTION_STATUSES = new Set([
   "draft",
@@ -70,7 +97,56 @@ function matchesSearch(installation: IntegrationInstallation, query: string, pro
   return fields.some((field) => field.toLowerCase().includes(searchValue));
 }
 
-export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
+function getResolvedStatus(
+  installation: IntegrationInstallation,
+  authStatus: IntegrationAuthStatusResponse | null,
+) {
+  return authStatus?.status ?? installation.status;
+}
+
+function getResolvedHealth(
+  installation: IntegrationInstallation,
+  authStatus: IntegrationAuthStatusResponse | null,
+) {
+  return authStatus?.health_status ?? installation.health_status;
+}
+
+function buildAuthActions(params: {
+  installation: IntegrationInstallation;
+  resolvedStatus: IntegrationAuthStatusResponse["status"] | IntegrationInstallation["status"];
+  pendingAction: string | null;
+  onAuthorize: () => void;
+  onReauthorize: () => void;
+  onDisconnect: () => void;
+  onFeeSync: () => void;
+}): AuthStatusAction[] {
+  const { resolvedStatus, pendingAction, onAuthorize, onReauthorize, onDisconnect, onFeeSync } = params;
+
+  const actions: AuthStatusAction[] = [];
+
+  if (resolvedStatus === "pending_connection") {
+    actions.push({ key: "authorize", label: "Authorize", variant: "primary", onClick: onAuthorize });
+  }
+
+  if (resolvedStatus === "requires_reauth") {
+    actions.push({ key: "reauthorize", label: "Reauthorize", variant: "primary", onClick: onReauthorize });
+  }
+
+  if (resolvedStatus === "connected" || resolvedStatus === "requires_reauth") {
+    actions.push({ key: "disconnect", label: "Disconnect", variant: "danger", onClick: onDisconnect });
+  }
+
+  if (resolvedStatus === "connected" || resolvedStatus === "degraded" || resolvedStatus === "requires_reauth") {
+    actions.push({ key: "fee_sync", label: "Sync fees", variant: "secondary", onClick: onFeeSync });
+  }
+
+  return actions.map((action) => ({
+    ...action,
+    disabled: Boolean(pendingAction) && pendingAction !== action.key,
+  }));
+}
+
+export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubPageProps) {
   const [providers, setProviders] = useState<IntegrationProviderDefinition[]>([]);
   const [installations, setInstallations] = useState<IntegrationInstallation[]>([]);
   const [state, setState] = useState<LoadState>("loading");
@@ -79,6 +155,16 @@ export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
   const [providerCode, setProviderCode] = useState("");
   const [needsActionOnly, setNeedsActionOnly] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [drawerState, setDrawerState] = useState<DrawerSnapshot>({
+    authStatus: null,
+    authStatusLoading: false,
+    authStatusError: null,
+    operationRuns: [],
+    operationRunsLoading: false,
+    operationRunsError: null,
+    actionError: null,
+    pendingAction: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -179,6 +265,202 @@ export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
     [installations]
   );
 
+  useEffect(() => {
+    if (!selectedInstallation) {
+      setDrawerState({
+        authStatus: null,
+        authStatusLoading: false,
+        authStatusError: null,
+        operationRuns: [],
+        operationRunsLoading: false,
+        operationRunsError: null,
+        actionError: null,
+        pendingAction: null,
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    setDrawerState({
+      authStatus: null,
+      authStatusLoading: true,
+      authStatusError: null,
+      operationRuns: [],
+      operationRunsLoading: true,
+      operationRunsError: null,
+      actionError: null,
+      pendingAction: null,
+    });
+
+    async function loadDrawerSnapshot(installationId: string) {
+      const [authStatusResult, operationRunsResult] = await Promise.allSettled([
+        client.getIntegrationAuthStatus(installationId),
+        client.listIntegrationOperationRuns(installationId),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      setDrawerState((current) => ({
+        ...current,
+        authStatus: authStatusResult.status === "fulfilled" ? authStatusResult.value : null,
+        authStatusLoading: false,
+        authStatusError:
+          authStatusResult.status === "rejected" ? extractErrorMessage(authStatusResult.reason) : null,
+        operationRuns:
+          operationRunsResult.status === "fulfilled" ? operationRunsResult.value.items : current.operationRuns,
+        operationRunsLoading: false,
+        operationRunsError:
+          operationRunsResult.status === "rejected" ? extractErrorMessage(operationRunsResult.reason) : null,
+        actionError: null,
+        pendingAction: null,
+      }));
+    }
+
+    loadDrawerSnapshot(selectedInstallation.installation_id).catch((error) => {
+      if (cancelled) {
+        return;
+      }
+
+      setDrawerState((current) => ({
+        ...current,
+        authStatusLoading: false,
+        operationRunsLoading: false,
+        authStatusError: extractErrorMessage(error),
+      }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, selectedInstallation]);
+
+  async function reloadOperationRuns(installationId: string) {
+    try {
+      setDrawerState((current) => ({
+        ...current,
+        operationRunsLoading: true,
+        operationRunsError: null,
+      }));
+      const result = await client.listIntegrationOperationRuns(installationId);
+      setDrawerState((current) => ({
+        ...current,
+        operationRuns: result.items,
+        operationRunsLoading: false,
+      }));
+    } catch (error) {
+      setDrawerState((current) => ({
+        ...current,
+        operationRunsLoading: false,
+        operationRunsError: extractErrorMessage(error),
+      }));
+    }
+  }
+
+  async function reloadDrawerSnapshot(installationId: string) {
+    setDrawerState((current) => ({
+      ...current,
+      authStatusLoading: true,
+      operationRunsLoading: true,
+      authStatusError: null,
+      operationRunsError: null,
+    }));
+
+    const [authStatusResult, operationRunsResult] = await Promise.allSettled([
+      client.getIntegrationAuthStatus(installationId),
+      client.listIntegrationOperationRuns(installationId),
+    ]);
+
+    setDrawerState((current) => ({
+      ...current,
+      authStatus: authStatusResult.status === "fulfilled" ? authStatusResult.value : current.authStatus,
+      authStatusLoading: false,
+      authStatusError:
+        authStatusResult.status === "rejected" ? extractErrorMessage(authStatusResult.reason) : null,
+      operationRuns:
+        operationRunsResult.status === "fulfilled" ? operationRunsResult.value.items : current.operationRuns,
+      operationRunsLoading: false,
+      operationRunsError:
+        operationRunsResult.status === "rejected" ? extractErrorMessage(operationRunsResult.reason) : null,
+    }));
+  }
+
+  async function runAction(actionKey: string, handler: () => Promise<void>) {
+    if (!selectedInstallation) {
+      return;
+    }
+
+    setDrawerState((current) => ({
+      ...current,
+      actionError: null,
+      pendingAction: actionKey,
+    }));
+
+    try {
+      await handler();
+    } catch (error) {
+      setDrawerState((current) => ({
+        ...current,
+        actionError: extractErrorMessage(error),
+        pendingAction: null,
+      }));
+      return;
+    }
+
+    setDrawerState((current) => ({
+      ...current,
+      pendingAction: null,
+    }));
+  }
+
+  async function handleAuthorize() {
+    if (!selectedInstallation) {
+      return;
+    }
+
+    await runAction("authorize", async () => {
+      const result = await client.startIntegrationAuthorization(selectedInstallation.installation_id);
+      const redirect = onAuthRedirect ?? ((authUrl: string) => window.location.assign(authUrl));
+      redirect(result.auth_url);
+    });
+  }
+
+  async function handleReauthorize() {
+    if (!selectedInstallation) {
+      return;
+    }
+
+    await runAction("reauthorize", async () => {
+      const result = await client.startIntegrationReauthorization(selectedInstallation.installation_id);
+      const redirect = onAuthRedirect ?? ((authUrl: string) => window.location.assign(authUrl));
+      redirect(result.auth_url);
+    });
+  }
+
+  async function handleDisconnect() {
+    if (!selectedInstallation) {
+      return;
+    }
+
+    await runAction("disconnect", async () => {
+      await client.disconnectIntegrationInstallation(selectedInstallation.installation_id);
+      await reloadDrawerSnapshot(selectedInstallation.installation_id);
+    });
+  }
+
+  async function handleFeeSync() {
+    if (!selectedInstallation) {
+      return;
+    }
+
+    await runAction("fee_sync", async () => {
+      await client.startIntegrationFeeSync(selectedInstallation.installation_id);
+      await reloadOperationRuns(selectedInstallation.installation_id);
+    });
+  }
+
   function syncSelection(installationId: string) {
     const next = new URLSearchParams(searchParams);
     next.set("installation", installationId);
@@ -230,6 +512,25 @@ export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
       </div>
     );
   }
+
+  const resolvedStatus = selectedInstallation
+    ? getResolvedStatus(selectedInstallation, drawerState.authStatus)
+    : null;
+  const resolvedHealth = selectedInstallation
+    ? getResolvedHealth(selectedInstallation, drawerState.authStatus)
+    : null;
+
+  const drawerActions = selectedInstallation
+    ? buildAuthActions({
+        installation: selectedInstallation,
+        resolvedStatus: resolvedStatus ?? selectedInstallation.status,
+        pendingAction: drawerState.pendingAction,
+        onAuthorize: handleAuthorize,
+        onReauthorize: handleReauthorize,
+        onDisconnect: handleDisconnect,
+        onFeeSync: handleFeeSync,
+      })
+    : [];
 
   return (
     <div className="space-y-4">
@@ -293,90 +594,19 @@ export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
       </div>
 
       {selectedInstallation && (
-        <div
-          role="dialog"
-          aria-label={`${selectedInstallation.display_name} details`}
-          className={[
-            "mt-4 flex w-full flex-col rounded-2xl border border-slate-200 bg-white shadow-sm",
-            "lg:fixed lg:right-0 lg:top-0 lg:z-40 lg:mt-0 lg:h-full lg:w-[420px] lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-[-4px_0_24px_rgba(15,23,42,0.08)]",
-          ].join(" ")}
-        >
-          <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900 truncate">
-                {selectedInstallation.display_name}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {providerByCode.get(selectedInstallation.provider_code)?.display_name ??
-                  selectedInstallation.provider_code}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={clearSelection}
-              aria-label="Close installation drawer"
-              className="rounded-lg px-2 py-1 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Connection snapshot
-              </p>
-              <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-400">Status</dt>
-                  <dd className="mt-1 text-slate-700">{selectedInstallation.status}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-400">Health</dt>
-                  <dd className="mt-1 text-slate-700">{selectedInstallation.health_status}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-400">External account</dt>
-                  <dd className="mt-1 text-slate-700">{selectedInstallation.external_account_name}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-400">Credential</dt>
-                  <dd className="mt-1 text-slate-700">
-                    {selectedInstallation.active_credential_id ?? "Not connected"}
-                  </dd>
-                </div>
-              </dl>
-            </section>
-
-            <section className="rounded-2xl border border-dashed border-slate-200 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Task 4 action shell
-              </p>
-              <p className="mt-2 text-sm text-slate-500">
-                Authorization, reauthorization, and health actions will be wired here next.
-              </p>
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Audit details
-              </p>
-              <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-400">Installation ID</dt>
-                  <dd className="mt-1 font-mono text-slate-700">{selectedInstallation.installation_id}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-400">Last verified</dt>
-                  <dd className="mt-1 text-slate-700">
-                    {selectedInstallation.last_verified_at ?? "Not yet verified"}
-                  </dd>
-                </div>
-              </dl>
-            </section>
-          </div>
-        </div>
+        <InstallationDrawer
+          installation={selectedInstallation}
+          providerName={providerByCode.get(selectedInstallation.provider_code)?.display_name ?? selectedInstallation.provider_code}
+          authStatus={drawerState.authStatus}
+          authStatusLoading={drawerState.authStatusLoading}
+          authStatusError={drawerState.actionError ?? drawerState.authStatusError}
+          operationRuns={drawerState.operationRuns}
+          operationRunsLoading={drawerState.operationRunsLoading}
+          operationRunsError={drawerState.operationRunsError}
+          pendingAction={drawerState.pendingAction}
+          actions={drawerActions}
+          onClose={clearSelection}
+        />
       )}
     </div>
   );
