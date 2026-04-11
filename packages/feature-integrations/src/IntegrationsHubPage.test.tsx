@@ -79,6 +79,21 @@ const sampleInstallationNeedsAction: IntegrationInstallation = {
   updated_at: "2026-04-11T12:30:00Z",
 };
 
+const sampleInstallationDraft: IntegrationInstallation = {
+  installation_id: "inst-5",
+  tenant_id: "tenant-1",
+  provider_code: "bling",
+  family: "marketplace",
+  display_name: "Bling Draft",
+  status: "draft",
+  health_status: "warning",
+  external_account_id: "acc-5",
+  external_account_name: "Bling Draft Account",
+  active_credential_id: undefined,
+  last_verified_at: "2026-04-11T12:05:00Z",
+  created_at: "2026-04-11T12:00:00Z",
+  updated_at: "2026-04-11T12:30:00Z",
+};
 const sampleInstallationPendingConnection: IntegrationInstallation = {
   installation_id: "inst-4",
   tenant_id: "tenant-1",
@@ -305,6 +320,34 @@ describe("IntegrationsHubPage", () => {
     expect(within(dialog).getByText("Bling")).toBeInTheDocument();
   });
 
+  it("authorizes a draft installation and redirects to the returned auth url", async () => {
+    const authUrl = "https://auth.example.com/draft";
+    const redirectToAuthUrl = vi.fn();
+
+    mockListInstallations.mockResolvedValue({ items: [sampleInstallationDraft] });
+    mockGetIntegrationAuthStatus.mockResolvedValue({
+      installation_id: "inst-5",
+      status: "draft",
+      health_status: "warning",
+      provider_code: "bling",
+    });
+    mockStartIntegrationAuthorization.mockResolvedValue({
+      installation_id: "inst-5",
+      provider_code: "bling",
+      state: "draft-state",
+      auth_url: authUrl,
+      expires_in: 300,
+    });
+
+    renderPage(["/integrations?installation=inst-5"], {}, redirectToAuthUrl);
+
+    const dialog = await screen.findByRole("dialog", { name: /bling draft details/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: /authorize/i }));
+
+    await waitFor(() => expect(mockStartIntegrationAuthorization).toHaveBeenCalledWith("inst-5"));
+    expect(redirectToAuthUrl).toHaveBeenCalledWith(authUrl);
+  });
+
   it("authorizes a pending installation and redirects to the returned auth url", async () => {
     const authUrl = "https://auth.example.com/start";
     const redirectToAuthUrl = vi.fn();
@@ -331,6 +374,39 @@ describe("IntegrationsHubPage", () => {
 
     await waitFor(() => expect(mockStartIntegrationAuthorization).toHaveBeenCalledWith("inst-4"));
     expect(redirectToAuthUrl).toHaveBeenCalledWith(authUrl);
+  });
+
+  it("requires confirmation before disconnecting an installation", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    mockListInstallations.mockResolvedValue({ items: [sampleInstallationNeedsAction] });
+    mockGetIntegrationAuthStatus.mockResolvedValue({
+      installation_id: "inst-2",
+      status: "requires_reauth",
+      health_status: "warning",
+      provider_code: "bling",
+    });
+    mockDisconnectIntegrationInstallation.mockResolvedValue({
+      installation_id: "inst-2",
+      status: "disconnected",
+      health_status: "critical",
+      provider_code: "bling",
+      external_account_id: "acc-2",
+    });
+
+    renderPage(["/integrations?installation=inst-2"]);
+
+    const dialog = await screen.findByRole("dialog", { name: /bling store details/i });
+    const disconnectButton = within(dialog).getByRole("button", { name: /disconnect/i });
+
+    confirmSpy.mockReturnValueOnce(false);
+    fireEvent.click(disconnectButton);
+    await waitFor(() => expect(mockDisconnectIntegrationInstallation).not.toHaveBeenCalled());
+
+    confirmSpy.mockReturnValueOnce(true);
+    fireEvent.click(disconnectButton);
+    await waitFor(() => expect(mockDisconnectIntegrationInstallation).toHaveBeenCalledWith("inst-2"));
+
+    confirmSpy.mockRestore();
   });
 
   it("queues fee sync and refreshes the operation timeline", async () => {

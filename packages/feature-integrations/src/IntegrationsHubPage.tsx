@@ -124,7 +124,7 @@ function buildAuthActions(params: {
 
   const actions: AuthStatusAction[] = [];
 
-  if (resolvedStatus === "pending_connection") {
+  if (resolvedStatus === "draft" || resolvedStatus === "pending_connection") {
     actions.push({ key: "authorize", label: "Authorize", variant: "primary", onClick: onAuthorize });
   }
 
@@ -445,6 +445,14 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     }
 
     await runAction("disconnect", async () => {
+      const confirmed = window.confirm(
+        `Disconnect ${selectedInstallation.display_name}? This stops the installation from syncing until it is reconnected.`,
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
       await client.disconnectIntegrationInstallation(selectedInstallation.installation_id);
       await reloadDrawerSnapshot(selectedInstallation.installation_id);
     });
