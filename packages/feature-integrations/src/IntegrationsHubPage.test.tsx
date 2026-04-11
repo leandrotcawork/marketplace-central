@@ -191,6 +191,20 @@ describe("IntegrationsHubPage", () => {
     expect(screen.queryByText("Shopee Store")).not.toBeInTheDocument();
   });
 
+  it("filters installations by search text", async () => {
+    renderPage();
+
+    expect(await screen.findByText("VTEX Main Store")).toBeInTheDocument();
+    expect(screen.getByText("Bling Store")).toBeInTheDocument();
+    expect(screen.getByText("Shopee Store")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/search/i), { target: { value: "shopee" } });
+
+    expect(screen.queryByText("VTEX Main Store")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bling Store")).not.toBeInTheDocument();
+    expect(screen.getByText("Shopee Store")).toBeInTheDocument();
+  });
+
   it("opens the installation drawer when the installation query is present", async () => {
     renderPage(["/integrations?installation=inst-2"]);
 

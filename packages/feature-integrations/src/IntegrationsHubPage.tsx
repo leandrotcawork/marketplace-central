@@ -268,8 +268,10 @@ export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
       />
 
       <div
-        className="transition-all duration-200"
-        style={{ paddingRight: selectedInstallation ? "432px" : "0" }}
+        className={[
+          "transition-all duration-200",
+          selectedInstallation ? "lg:pr-[432px]" : "",
+        ].join(" ")}
       >
         {visibleInstallations.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
@@ -294,7 +296,10 @@ export function IntegrationsHubPage({ client }: IntegrationsHubPageProps) {
         <div
           role="dialog"
           aria-label={`${selectedInstallation.display_name} details`}
-          className="fixed right-0 top-0 z-40 flex h-full w-[420px] flex-col border-l border-slate-200 bg-white shadow-[-4px_0_24px_rgba(15,23,42,0.08)]"
+          className={[
+            "mt-4 flex w-full flex-col rounded-2xl border border-slate-200 bg-white shadow-sm",
+            "lg:fixed lg:right-0 lg:top-0 lg:z-40 lg:mt-0 lg:h-full lg:w-[420px] lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-[-4px_0_24px_rgba(15,23,42,0.08)]",
+          ].join(" ")}
         >
           <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
             <div className="min-w-0">
