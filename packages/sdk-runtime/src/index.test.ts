@@ -94,6 +94,24 @@ describe("sdk runtime", () => {
     expect(result.expires_in).toBe(600);
   });
 
+  it("throws structured error for integration reauthorization failures", async () => {
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "conflict", message: "reauthorization not allowed" },
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        ),
+    });
+
+    await expect(client.startIntegrationReauthorization("inst-1")).rejects.toMatchObject({
+      status: 409,
+      error: { code: "conflict", message: "reauthorization not allowed" },
+    });
+  });
+
   it("submits integration credentials as json and parses auth status", async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const client = createMarketplaceCentralClient({
@@ -133,6 +151,28 @@ describe("sdk runtime", () => {
     expect(result.health_status).toBe("warning");
   });
 
+  it("throws structured error for integration credential submission failures", async () => {
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "invalid_request", message: "missing credentials" },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        ),
+    });
+
+    await expect(
+      client.submitIntegrationCredentials("inst-1", {
+        credentials: { username: "user" },
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      error: { code: "invalid_request", message: "missing credentials" },
+    });
+  });
+
   it("disconnects integration installation and parses auth status", async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const client = createMarketplaceCentralClient({
@@ -156,6 +196,24 @@ describe("sdk runtime", () => {
     expect(requests[0].init?.method).toBe("POST");
     expect(result.status).toBe("disconnected");
     expect(result.health_status).toBe("critical");
+  });
+
+  it("throws structured error for disconnect failures", async () => {
+    const client = createMarketplaceCentralClient({
+      baseUrl: "http://localhost:8080",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "conflict", message: "installation already disconnected" },
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        ),
+    });
+
+    await expect(client.disconnectIntegrationInstallation("inst-1")).rejects.toMatchObject({
+      status: 409,
+      error: { code: "conflict", message: "installation already disconnected" },
+    });
   });
 
   it("gets integration auth status", async () => {
