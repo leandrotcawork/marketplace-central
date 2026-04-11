@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type {
   IntegrationAuthStatusResponse,
@@ -166,37 +166,35 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     pendingAction: null,
   });
 
+  const fetchInstallations = useCallback(() => client.listIntegrationInstallations(), [client]);
+
   useEffect(() => {
     let cancelled = false;
 
-    async function loadInstallations() {
-      setState("loading");
+    setState("loading");
 
-      try {
-        const installationResult = await client.listIntegrationInstallations();
-
+    fetchInstallations()
+      .then((installationResult) => {
         if (cancelled) {
           return;
         }
 
         setInstallations(installationResult.items);
         setState("ready");
-      } catch (error) {
+      })
+      .catch((error) => {
         if (cancelled) {
           return;
         }
 
         setErrorMessage(extractErrorMessage(error));
         setState("error");
-      }
-    }
-
-    loadInstallations();
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [fetchInstallations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -454,6 +452,9 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       }
 
       await client.disconnectIntegrationInstallation(selectedInstallation.installation_id);
+      const installationResult = await fetchInstallations();
+      setInstallations(installationResult.items);
+      setState("ready");
       await reloadDrawerSnapshot(selectedInstallation.installation_id);
     });
   }

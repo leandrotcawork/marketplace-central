@@ -63,6 +63,14 @@ const sampleInstallation: IntegrationInstallation = {
   updated_at: "2026-04-11T12:30:00Z",
 };
 
+const sampleInstallationDisconnected: IntegrationInstallation = {
+  ...sampleInstallation,
+  status: "disconnected",
+  health_status: "critical",
+  active_credential_id: undefined,
+  updated_at: "2026-04-11T12:45:00Z",
+};
+
 const sampleInstallationNeedsAction: IntegrationInstallation = {
   installation_id: "inst-2",
   tenant_id: "tenant-1",
@@ -376,26 +384,52 @@ describe("IntegrationsHubPage", () => {
     expect(redirectToAuthUrl).toHaveBeenCalledWith(authUrl);
   });
 
-  it("requires confirmation before disconnecting an installation", async () => {
+  it("refreshes hub state after disconnecting an installation", async () => {
     const confirmSpy = vi.spyOn(window, "confirm");
-    mockListInstallations.mockResolvedValue({ items: [sampleInstallationNeedsAction] });
-    mockGetIntegrationAuthStatus.mockResolvedValue({
-      installation_id: "inst-2",
-      status: "requires_reauth",
-      health_status: "warning",
-      provider_code: "bling",
-    });
+    mockListInstallations
+      .mockResolvedValueOnce({ items: [sampleInstallation] })
+      .mockResolvedValueOnce({ items: [sampleInstallationDisconnected] });
+    mockGetIntegrationAuthStatus
+      .mockResolvedValueOnce({
+        installation_id: "inst-1",
+        status: "connected",
+        health_status: "healthy",
+        provider_code: "vtex",
+      })
+      .mockResolvedValueOnce({
+        installation_id: "inst-1",
+        status: "disconnected",
+        health_status: "critical",
+        provider_code: "vtex",
+      });
     mockDisconnectIntegrationInstallation.mockResolvedValue({
-      installation_id: "inst-2",
+      installation_id: "inst-1",
       status: "disconnected",
       health_status: "critical",
-      provider_code: "bling",
-      external_account_id: "acc-2",
+      provider_code: "vtex",
+      external_account_id: "acc-1",
     });
 
-    renderPage(["/integrations?installation=inst-2"]);
+    renderPage(["/integrations?installation=inst-1"]);
 
-    const dialog = await screen.findByRole("dialog", { name: /bling store details/i });
+    const dialog = await screen.findByRole("dialog", { name: /vtex main store details/i });
+    const connectedMetric = screen.getByText("Connected").closest("div");
+    expect(connectedMetric).not.toBeNull();
+    if (!connectedMetric) {
+      return;
+    }
+
+    const installationCardLabel = screen.getAllByText("VTEX Main Store")
+      .find((node) => node.closest("button") !== null);
+    const installationCard = installationCardLabel?.closest("button") ?? null;
+    expect(installationCard).not.toBeNull();
+    if (!installationCard) {
+      return;
+    }
+
+    expect(within(connectedMetric).getByText("1")).toBeInTheDocument();
+    expect(within(installationCard).getByText("connected")).toBeInTheDocument();
+
     const disconnectButton = within(dialog).getByRole("button", { name: /disconnect/i });
 
     confirmSpy.mockReturnValueOnce(false);
@@ -404,7 +438,17 @@ describe("IntegrationsHubPage", () => {
 
     confirmSpy.mockReturnValueOnce(true);
     fireEvent.click(disconnectButton);
-    await waitFor(() => expect(mockDisconnectIntegrationInstallation).toHaveBeenCalledWith("inst-2"));
+    await waitFor(() => expect(mockDisconnectIntegrationInstallation).toHaveBeenCalledWith("inst-1"));
+
+    await waitFor(() => expect(mockListInstallations).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const refreshedCardLabel = screen.getAllByText("VTEX Main Store")
+        .find((node) => node.closest("button") !== null);
+      const refreshedCard = refreshedCardLabel?.closest("button");
+      expect(refreshedCard).not.toBeNull();
+      expect(within(refreshedCard as HTMLElement).getByText("disconnected")).toBeInTheDocument();
+    });
+    expect(within(connectedMetric).getByText("0")).toBeInTheDocument();
 
     confirmSpy.mockRestore();
   });
