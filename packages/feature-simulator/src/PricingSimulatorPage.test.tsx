@@ -139,9 +139,9 @@ describe("PricingSimulatorPage", () => {
     expect(card.getByText(/^Custo:/i)).toBeInTheDocument();
     expect(card.getByText(/^Comiss/i)).toBeInTheDocument();
     expect(card.getByText(/^Margem:/i)).toBeInTheDocument();
-    // Taxa fixa only shown when > 0; Frete removed from matrix cell
+    // Taxa fixa only shown when > 0; Frete line remains visible in matrix cell
     expect(card.queryByText(/^Taxa fixa/i)).not.toBeInTheDocument();
-    expect(card.queryByText(/^Frete/i)).not.toBeInTheDocument();
+    expect(card.getByText(/^Frete:/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /expand pol1/i })).not.toBeInTheDocument();
   });
 
