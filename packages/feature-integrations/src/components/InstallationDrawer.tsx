@@ -17,6 +17,8 @@ interface InstallationDrawerProps {
   operationRunsError: string | null;
   pendingAction: string | null;
   actions: AuthStatusAction[];
+  showCredentialsForm: boolean;
+  onSubmitCredentials: (apiKey: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -31,6 +33,8 @@ export function InstallationDrawer({
   operationRunsError,
   pendingAction,
   actions,
+  showCredentialsForm,
+  onSubmitCredentials,
   onClose,
 }: InstallationDrawerProps) {
   return (
@@ -89,10 +93,12 @@ export function InstallationDrawer({
           authStatus={authStatus}
           installationStatus={installation.status}
           healthStatus={installation.health_status}
+          showCredentialsForm={showCredentialsForm}
           loading={authStatusLoading}
           errorMessage={authStatusError}
           pendingAction={pendingAction}
           actions={actions}
+          onSubmitCredentials={onSubmitCredentials}
         />
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4">

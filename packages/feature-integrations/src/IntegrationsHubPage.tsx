@@ -10,7 +10,10 @@ import type {
 import { FilterBar } from "./components/FilterBar";
 import { InstallationCard } from "./components/InstallationCard";
 import { InstallationDrawer } from "./components/InstallationDrawer";
-import { OperationalSummary } from "./components/OperationalSummary";
+import {
+  OperationalSummary,
+  type OperationalQuickFilter,
+} from "./components/OperationalSummary";
 import type { AuthStatusAction } from "./components/AuthStatusPanel";
 
 export interface IntegrationsHubClient {
@@ -46,6 +49,11 @@ type DrawerSnapshot = {
   pendingAction: string | null;
 };
 
+type IntegrationErrorContext = {
+  code: string | null;
+  message: string;
+};
+
 const NEEDS_ACTION_STATUSES = new Set([
   "draft",
   "pending_connection",
@@ -56,9 +64,9 @@ const NEEDS_ACTION_STATUSES = new Set([
   "failed",
 ]);
 
-function extractErrorMessage(error: unknown): string {
+function extractErrorContext(error: unknown): IntegrationErrorContext {
   if (typeof error === "string") {
-    return error;
+    return { code: null, message: error };
   }
 
   if (error && typeof error === "object") {
@@ -67,10 +75,21 @@ function extractErrorMessage(error: unknown): string {
       message?: string;
     };
 
-    return structured.error?.message ?? structured.message ?? "Unknown error";
+    return {
+      code: structured.error?.code ?? null,
+      message: structured.error?.message ?? structured.message ?? "Unknown error",
+    };
   }
 
-  return "Unknown error";
+  return { code: null, message: "Unknown error" };
+}
+
+function formatErrorForUI(error: unknown): string {
+  const context = extractErrorContext(error);
+  if (!context.code) {
+    return context.message;
+  }
+  return `${context.message} (${context.code})`;
 }
 
 function isNeedsAction(installation: IntegrationInstallation): boolean {
@@ -104,15 +123,7 @@ function getResolvedStatus(
   return authStatus?.status ?? installation.status;
 }
 
-function getResolvedHealth(
-  installation: IntegrationInstallation,
-  authStatus: IntegrationAuthStatusResponse | null,
-) {
-  return authStatus?.health_status ?? installation.health_status;
-}
-
 function buildAuthActions(params: {
-  installation: IntegrationInstallation;
   resolvedStatus: IntegrationAuthStatusResponse["status"] | IntegrationInstallation["status"];
   pendingAction: string | null;
   onAuthorize: () => void;
@@ -153,7 +164,12 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   const [errorMessage, setErrorMessage] = useState("Failed to load integrations");
   const [query, setQuery] = useState("");
   const [providerCode, setProviderCode] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [healthFilter, setHealthFilter] = useState("");
   const [needsActionOnly, setNeedsActionOnly] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<OperationalQuickFilter | null>(null);
+  const [syncFailures24hCount, setSyncFailures24hCount] = useState(0);
+  const [syncFailureInstallationIDs, setSyncFailureInstallationIDs] = useState<Set<string>>(new Set());
   const [searchParams, setSearchParams] = useSearchParams();
   const [drawerState, setDrawerState] = useState<DrawerSnapshot>({
     authStatus: null,
@@ -187,7 +203,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
           return;
         }
 
-        setErrorMessage(extractErrorMessage(error));
+        setErrorMessage(formatErrorForUI(error));
         setState("error");
       });
 
@@ -239,14 +255,35 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     return installations.filter((installation) => {
       const provider = providerByCode.get(installation.provider_code);
       const providerName = provider?.display_name ?? installation.provider_code;
+      const matchesQuickFilter =
+        !quickFilter ||
+        (quickFilter === "connected" && installation.status === "connected") ||
+        (quickFilter === "requires_reauth" && installation.status === "requires_reauth") ||
+        (quickFilter === "warning" && installation.health_status === "warning") ||
+        (quickFilter === "critical" && installation.health_status === "critical") ||
+        (quickFilter === "sync_failures" &&
+          syncFailureInstallationIDs.has(installation.installation_id));
 
       return (
         matchesSearch(installation, query.trim(), providerName) &&
         (!providerCode || installation.provider_code === providerCode) &&
+        (!statusFilter || installation.status === statusFilter) &&
+        (!healthFilter || installation.health_status === healthFilter) &&
+        matchesQuickFilter &&
         (!needsActionOnly || isNeedsAction(installation))
       );
     });
-  }, [installations, providerByCode, providerCode, query, needsActionOnly]);
+  }, [
+    healthFilter,
+    installations,
+    needsActionOnly,
+    providerByCode,
+    providerCode,
+    query,
+    quickFilter,
+    statusFilter,
+    syncFailureInstallationIDs,
+  ]);
 
   const selectedInstallationId = searchParams.get("installation") ?? "";
   const selectedInstallation = useMemo(
@@ -255,13 +292,71 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   );
 
   const connectedCount = useMemo(
-    () => installations.filter((installation) => !isNeedsAction(installation)).length,
+    () => installations.filter((installation) => installation.status === "connected").length,
     [installations]
   );
-  const needsActionCount = useMemo(
-    () => installations.filter((installation) => isNeedsAction(installation)).length,
+  const requiresReauthCount = useMemo(
+    () => installations.filter((installation) => installation.status === "requires_reauth").length,
     [installations]
   );
+  const warningCount = useMemo(
+    () => installations.filter((installation) => installation.health_status === "warning").length,
+    [installations]
+  );
+  const criticalCount = useMemo(
+    () => installations.filter((installation) => installation.health_status === "critical").length,
+    [installations]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+
+    if (installations.length === 0) {
+      setSyncFailureInstallationIDs(new Set());
+      setSyncFailures24hCount(0);
+      return;
+    }
+
+    Promise.allSettled(
+      installations.map(async (installation) => {
+        const result = await client.listIntegrationOperationRuns(installation.installation_id);
+        return { installationID: installation.installation_id, runs: result.items };
+      })
+    ).then((results) => {
+      if (cancelled) {
+        return;
+      }
+
+      const failedInstallations = new Set<string>();
+      let failureCount = 0;
+
+      for (const result of results) {
+        if (result.status !== "fulfilled") {
+          continue;
+        }
+        for (const run of result.value.runs) {
+          const createdAt = Date.parse(run.created_at);
+          if (
+            run.operation_type === "fee_sync" &&
+            run.status === "failed" &&
+            Number.isFinite(createdAt) &&
+            createdAt >= cutoff
+          ) {
+            failureCount += 1;
+            failedInstallations.add(result.value.installationID);
+          }
+        }
+      }
+
+      setSyncFailureInstallationIDs(failedInstallations);
+      setSyncFailures24hCount(failureCount);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, installations]);
 
   useEffect(() => {
     if (!selectedInstallation) {
@@ -306,12 +401,12 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
         authStatus: authStatusResult.status === "fulfilled" ? authStatusResult.value : null,
         authStatusLoading: false,
         authStatusError:
-          authStatusResult.status === "rejected" ? extractErrorMessage(authStatusResult.reason) : null,
+          authStatusResult.status === "rejected" ? formatErrorForUI(authStatusResult.reason) : null,
         operationRuns:
           operationRunsResult.status === "fulfilled" ? operationRunsResult.value.items : current.operationRuns,
         operationRunsLoading: false,
         operationRunsError:
-          operationRunsResult.status === "rejected" ? extractErrorMessage(operationRunsResult.reason) : null,
+          operationRunsResult.status === "rejected" ? formatErrorForUI(operationRunsResult.reason) : null,
         actionError: null,
         pendingAction: null,
       }));
@@ -326,7 +421,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
         ...current,
         authStatusLoading: false,
         operationRunsLoading: false,
-        authStatusError: extractErrorMessage(error),
+        authStatusError: formatErrorForUI(error),
       }));
     });
 
@@ -352,7 +447,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       setDrawerState((current) => ({
         ...current,
         operationRunsLoading: false,
-        operationRunsError: extractErrorMessage(error),
+        operationRunsError: formatErrorForUI(error),
       }));
     }
   }
@@ -376,12 +471,12 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       authStatus: authStatusResult.status === "fulfilled" ? authStatusResult.value : current.authStatus,
       authStatusLoading: false,
       authStatusError:
-        authStatusResult.status === "rejected" ? extractErrorMessage(authStatusResult.reason) : null,
+        authStatusResult.status === "rejected" ? formatErrorForUI(authStatusResult.reason) : null,
       operationRuns:
         operationRunsResult.status === "fulfilled" ? operationRunsResult.value.items : current.operationRuns,
       operationRunsLoading: false,
       operationRunsError:
-        operationRunsResult.status === "rejected" ? extractErrorMessage(operationRunsResult.reason) : null,
+        operationRunsResult.status === "rejected" ? formatErrorForUI(operationRunsResult.reason) : null,
     }));
   }
 
@@ -401,7 +496,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     } catch (error) {
       setDrawerState((current) => ({
         ...current,
-        actionError: extractErrorMessage(error),
+        actionError: formatErrorForUI(error),
         pendingAction: null,
       }));
       return;
@@ -470,6 +565,20 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     });
   }
 
+  async function handleSubmitCredentials(apiKey: string) {
+    if (!selectedInstallation) {
+      return;
+    }
+
+    await runAction("credentials", async () => {
+      await client.submitIntegrationCredentials(selectedInstallation.installation_id, { api_key: apiKey });
+      const installationResult = await fetchInstallations();
+      setInstallations(installationResult.items);
+      setState("ready");
+      await reloadDrawerSnapshot(selectedInstallation.installation_id);
+    });
+  }
+
   function syncSelection(installationId: string) {
     const next = new URLSearchParams(searchParams);
     next.set("installation", installationId);
@@ -525,13 +634,20 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   const resolvedStatus = selectedInstallation
     ? getResolvedStatus(selectedInstallation, drawerState.authStatus)
     : null;
-  const resolvedHealth = selectedInstallation
-    ? getResolvedHealth(selectedInstallation, drawerState.authStatus)
+  const selectedProvider = selectedInstallation
+    ? providerByCode.get(selectedInstallation.provider_code)
     : null;
+  const showCredentialsForm = Boolean(
+    selectedProvider?.auth_strategy === "api_key" &&
+      selectedInstallation &&
+      (resolvedStatus === "draft" ||
+        resolvedStatus === "pending_connection" ||
+        resolvedStatus === "degraded" ||
+        resolvedStatus === "requires_reauth")
+  );
 
   const drawerActions = selectedInstallation
     ? buildAuthActions({
-        installation: selectedInstallation,
         resolvedStatus: resolvedStatus ?? selectedInstallation.status,
         pendingAction: drawerState.pendingAction,
         onAuthorize: handleAuthorize,
@@ -554,26 +670,36 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       </div>
 
       <OperationalSummary
-        totalCount={installations.length}
         connectedCount={connectedCount}
-        needsActionCount={needsActionCount}
-        providerCount={providers.length}
+        requiresReauthCount={requiresReauthCount}
+        warningCount={warningCount}
+        criticalCount={criticalCount}
+        syncFailures24hCount={syncFailures24hCount}
+        activeQuickFilter={quickFilter}
+        onQuickFilter={setQuickFilter}
       />
 
       <FilterBar
         query={query}
         providerCode={providerCode}
+        statusFilter={statusFilter}
+        healthFilter={healthFilter}
         needsActionOnly={needsActionOnly}
         providerOptions={providerOptions}
         totalCount={installations.length}
         visibleCount={visibleInstallations.length}
         onQueryChange={setQuery}
         onProviderCodeChange={setProviderCode}
+        onStatusFilterChange={setStatusFilter}
+        onHealthFilterChange={setHealthFilter}
         onNeedsActionOnlyChange={setNeedsActionOnly}
         onClearFilters={() => {
           setQuery("");
           setProviderCode("");
+          setStatusFilter("");
+          setHealthFilter("");
           setNeedsActionOnly(false);
+          setQuickFilter(null);
         }}
       />
 
@@ -614,6 +740,8 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
           operationRunsError={drawerState.operationRunsError}
           pendingAction={drawerState.pendingAction}
           actions={drawerActions}
+          showCredentialsForm={showCredentialsForm}
+          onSubmitCredentials={handleSubmitCredentials}
           onClose={clearSelection}
         />
       )}

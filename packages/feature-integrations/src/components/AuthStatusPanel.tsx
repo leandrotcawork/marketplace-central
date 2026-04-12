@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import type { IntegrationAuthStatusResponse } from "@marketplace-central/sdk-runtime";
 
 export interface AuthStatusAction {
@@ -12,10 +13,12 @@ interface AuthStatusPanelProps {
   authStatus: IntegrationAuthStatusResponse | null;
   installationStatus: string;
   healthStatus: string;
+  showCredentialsForm: boolean;
   loading: boolean;
   errorMessage: string | null;
   pendingAction: string | null;
   actions: AuthStatusAction[];
+  onSubmitCredentials: (apiKey: string) => Promise<void>;
 }
 
 function actionClassName(variant: AuthStatusAction["variant"] | undefined, disabled: boolean) {
@@ -38,13 +41,25 @@ export function AuthStatusPanel({
   authStatus,
   installationStatus,
   healthStatus,
+  showCredentialsForm,
   loading,
   errorMessage,
   pendingAction,
   actions,
+  onSubmitCredentials,
 }: AuthStatusPanelProps) {
+  const [apiKey, setApiKey] = useState("");
   const status = authStatus?.status ?? installationStatus;
   const resolvedHealth = authStatus?.health_status ?? healthStatus;
+
+  async function handleCredentialSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!apiKey.trim()) {
+      return;
+    }
+    await onSubmitCredentials(apiKey.trim());
+    setApiKey("");
+  }
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -90,6 +105,31 @@ export function AuthStatusPanel({
           );
         })}
       </div>
+
+      {showCredentialsForm && (
+        <form onSubmit={handleCredentialSubmit} className="mt-4 space-y-2">
+          <label htmlFor="integration-api-key" className="block text-xs font-medium text-slate-700">
+            API key
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="integration-api-key"
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="Enter provider API key"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            />
+            <button
+              type="submit"
+              disabled={loading || pendingAction === "credentials" || !apiKey.trim()}
+              className={actionClassName("primary", loading || pendingAction === "credentials" || !apiKey.trim())}
+            >
+              {pendingAction === "credentials" ? "Submitting..." : "Submit credentials"}
+            </button>
+          </div>
+        </form>
+      )}
     </section>
   );
 }

@@ -47,6 +47,20 @@ const sampleProviderNeedsAction: IntegrationProviderDefinition = {
   updated_at: "2026-04-11T12:00:00Z",
 };
 
+const sampleProviderAPIKey: IntegrationProviderDefinition = {
+  provider_code: "shopee",
+  tenant_id: "tenant-1",
+  family: "marketplace",
+  display_name: "Shopee",
+  auth_strategy: "api_key",
+  install_mode: "manual",
+  metadata: {},
+  declared_capabilities: ["orders"],
+  is_active: true,
+  created_at: "2026-04-11T12:00:00Z",
+  updated_at: "2026-04-11T12:00:00Z",
+};
+
 const sampleInstallation: IntegrationInstallation = {
   installation_id: "inst-1",
   tenant_id: "tenant-1",
@@ -118,6 +132,22 @@ const sampleInstallationPendingConnection: IntegrationInstallation = {
   updated_at: "2026-04-11T12:30:00Z",
 };
 
+const sampleInstallationPendingAPIKey: IntegrationInstallation = {
+  installation_id: "inst-6",
+  tenant_id: "tenant-1",
+  provider_code: "shopee",
+  family: "marketplace",
+  display_name: "Shopee Pending",
+  status: "pending_connection",
+  health_status: "warning",
+  external_account_id: "acc-6",
+  external_account_name: "Shopee Pending Account",
+  active_credential_id: undefined,
+  last_verified_at: "2026-04-11T12:05:00Z",
+  created_at: "2026-04-11T12:00:00Z",
+  updated_at: "2026-04-11T12:30:00Z",
+};
+
 const sampleInstallationOtherProvider: IntegrationInstallation = {
   installation_id: "inst-3",
   tenant_id: "tenant-1",
@@ -157,6 +187,20 @@ const sampleOperationRuns: IntegrationOperationRun[] = [
     updated_at: "2026-04-11T12:20:00Z",
   },
 ];
+
+const sampleFailedFeeSyncRun: IntegrationOperationRun = {
+  operation_run_id: "run-failed-1",
+  installation_id: "inst-2",
+  operation_type: "fee_sync",
+  status: "failed",
+  result_code: "",
+  failure_code: "PROVIDER_TIMEOUT",
+  attempt_count: 1,
+  actor_type: "system",
+  actor_id: "fee-sync",
+  created_at: "2026-04-11T12:20:00Z",
+  updated_at: "2026-04-11T12:20:00Z",
+};
 
 const refreshedOperationRuns: IntegrationOperationRun[] = [
   {
@@ -304,6 +348,21 @@ describe("IntegrationsHubPage", () => {
     expect(screen.queryByText("Shopee Store")).not.toBeInTheDocument();
   });
 
+  it("filters installations by status and health", async () => {
+    renderPage();
+
+    expect(await screen.findByText("VTEX Main Store")).toBeInTheDocument();
+    expect(screen.getByText("Bling Store")).toBeInTheDocument();
+    expect(screen.getByText("Shopee Store")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/status/i), { target: { value: "requires_reauth" } });
+    fireEvent.change(screen.getByLabelText(/health/i), { target: { value: "warning" } });
+
+    expect(screen.queryByText("VTEX Main Store")).not.toBeInTheDocument();
+    expect(screen.getByText("Bling Store")).toBeInTheDocument();
+    expect(screen.queryByText("Shopee Store")).not.toBeInTheDocument();
+  });
+
   it("filters installations by search text", async () => {
     renderPage();
 
@@ -326,6 +385,27 @@ describe("IntegrationsHubPage", () => {
     expect(within(dialog).getByText("Bling Store")).toBeInTheDocument();
     expect(within(dialog).getByText("Bling Account")).toBeInTheDocument();
     expect(within(dialog).getByText("Bling")).toBeInTheDocument();
+  });
+
+  it("applies sync failures quick filter from KPI row", async () => {
+    mockListOperationRuns.mockImplementation(async (installationId: string) => {
+      if (installationId === "inst-2") {
+        return { items: [sampleFailedFeeSyncRun] };
+      }
+      return { items: [] };
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("VTEX Main Store")).toBeInTheDocument();
+    expect(screen.getByText("Bling Store")).toBeInTheDocument();
+    expect(screen.getByText("Shopee Store")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /sync failures \(24h\)/i }));
+
+    await waitFor(() => expect(screen.getByText("Bling Store")).toBeInTheDocument());
+    expect(screen.queryByText("VTEX Main Store")).not.toBeInTheDocument();
+    expect(screen.queryByText("Shopee Store")).not.toBeInTheDocument();
   });
 
   it("authorizes a draft installation and redirects to the returned auth url", async () => {
@@ -413,7 +493,7 @@ describe("IntegrationsHubPage", () => {
     renderPage(["/integrations?installation=inst-1"]);
 
     const dialog = await screen.findByRole("dialog", { name: /vtex main store details/i });
-    const connectedMetric = screen.getByText("Connected").closest("div");
+    const connectedMetric = screen.getByText("Healthy and ready for sync").closest("button");
     expect(connectedMetric).not.toBeNull();
     if (!connectedMetric) {
       return;
@@ -461,13 +541,20 @@ describe("IntegrationsHubPage", () => {
       health_status: "healthy",
       provider_code: "bling",
     });
-    mockListOperationRuns
-      .mockResolvedValueOnce({ items: sampleOperationRuns })
-      .mockResolvedValueOnce({ items: refreshedOperationRuns });
-    mockStartIntegrationFeeSync.mockResolvedValue({
-      installation_id: "inst-2",
-      operation_run_id: "run-2",
-      status: "queued",
+    let syncTriggered = false;
+    mockListOperationRuns.mockImplementation(async (installationID: string) => {
+      if (installationID !== "inst-2") {
+        return { items: [] };
+      }
+      return { items: syncTriggered ? refreshedOperationRuns : sampleOperationRuns };
+    });
+    mockStartIntegrationFeeSync.mockImplementation(async () => {
+      syncTriggered = true;
+      return {
+        installation_id: "inst-2",
+        operation_run_id: "run-2",
+        status: "queued",
+      };
     });
 
     renderPage(["/integrations?installation=inst-2"]);
@@ -478,7 +565,55 @@ describe("IntegrationsHubPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /sync fees/i }));
 
     await waitFor(() => expect(mockStartIntegrationFeeSync).toHaveBeenCalledWith("inst-2"));
-    await waitFor(() => expect(mockListOperationRuns).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockListOperationRuns).toHaveBeenCalledWith("inst-2"));
     expect(within(dialog).getByText("run-2")).toBeInTheDocument();
+  });
+
+  it("shows backend error code in load failure state", async () => {
+    mockListInstallations.mockRejectedValue({
+      status: 503,
+      error: {
+        code: "INTEGRATIONS_BACKEND_UNAVAILABLE",
+        message: "Backend unavailable",
+      },
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText(/backend unavailable/i)).toBeInTheDocument()
+    );
+    expect(screen.getByText(/INTEGRATIONS_BACKEND_UNAVAILABLE/)).toBeInTheDocument();
+  });
+
+  it("submits API key credentials for api_key providers", async () => {
+    mockListProviders.mockResolvedValue({ items: [sampleProviderAPIKey] });
+    mockListInstallations.mockResolvedValue({ items: [sampleInstallationPendingAPIKey] });
+    mockGetIntegrationAuthStatus.mockResolvedValue({
+      installation_id: "inst-6",
+      status: "pending_connection",
+      health_status: "warning",
+      provider_code: "shopee",
+    });
+    mockSubmitIntegrationCredentials.mockResolvedValue({
+      installation_id: "inst-6",
+      status: "connected",
+      health_status: "healthy",
+      provider_code: "shopee",
+      external_account_id: "acc-6",
+    });
+
+    renderPage(["/integrations?installation=inst-6"]);
+
+    const dialog = await screen.findByRole("dialog", { name: /shopee pending details/i });
+    const apiKeyInput = within(dialog).getByLabelText(/api key/i);
+    fireEvent.change(apiKeyInput, { target: { value: "sk_test_123" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /submit credentials/i }));
+
+    await waitFor(() =>
+      expect(mockSubmitIntegrationCredentials).toHaveBeenCalledWith("inst-6", {
+        api_key: "sk_test_123",
+      })
+    );
   });
 });

@@ -1,12 +1,16 @@
 interface FilterBarProps {
   query: string;
   providerCode: string;
+  statusFilter: string;
+  healthFilter: string;
   needsActionOnly: boolean;
   providerOptions: Array<{ value: string; label: string }>;
   totalCount: number;
   visibleCount: number;
   onQueryChange: (next: string) => void;
   onProviderCodeChange: (next: string) => void;
+  onStatusFilterChange: (next: string) => void;
+  onHealthFilterChange: (next: string) => void;
   onNeedsActionOnlyChange: (next: boolean) => void;
   onClearFilters: () => void;
 }
@@ -14,16 +18,22 @@ interface FilterBarProps {
 export function FilterBar({
   query,
   providerCode,
+  statusFilter,
+  healthFilter,
   needsActionOnly,
   providerOptions,
   totalCount,
   visibleCount,
   onQueryChange,
   onProviderCodeChange,
+  onStatusFilterChange,
+  onHealthFilterChange,
   onNeedsActionOnlyChange,
   onClearFilters,
 }: FilterBarProps) {
-  const hasActiveFilters = Boolean(query.trim() || providerCode || needsActionOnly);
+  const hasActiveFilters = Boolean(
+    query.trim() || providerCode || statusFilter || healthFilter || needsActionOnly
+  );
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -58,6 +68,45 @@ export function FilterBar({
                 {option.label}
               </option>
             ))}
+          </select>
+        </div>
+
+        <div className="space-y-1 lg:w-52">
+          <label htmlFor="integrations-status" className="block text-xs font-medium text-slate-700">
+            Status
+          </label>
+          <select
+            id="integrations-status"
+            value={statusFilter}
+            onChange={(event) => onStatusFilterChange(event.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="pending_connection">Pending connection</option>
+            <option value="connected">Connected</option>
+            <option value="degraded">Degraded</option>
+            <option value="requires_reauth">Requires reauth</option>
+            <option value="disconnected">Disconnected</option>
+            <option value="suspended">Suspended</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+
+        <div className="space-y-1 lg:w-44">
+          <label htmlFor="integrations-health" className="block text-xs font-medium text-slate-700">
+            Health
+          </label>
+          <select
+            id="integrations-health"
+            value={healthFilter}
+            onChange={(event) => onHealthFilterChange(event.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="">All health</option>
+            <option value="healthy">Healthy</option>
+            <option value="warning">Warning</option>
+            <option value="critical">Critical</option>
           </select>
         </div>
 
