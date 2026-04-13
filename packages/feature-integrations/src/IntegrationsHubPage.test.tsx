@@ -9,6 +9,10 @@ import type {
   IntegrationProviderDefinition,
 } from "@marketplace-central/sdk-runtime";
 
+function isoHoursAgo(hoursAgo: number): string {
+  return new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString();
+}
+
 const mockListProviders = vi.fn();
 const mockListInstallations = vi.fn();
 const mockListOperationRuns = vi.fn();
@@ -198,8 +202,8 @@ const sampleFailedFeeSyncRun: IntegrationOperationRun = {
   attempt_count: 1,
   actor_type: "system",
   actor_id: "fee-sync",
-  created_at: "2026-04-11T12:20:00Z",
-  updated_at: "2026-04-11T12:20:00Z",
+  created_at: isoHoursAgo(2),
+  updated_at: isoHoursAgo(2),
 };
 
 const refreshedOperationRuns: IntegrationOperationRun[] = [
