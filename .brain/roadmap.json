@@ -267,7 +267,7 @@
                                                         ],
                                          "started_at":  "2026-04-13",
                                          "completed_at":  null,
-                                         "notes":  "Execution started with automated baseline and operational runbook/evidence artifacts. Manual provider sandbox validation pending.",
+                                         "notes":  "Automated baseline and API-level operational validation executed. OAuth success callback + UI screenshot evidence still pending sandbox/browser completion.",
                                          "subtasks":  [
                                                           "Define smoke scenarios and expected evidence",
                                                           "Execute backend+sdk+ui flow validation",

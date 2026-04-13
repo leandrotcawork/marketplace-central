@@ -76,6 +76,12 @@ If sandbox callback or worker progression is blocked:
 3. Preserve last successful verifiable hop and output.
 4. Do not fabricate callback or operation terminal states.
 
+## Known Environment Gotchas
+
+1. `MPC_ENCRYPTION_KEY` must be a raw 32-character string for the current local key adapter implementation. A base64-encoded 32-byte key will fail startup with `INTEGRATIONS_CREDENTIAL_ENCRYPTION_FAILED`.
+2. Migration execution requires table ownership on existing MPC tables. If migrations fail with SQLSTATE `42501`, fix ownership/privileges before retrying.
+3. Local ports in this validation run used `API_PORT=8082` for `tenant_default` and `API_PORT=8091` for `tenant_beta`.
+
 ## Final Classification
 
 - `DONE`: all required scenarios complete and evidenced.
