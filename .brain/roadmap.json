@@ -258,16 +258,16 @@
                                          "id":  "T-029",
                                          "title":  "Operational E2E validation",
                                          "description":  "Run end-to-end validation against provider sandbox/test accounts and publish runbook.",
-                                         "status":  "planned",
+                                         "status":  "in_progress",
                                          "priority":  "medium",
                                          "depends_on":  [
                                                             "T-026",
                                                             "T-027",
                                                             "T-028"
                                                         ],
-                                         "started_at":  null,
+                                         "started_at":  "2026-04-13",
                                          "completed_at":  null,
-                                         "notes":  null,
+                                         "notes":  "Automated baseline and API-level operational validation executed. OAuth success callback + UI screenshot evidence still pending sandbox/browser completion.",
                                          "subtasks":  [
                                                           "Define smoke scenarios and expected evidence",
                                                           "Execute backend+sdk+ui flow validation",
