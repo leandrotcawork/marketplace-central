@@ -392,6 +392,14 @@ curl.exe -sS -X POST "$baseUrlBeta/integrations/installations/$installationId/fe
 
 5. Open the runtime hub on the `tenant_beta` instance and confirm the `tenant_alpha` installation is absent.
 6. Query the database directly for both tenants to confirm the rows are partitioned by `tenant_id`.
+7. Run a read-only SQL check against the shared database to confirm tenant scoping without mutating anything:
+
+```sql
+SELECT installation_id, tenant_id, provider_code, status
+FROM integration_installations
+WHERE tenant_id IN ('tenant_alpha', 'tenant_beta')
+ORDER BY tenant_id, installation_id;
+```
 
 **Expected API/UI evidence:**
 
@@ -435,4 +443,5 @@ Final operator outcome:
 - `DONE_WITH_CONCERNS` if the plan ran but a non-blocking evidence gap remains documented
 - `BLOCKED` if any required provider, callback, worker, or tenant isolation check could not be completed
 - `NEEDS_CONTEXT` only if the environment does not yet expose the stated endpoints or runtime hub
+
 
