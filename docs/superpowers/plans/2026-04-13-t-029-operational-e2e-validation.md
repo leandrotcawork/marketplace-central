@@ -180,7 +180,53 @@ curl.exe -sS "$baseUrl/integrations/installations/$installationId/auth/status"
 
 ---
 
-### Task 2: Auth Status Checks
+### Task 2: Shopee Credentials Connect
+
+**Providers:** `shopee`
+
+**Command or action steps:**
+
+1. Open `http://localhost:5173/integrations`.
+2. Select a draft or pending `shopee` installation and copy the installation ID into `$installationId`.
+3. Open the runtime hub credentials form for that installation.
+4. Submit the credentials payload that the current UI and SDK expect, which triggers `POST /integrations/installations/{id}/auth/credentials`.
+5. In browser devtools, confirm the request body includes the credentials map and the response returns successfully.
+6. Refresh the runtime hub after the request completes.
+7. Run:
+
+```powershell
+$baseUrl = "http://localhost:8080"
+curl.exe -sS "$baseUrl/integrations/installations/$installationId/auth/status"
+```
+
+8. Confirm the connected installation appears in the operations surface and the status panel reflects the new state.
+
+**Expected API/UI evidence:**
+
+- `POST /integrations/installations/{id}/auth/credentials` returns `200`
+- Response JSON matches the runtime contract and includes the installation status after connect
+- The runtime hub shows the `shopee` installation as connected or otherwise authenticated according to the current backend state
+- `GET /integrations/installations/{id}/auth/status` returns `200`
+- Auth status JSON shows:
+  - `installation_id`
+  - `status`
+  - `health_status`
+  - the correct `provider_code: shopee`
+  - the correct `external_account_id` if the backend assigns one
+- Server logs include `integrations.auth.credentials` with `action`, `result`, and `duration_ms`
+
+**Failure signals:**
+
+- Credentials submit returns `4xx` or `5xx`
+- The request body is not accepted by the current runtime contract
+- The runtime hub does not refresh after a successful submit
+- `auth/status` still shows the installation as disconnected after a successful submit
+- The response leaks secrets or omits the status fields required by the contract
+- Logs are missing the required structured fields
+
+---
+
+### Task 3: Auth Status Checks
 
 **Providers:** `mercado_livre`, `magalu`, `shopee`
 
@@ -191,7 +237,8 @@ curl.exe -sS "$baseUrl/integrations/installations/$installationId/auth/status"
 3. Run:
 
 ```powershell
-$baseUrl = "http://localhost:8080"`r`ncurl.exe -sS "$baseUrl/integrations/installations/$installationId/auth/status"
+$baseUrl = "http://localhost:8080"
+curl.exe -sS "$baseUrl/integrations/installations/$installationId/auth/status"
 ```
 
 4. Cross-check the API result with the UI drawer for the same installation.
@@ -220,7 +267,7 @@ $baseUrl = "http://localhost:8080"`r`ncurl.exe -sS "$baseUrl/integrations/instal
 
 ---
 
-### Task 3: Reauth And Disconnect
+### Task 4: Reauth And Disconnect
 
 **Providers:** `mercado_livre`, `magalu`, plus a reauth-capable connected installation
 
@@ -269,7 +316,7 @@ curl.exe -sS "$baseUrl/integrations/installations/$installationId/auth/status"
 
 ---
 
-### Task 4: Fee-Sync Queue And Operation Run Timeline
+### Task 5: Fee-Sync Queue And Operation Run Timeline
 
 **Providers:** `mercado_livre`, `magalu`, `shopee`
 
@@ -323,7 +370,7 @@ If the fee-sync worker is not running in the current sandbox, stop after the que
 
 ---
 
-### Task 5: Tenant Isolation Guard Checks
+### Task 6: Tenant Isolation Guard Checks
 
 **Providers:** `mercado_livre`, `magalu`, `shopee`
 
@@ -386,7 +433,4 @@ Final operator outcome:
 - `DONE_WITH_CONCERNS` if the plan ran but a non-blocking evidence gap remains documented
 - `BLOCKED` if any required provider, callback, worker, or tenant isolation check could not be completed
 - `NEEDS_CONTEXT` only if the environment does not yet expose the stated endpoints or runtime hub
-
-
-
 
