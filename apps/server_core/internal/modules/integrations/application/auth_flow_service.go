@@ -564,9 +564,6 @@ func (s *AuthFlowService) loadOAuthInstallation(ctx context.Context, installatio
 	if err != nil {
 		return domain.Installation{}, nil, err
 	}
-	if inst.Status == domain.InstallationStatusDisconnected {
-		return domain.Installation{}, nil, domain.ErrInstallationWrongStatus
-	}
 	return inst, adapter, nil
 }
 

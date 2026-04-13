@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -54,18 +56,19 @@ func (h AuthHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		slog.Info("integrations.auth.callback", "action", "handle_callback", "result", "400", "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
+	redirectURI := strings.TrimSpace(os.Getenv("MPC_OAUTH_REDIRECT_URI"))
 	result, err := h.flow.HandleCallback(r.Context(), application.HandleCallbackInput{
 		Code:        code,
 		State:       state,
-		RedirectURI: "",
+		RedirectURI: redirectURI,
 	})
 	if err != nil {
-		slog.Info("integrations.auth.callback", "action", "handle_callback", "result", "302", "duration_ms", time.Since(start).Milliseconds())
-		http.Redirect(w, r, "/connections?status=failed", http.StatusFound)
+		slog.Warn("integrations.auth.callback", "action", "handle_callback", "result", "302", "error", err.Error(), "duration_ms", time.Since(start).Milliseconds())
+		http.Redirect(w, r, buildWebRedirectURL(buildIntegrationsRedirectPath("failed", "")), http.StatusFound)
 		return
 	}
 	slog.Info("integrations.auth.callback", "action", "handle_callback", "result", "302", "duration_ms", time.Since(start).Milliseconds())
-	http.Redirect(w, r, "/connections/"+result.InstallationID+"?status=connected", http.StatusFound)
+	http.Redirect(w, r, buildWebRedirectURL(buildIntegrationsRedirectPath("connected", result.InstallationID)), http.StatusFound)
 }
 
 func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Request) {
@@ -92,9 +95,13 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 			Scopes      []string `json:"scopes"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		redirectURI := strings.TrimSpace(body.RedirectURI)
+		if redirectURI == "" {
+			redirectURI = strings.TrimSpace(os.Getenv("MPC_OAUTH_REDIRECT_URI"))
+		}
 		result, err := h.flow.StartAuthorize(r.Context(), application.StartAuthorizeInput{
 			InstallationID: installationID,
-			RedirectURI:    body.RedirectURI,
+			RedirectURI:    redirectURI,
 			Scopes:         body.Scopes,
 		})
 		if err != nil {
@@ -164,9 +171,13 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 			Scopes      []string `json:"scopes"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		redirectURI := strings.TrimSpace(body.RedirectURI)
+		if redirectURI == "" {
+			redirectURI = strings.TrimSpace(os.Getenv("MPC_OAUTH_REDIRECT_URI"))
+		}
 		result, err := h.flow.StartReauth(r.Context(), application.StartReauthInput{
 			InstallationID: installationID,
-			RedirectURI:    body.RedirectURI,
+			RedirectURI:    redirectURI,
 			Scopes:         body.Scopes,
 		})
 		if err != nil {
@@ -226,4 +237,21 @@ func (h AuthHandler) handleInstallationAuth(w http.ResponseWriter, r *http.Reque
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func buildWebRedirectURL(path string) string {
+	webOrigin := strings.TrimSpace(os.Getenv("MPC_WEB_ORIGIN"))
+	if webOrigin == "" {
+		return path
+	}
+	return strings.TrimRight(webOrigin, "/") + path
+}
+
+func buildIntegrationsRedirectPath(authStatus, installationID string) string {
+	query := url.Values{}
+	query.Set("auth", strings.TrimSpace(authStatus))
+	if strings.TrimSpace(installationID) != "" {
+		query.Set("installation", strings.TrimSpace(installationID))
+	}
+	return "/integrations?" + query.Encode()
 }

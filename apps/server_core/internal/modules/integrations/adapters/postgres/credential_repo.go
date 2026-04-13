@@ -58,7 +58,39 @@ func (r *CredentialRepository) GetActiveCredential(ctx context.Context, installa
 }
 
 func (r *CredentialRepository) SaveCredentialVersion(ctx context.Context, credential domain.Credential) error {
-	_, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Serialize credential rotation per installation to avoid active-credential unique conflicts.
+	if _, err := tx.Exec(ctx, `
+		SELECT 1
+		FROM integration_installations
+		WHERE tenant_id = $1
+		  AND installation_id = $2
+		FOR UPDATE
+	`, r.tenantID, credential.InstallationID); err != nil {
+		return err
+	}
+
+	if credential.IsActive {
+		if _, err := tx.Exec(ctx, `
+			UPDATE integration_credentials
+			SET is_active = false,
+			    revoked_at = COALESCE(revoked_at, now()),
+			    updated_at = now()
+			WHERE tenant_id = $1
+			  AND installation_id = $2
+			  AND is_active = true
+			  AND credential_id <> $3
+		`, r.tenantID, credential.InstallationID, credential.CredentialID); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO integration_credentials (
 			tenant_id, credential_id, installation_id, version, secret_type,
 			encrypted_payload, encryption_key_id, is_active, revoked_at,
@@ -80,8 +112,11 @@ func (r *CredentialRepository) SaveCredentialVersion(ctx context.Context, creden
 			updated_at = EXCLUDED.updated_at
 	`, r.tenantID, credential.CredentialID, credential.InstallationID, credential.Version, credential.SecretType,
 		credential.EncryptedPayload, credential.EncryptionKeyID, credential.IsActive, credential.RevokedAt,
-		credential.CreatedAt, credential.UpdatedAt)
-	return err
+		credential.CreatedAt, credential.UpdatedAt); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (r *CredentialRepository) DeactivateCredential(ctx context.Context, credentialID string) error {

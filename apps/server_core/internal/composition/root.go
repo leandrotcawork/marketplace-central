@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	catalogmetalshopping "marketplace-central/apps/server_core/internal/modules/catalog/adapters/metalshopping"
@@ -24,9 +25,9 @@ import (
 	connectorsapp "marketplace-central/apps/server_core/internal/modules/connectors/application"
 	connectorstransport "marketplace-central/apps/server_core/internal/modules/connectors/transport"
 	integrationscrypto "marketplace-central/apps/server_core/internal/modules/integrations/adapters/crypto"
+	integrationsfeesync "marketplace-central/apps/server_core/internal/modules/integrations/adapters/feesync"
 	integrationsmagalu "marketplace-central/apps/server_core/internal/modules/integrations/adapters/magalu"
 	integrationsml "marketplace-central/apps/server_core/internal/modules/integrations/adapters/mercadolivre"
-	integrationsfeesync "marketplace-central/apps/server_core/internal/modules/integrations/adapters/feesync"
 	integrationspostgres "marketplace-central/apps/server_core/internal/modules/integrations/adapters/postgres"
 	integrationsproviders "marketplace-central/apps/server_core/internal/modules/integrations/adapters/providers"
 	integrationsshopee "marketplace-central/apps/server_core/internal/modules/integrations/adapters/shopee"
@@ -153,16 +154,16 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	}
 
 	mlAuth := integrationsml.NewAdapter(integrationsml.Config{
-		ClientID:     os.Getenv("MPC_PROVIDER_MERCADOLIVRE_CLIENT_ID"),
-		ClientSecret: os.Getenv("MPC_PROVIDER_MERCADOLIVRE_CLIENT_SECRET"),
+		ClientID:     strings.TrimSpace(os.Getenv("MPC_PROVIDER_MERCADOLIVRE_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(os.Getenv("MPC_PROVIDER_MERCADOLIVRE_CLIENT_SECRET")),
 		AuthorizeURL: "https://auth.mercadolivre.com.br/authorization",
 		TokenURL:     "https://api.mercadolibre.com/oauth/token",
 	})
 	magaluAuth := integrationsmagalu.NewAdapter(integrationsmagalu.Config{
-		ClientID:     os.Getenv("MPC_PROVIDER_MAGALU_CLIENT_ID"),
-		ClientSecret: os.Getenv("MPC_PROVIDER_MAGALU_CLIENT_SECRET"),
-		AuthorizeURL: "https://auth.magalu.com/oauth/authorize",
-		TokenURL:     "https://auth.magalu.com/oauth/token",
+		ClientID:     strings.TrimSpace(os.Getenv("MPC_PROVIDER_MAGALU_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(os.Getenv("MPC_PROVIDER_MAGALU_CLIENT_SECRET")),
+		AuthorizeURL: "https://id.magalu.com/login",
+		TokenURL:     "https://id.magalu.com/oauth/token",
 	})
 	shopeeAuth := integrationsshopee.NewAdapter(integrationsshopee.Config{})
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -43,7 +44,7 @@ func (a *Adapter) AuthStrategy() domain.AuthStrategy {
 }
 
 func (a *Adapter) StartAuthorize(_ context.Context, input application.StartAuthorizeAdapterInput) (application.AuthorizeStart, error) {
-	authURL, err := a.BuildAuthorizeURL(input.State, input.RedirectURI, "")
+	authURL, err := a.BuildAuthorizeURL(input.State, input.RedirectURI, input.CodeChallenge)
 	if err != nil {
 		return application.AuthorizeStart{}, err
 	}
@@ -69,7 +70,7 @@ func (a *Adapter) BuildAuthorizeURL(state, redirectURI, codeChallenge string) (s
 }
 
 func (a *Adapter) ExchangeCallback(ctx context.Context, input application.HandleCallbackAdapterInput) (application.CredentialPayload, error) {
-	result, err := a.ExchangeCode(ctx, input.Code, input.RedirectURI, "")
+	result, err := a.ExchangeCode(ctx, input.Code, input.RedirectURI, input.CodeVerifier)
 	if err != nil {
 		return application.CredentialPayload{}, err
 	}
@@ -90,13 +91,16 @@ func (a *Adapter) ExchangeCallback(ctx context.Context, input application.Handle
 	}, nil
 }
 
-func (a *Adapter) ExchangeCode(ctx context.Context, code, redirectURI, _ string) (*domain.TokenResult, error) {
+func (a *Adapter) ExchangeCode(ctx context.Context, code, redirectURI, codeVerifier string) (*domain.TokenResult, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("client_id", a.cfg.ClientID)
 	form.Set("client_secret", a.cfg.ClientSecret)
 	form.Set("code", code)
 	form.Set("redirect_uri", redirectURI)
+	if strings.TrimSpace(codeVerifier) != "" {
+		form.Set("code_verifier", codeVerifier)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.cfg.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -111,7 +115,7 @@ func (a *Adapter) ExchangeCode(ctx context.Context, code, redirectURI, _ string)
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return nil, domain.ErrAuthCodeExchangeFailed
+		return nil, fmt.Errorf("%w: status=%d body=%s", domain.ErrAuthCodeExchangeFailed, resp.StatusCode, readProviderErrorBody(resp))
 	}
 
 	var payload struct {
@@ -175,7 +179,7 @@ func (a *Adapter) RefreshToken(ctx context.Context, refreshToken string) (*domai
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return nil, domain.ErrRefreshProviderError
+		return nil, fmt.Errorf("%w: status=%d body=%s", domain.ErrRefreshProviderError, resp.StatusCode, readProviderErrorBody(resp))
 	}
 
 	var payload struct {
@@ -228,3 +232,15 @@ func normalizeAnyString(value any) string {
 }
 
 var errInvalidConfig = errors.New("INTEGRATIONS_AUTH_PROVIDER_UNREACHABLE")
+
+func readProviderErrorBody(resp *http.Response) string {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		return "unavailable"
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		return "empty"
+	}
+	return text
+}

@@ -152,6 +152,22 @@ const sampleInstallationPendingAPIKey: IntegrationInstallation = {
   updated_at: "2026-04-11T12:30:00Z",
 };
 
+const sampleInstallationDisconnectedActionable: IntegrationInstallation = {
+  installation_id: "inst-7",
+  tenant_id: "tenant-1",
+  provider_code: "bling",
+  family: "marketplace",
+  display_name: "Bling Disconnected",
+  status: "disconnected",
+  health_status: "warning",
+  external_account_id: "acc-7",
+  external_account_name: "Bling Disconnected Account",
+  active_credential_id: undefined,
+  last_verified_at: "2026-04-11T12:05:00Z",
+  created_at: "2026-04-11T12:00:00Z",
+  updated_at: "2026-04-11T12:30:00Z",
+};
+
 const sampleInstallationOtherProvider: IntegrationInstallation = {
   installation_id: "inst-3",
   tenant_id: "tenant-1",
@@ -391,6 +407,48 @@ describe("IntegrationsHubPage", () => {
     expect(within(dialog).getByText("Bling")).toBeInTheDocument();
   });
 
+  it("shows success callback notice when redirected after authorization", async () => {
+    mockListInstallations.mockResolvedValue({ items: [sampleInstallation] });
+    mockGetIntegrationAuthStatus.mockResolvedValue({
+      installation_id: "inst-1",
+      status: "connected",
+      health_status: "healthy",
+      provider_code: "vtex",
+      external_account_id: "acc-1",
+    });
+
+    renderPage(["/integrations?installation=inst-1&auth=connected"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/integration authorized successfully/i);
+  });
+
+  it("synchronizes installation card status from auth status snapshot", async () => {
+    mockListProviders.mockResolvedValue({ items: [sampleProviderNeedsAction] });
+    mockListInstallations.mockResolvedValue({ items: [sampleInstallationNeedsAction] });
+    mockGetIntegrationAuthStatus.mockResolvedValue({
+      installation_id: "inst-2",
+      status: "connected",
+      health_status: "healthy",
+      provider_code: "bling",
+      external_account_id: "acc-2",
+    });
+
+    renderPage(["/integrations?installation=inst-2"]);
+
+    await screen.findByRole("dialog", { name: /bling store details/i });
+    await waitFor(() => {
+      const installationCardLabel = screen.getAllByText("Bling Store").find((node) => node.closest("button") !== null);
+      const installationCard = installationCardLabel?.closest("button");
+      expect(installationCard).not.toBeNull();
+      if (!installationCard) {
+        return;
+      }
+      expect(within(installationCard).getByText("connected")).toBeInTheDocument();
+      expect(within(installationCard).getByText("healthy")).toBeInTheDocument();
+      expect(within(installationCard).getByText("Ready")).toBeInTheDocument();
+    });
+  });
+
   it("applies sync failures quick filter from KPI row", async () => {
     mockListOperationRuns.mockImplementation(async (installationId: string) => {
       if (installationId === "inst-2") {
@@ -465,6 +523,34 @@ describe("IntegrationsHubPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /authorize/i }));
 
     await waitFor(() => expect(mockStartIntegrationAuthorization).toHaveBeenCalledWith("inst-4"));
+    expect(redirectToAuthUrl).toHaveBeenCalledWith(authUrl);
+  });
+
+  it("shows authorize action for disconnected installations", async () => {
+    const authUrl = "https://auth.example.com/reconnect";
+    const redirectToAuthUrl = vi.fn();
+
+    mockListInstallations.mockResolvedValue({ items: [sampleInstallationDisconnectedActionable] });
+    mockGetIntegrationAuthStatus.mockResolvedValue({
+      installation_id: "inst-7",
+      status: "disconnected",
+      health_status: "warning",
+      provider_code: "bling",
+    });
+    mockStartIntegrationAuthorization.mockResolvedValue({
+      installation_id: "inst-7",
+      provider_code: "bling",
+      state: "reconnect-state",
+      auth_url: authUrl,
+      expires_in: 300,
+    });
+
+    renderPage(["/integrations?installation=inst-7"], {}, redirectToAuthUrl);
+
+    const dialog = await screen.findByRole("dialog", { name: /bling disconnected details/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: /authorize/i }));
+
+    await waitFor(() => expect(mockStartIntegrationAuthorization).toHaveBeenCalledWith("inst-7"));
     expect(redirectToAuthUrl).toHaveBeenCalledWith(authUrl);
   });
 

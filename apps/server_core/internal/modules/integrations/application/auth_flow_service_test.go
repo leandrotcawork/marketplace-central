@@ -221,6 +221,43 @@ func TestAuthFlowStartAuthorizeMarksInstallationPending(t *testing.T) {
 	}
 }
 
+func TestAuthFlowStartAuthorizeAllowsDisconnectedInstallation(t *testing.T) {
+	t.Parallel()
+
+	installations := &flowInstallationStore{installations: map[string]domain.Installation{
+		"inst-ml": {InstallationID: "inst-ml", ProviderCode: "mercado_livre", Status: domain.InstallationStatusDisconnected, HealthStatus: domain.HealthStatusWarning},
+	}}
+	adapter := &flowAdapter{providerCode: "mercado_livre"}
+	oauthStates := &securityOAuthStateStore{}
+	codec := roundTripSecurityStateCodec{payloadsByState: map[string]OAuthStatePayload{}}
+	svc := mustNewAuthFlowService(t, AuthFlowConfig{
+		TenantID:        "tenant_default",
+		Installations:   installations,
+		Credentials:     &flowCredentialRotator{},
+		AuthSessions:    &flowAuthWriter{},
+		OAuthStates:     oauthStates,
+		OAuthStateCodec: codec,
+		Encryptor:       &flowEncryptor{},
+		Clock:           fixedAuthFlowClock{now: time.Unix(1000, 0).UTC()},
+		Adapters:        []MarketplaceAuthAdapter{adapter},
+	})
+
+	start, err := svc.StartAuthorize(context.Background(), StartAuthorizeInput{
+		InstallationID: "inst-ml",
+		RedirectURI:    "https://app.test/callback",
+		Scopes:         []string{"read"},
+	})
+	if err != nil {
+		t.Fatalf("StartAuthorize() error = %v", err)
+	}
+	if start.InstallationID != "inst-ml" || start.ProviderCode != "mercado_livre" || start.State == "" {
+		t.Fatalf("start = %#v, want installation, provider, and generated state", start)
+	}
+	if got, want := installations.statuses, []domain.InstallationStatus{domain.InstallationStatusPendingConnection}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("statuses = %#v, want %#v", got, want)
+	}
+}
+
 func TestAuthFlowHandleCallbackRotatesCredentialAndMarksConnected(t *testing.T) {
 	t.Parallel()
 

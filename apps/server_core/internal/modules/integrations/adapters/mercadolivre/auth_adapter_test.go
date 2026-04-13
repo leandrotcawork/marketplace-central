@@ -44,12 +44,13 @@ func TestAdapterBuildsAuthorizeURLAndExchangesCallback(t *testing.T) {
 		InstallationID: "inst-ml",
 		State:          "state-1",
 		RedirectURI:    "https://app.test/callback",
+		CodeChallenge:  "challenge-1",
 		Scopes:         []string{"read", "write"},
 	})
 	if err != nil {
 		t.Fatalf("StartAuthorize() error = %v", err)
 	}
-	if !strings.Contains(start.AuthURL, "client_id=client-id") || !strings.Contains(start.AuthURL, "state=state-1") {
+	if !strings.Contains(start.AuthURL, "client_id=client-id") || !strings.Contains(start.AuthURL, "state=state-1") || !strings.Contains(start.AuthURL, "code_challenge=challenge-1") || !strings.Contains(start.AuthURL, "code_challenge_method=S256") {
 		t.Fatalf("auth URL missing expected query params: %s", start.AuthURL)
 	}
 
@@ -57,6 +58,7 @@ func TestAdapterBuildsAuthorizeURLAndExchangesCallback(t *testing.T) {
 		InstallationID: "inst-ml",
 		Code:           "code-1",
 		RedirectURI:    "https://app.test/callback",
+		CodeVerifier:   "verifier-1",
 	})
 	if err != nil {
 		t.Fatalf("ExchangeCallback() error = %v", err)
@@ -67,8 +69,8 @@ func TestAdapterBuildsAuthorizeURLAndExchangesCallback(t *testing.T) {
 	if credential.ProviderAccountID != "12345" {
 		t.Fatalf("provider account ID = %q, want 12345", credential.ProviderAccountID)
 	}
-	if !strings.Contains(tokenRequestBody, "grant_type=authorization_code") || !strings.Contains(tokenRequestBody, "code=code-1") {
-		t.Fatalf("token request body = %q, want auth code grant with code", tokenRequestBody)
+	if !strings.Contains(tokenRequestBody, "grant_type=authorization_code") || !strings.Contains(tokenRequestBody, "code=code-1") || !strings.Contains(tokenRequestBody, "code_verifier=verifier-1") {
+		t.Fatalf("token request body = %q, want auth code grant with code and PKCE verifier", tokenRequestBody)
 	}
 }
 

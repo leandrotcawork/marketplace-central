@@ -54,6 +54,10 @@ type IntegrationErrorContext = {
   message: string;
 };
 
+type CallbackNotice =
+  | { kind: "success"; message: string }
+  | { kind: "error"; message: string };
+
 const NEEDS_ACTION_STATUSES = new Set([
   "draft",
   "pending_connection",
@@ -135,7 +139,11 @@ function buildAuthActions(params: {
 
   const actions: AuthStatusAction[] = [];
 
-  if (resolvedStatus === "draft" || resolvedStatus === "pending_connection") {
+  if (
+    resolvedStatus === "draft" ||
+    resolvedStatus === "pending_connection" ||
+    resolvedStatus === "disconnected"
+  ) {
     actions.push({ key: "authorize", label: "Authorize", variant: "primary", onClick: onAuthorize });
   }
 
@@ -171,6 +179,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   const [syncFailures24hCount, setSyncFailures24hCount] = useState(0);
   const [syncFailureInstallationIDs, setSyncFailureInstallationIDs] = useState<Set<string>>(new Set());
   const [searchParams, setSearchParams] = useSearchParams();
+  const [callbackNotice, setCallbackNotice] = useState<CallbackNotice | null>(null);
   const [drawerState, setDrawerState] = useState<DrawerSnapshot>({
     authStatus: null,
     authStatusLoading: false,
@@ -183,6 +192,63 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   });
 
   const fetchInstallations = useCallback(() => client.listIntegrationInstallations(), [client]);
+
+  const applyAuthStatusSnapshot = useCallback((authStatus: IntegrationAuthStatusResponse) => {
+    setInstallations((current) =>
+      current.map((installation) => {
+        if (installation.installation_id !== authStatus.installation_id) {
+          return installation;
+        }
+        const nextExternalAccountID = authStatus.external_account_id ?? installation.external_account_id;
+        if (
+          installation.status === authStatus.status &&
+          installation.health_status === authStatus.health_status &&
+          installation.external_account_id === nextExternalAccountID
+        ) {
+          return installation;
+        }
+        return {
+          ...installation,
+          status: authStatus.status,
+          health_status: authStatus.health_status,
+          external_account_id: nextExternalAccountID,
+        };
+      })
+    );
+  }, []);
+
+  useEffect(() => {
+    const authParam = searchParams.get("auth");
+    if (!authParam) {
+      return;
+    }
+
+    if (authParam === "connected") {
+      setCallbackNotice({
+        kind: "success",
+        message: "Integration authorized successfully.",
+      });
+    } else if (authParam === "failed") {
+      setCallbackNotice({
+        kind: "error",
+        message: "Integration authorization failed. Please try again.",
+      });
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("auth");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!callbackNotice) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setCallbackNotice(null);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [callbackNotice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -359,7 +425,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   }, [client, installations]);
 
   useEffect(() => {
-    if (!selectedInstallation) {
+    if (!selectedInstallationId || !selectedInstallation) {
       setDrawerState({
         authStatus: null,
         authStatusLoading: false,
@@ -396,6 +462,10 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
         return;
       }
 
+      if (authStatusResult.status === "fulfilled") {
+        applyAuthStatusSnapshot(authStatusResult.value);
+      }
+
       setDrawerState((current) => ({
         ...current,
         authStatus: authStatusResult.status === "fulfilled" ? authStatusResult.value : null,
@@ -412,7 +482,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       }));
     }
 
-    loadDrawerSnapshot(selectedInstallation.installation_id).catch((error) => {
+    loadDrawerSnapshot(selectedInstallationId).catch((error) => {
       if (cancelled) {
         return;
       }
@@ -428,7 +498,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     return () => {
       cancelled = true;
     };
-  }, [client, selectedInstallation]);
+  }, [applyAuthStatusSnapshot, client, selectedInstallation, selectedInstallationId]);
 
   async function reloadOperationRuns(installationId: string) {
     try {
@@ -465,6 +535,10 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       client.getIntegrationAuthStatus(installationId),
       client.listIntegrationOperationRuns(installationId),
     ]);
+
+    if (authStatusResult.status === "fulfilled") {
+      applyAuthStatusSnapshot(authStatusResult.value);
+    }
 
     setDrawerState((current) => ({
       ...current,
@@ -620,6 +694,20 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   if (installations.length === 0) {
     return (
       <div className="space-y-4">
+        {callbackNotice ? (
+          <div className="pointer-events-none fixed right-4 top-4 z-[120]">
+            <div
+              role="alert"
+              className={
+                callbackNotice.kind === "success"
+                  ? "pointer-events-auto rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg"
+                  : "pointer-events-auto rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg"
+              }
+            >
+              {callbackNotice.message}
+            </div>
+          </div>
+        ) : null}
         <h2 className="text-xl font-semibold text-slate-900">Integrations Hub</h2>
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
           <p className="text-base font-semibold text-slate-900">No integrations connected</p>
@@ -659,6 +747,20 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
 
   return (
     <div className="space-y-4">
+      {callbackNotice ? (
+        <div className="pointer-events-none fixed right-4 top-4 z-[120]">
+          <div
+            role="alert"
+            className={
+              callbackNotice.kind === "success"
+                ? "pointer-events-auto rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg"
+                : "pointer-events-auto rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg"
+            }
+          >
+            {callbackNotice.message}
+          </div>
+        </div>
+      ) : null}
       <div className="flex items-end justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">Integrations Hub</h2>
