@@ -184,6 +184,8 @@ curl.exe -sS "$baseUrl/integrations/installations/$installationId/auth/status"
 
 **Providers:** `shopee`
 
+**Endpoint:** `POST /integrations/installations/{id}/auth/credentials`
+
 **Command or action steps:**
 
 1. Open `http://localhost:5173/integrations`.
