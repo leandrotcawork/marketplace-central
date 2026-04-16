@@ -922,8 +922,10 @@ describe("IntegrationsHubPage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: /shopee pending details/i });
     const apiKeyInput = within(dialog).getByLabelText(/api key/i);
+    const submitButton = within(dialog).getByRole("button", { name: /submit credentials/i });
     fireEvent.change(apiKeyInput, { target: { value: "sk_test_123" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: /submit credentials/i }));
+    await waitFor(() => expect(submitButton).toBeEnabled());
+    fireEvent.click(submitButton);
 
     await waitFor(() =>
       expect(mockSubmitIntegrationCredentials).toHaveBeenCalledWith("inst-6", {
