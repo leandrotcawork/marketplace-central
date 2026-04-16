@@ -309,7 +309,7 @@ export interface ListResponse<T> {
 
 export interface ErrorResponse {
   error: {
-    code: "invalid_request" | "not_found" | "conflict" | "internal_error";
+    code: string;
     message: string;
     details?: Record<string, unknown>;
   };

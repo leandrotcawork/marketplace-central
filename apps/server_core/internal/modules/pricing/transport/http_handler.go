@@ -36,6 +36,10 @@ func writePricingError(w http.ResponseWriter, status int, code, message string) 
 }
 
 func mapPricingError(msg string) (int, string) {
+	switch msg {
+	case "PRICING_SIMULATION_INVALID_IDENTITY", "PRICING_SIMULATION_INVALID_BASE_PRICE", "PRICING_SIMULATION_INVALID_VALUES":
+		return http.StatusBadRequest, msg
+	}
 	if strings.HasPrefix(msg, "PRICING_BATCH_LOAD_") || strings.HasPrefix(msg, "PRICING_INTERNAL_") {
 		return http.StatusInternalServerError, "PRICING_INTERNAL_ERROR"
 	}
@@ -95,7 +99,11 @@ func (h Handler) handleSimulations(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			status, code := mapPricingError(err.Error())
 			slog.Error("pricing.simulations", "action", "create", "result", strconv.Itoa(status), "error", err.Error(), "duration_ms", time.Since(start).Milliseconds())
-			writePricingError(w, status, code, "internal error")
+			message := err.Error()
+			if status >= 500 {
+				message = "internal error"
+			}
+			writePricingError(w, status, code, message)
 			return
 		}
 		slog.Info("pricing.simulations", "action", "create", "result", "201", "simulation_id", sim.SimulationID, "duration_ms", time.Since(start).Milliseconds())

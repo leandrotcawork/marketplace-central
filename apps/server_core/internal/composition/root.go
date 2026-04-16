@@ -2,7 +2,7 @@ package composition
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -94,7 +94,7 @@ func (f authFlowFacade) ListOperationRuns(ctx context.Context, installationID st
 	return f.operations.ListByInstallation(ctx, installationID)
 }
 
-func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) http.Handler {
+func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) (http.Handler, error) {
 	mux := http.NewServeMux()
 
 	base := httpx.NewRouter()
@@ -146,11 +146,11 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 
 	encryptionSvc, err := integrationscrypto.NewLocalKeyService(cfg.EncryptionKey, "local-key-v1")
 	if err != nil {
-		log.Fatalf("encryption service: %v", err)
+		return nil, fmt.Errorf("encryption service: %w", err)
 	}
 	oauthStateCodec, err := integrationsapp.NewHMACOAuthStateCodec(cfg.EncryptionKey)
 	if err != nil {
-		log.Fatalf("oauth state codec: %v", err)
+		return nil, fmt.Errorf("oauth state codec: %w", err)
 	}
 
 	mlAuth := integrationsml.NewAdapter(integrationsml.Config{
@@ -182,7 +182,7 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 		},
 	})
 	if err != nil {
-		log.Fatalf("auth flow service: %v", err)
+		return nil, fmt.Errorf("auth flow service: %w", err)
 	}
 
 	flowFacade := authFlowFacade{
@@ -255,12 +255,12 @@ func NewRootRouter(pool *pgxpool.Pool, msPool *pgxpool.Pool, cfg pgdb.Config) ht
 	// Connectors (VTEX + ME auth)
 	vtexCredentials, err := connectorshttp.NewEnvCredentialProvider()
 	if err != nil {
-		log.Fatalf("vtex credentials: %v", err)
+		return nil, fmt.Errorf("vtex credentials: %w", err)
 	}
 	connectorsRepo := connectorspostgres.NewRepository(pool, cfg.DefaultTenantID)
 	vtexAdapter := connectorshttp.NewAdapter(vtexCredentials)
 	connectorsOrch := connectorsapp.NewBatchOrchestrator(connectorsRepo, vtexAdapter, cfg.DefaultTenantID)
 	connectorstransport.NewHandler(connectorsOrch, meOAuth).Register(mux)
 
-	return httpx.CORSMiddleware(mux)
+	return httpx.CORSMiddleware(mux), nil
 }

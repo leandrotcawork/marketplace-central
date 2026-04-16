@@ -64,11 +64,12 @@ function renderPage(client = makeClient()) {
 }
 
 describe("VTEXPublishPage", () => {
-  it("shows VTEX account field at top before table loads", async () => {
+  it("shows VTEX account field and publish action", async () => {
     const client = makeClient();
     renderPage(client);
     expect(screen.getByLabelText(/vtex account/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /publish/i })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Product 0")).toBeInTheDocument());
   });
 
   it("renders only 25 products per page", async () => {

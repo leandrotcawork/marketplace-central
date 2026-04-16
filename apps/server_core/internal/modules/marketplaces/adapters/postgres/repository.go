@@ -29,7 +29,7 @@ func (r *Repository) SaveAccount(ctx context.Context, account domain.Account) er
         INSERT INTO marketplace_accounts (
             tenant_id, account_id, marketplace_code, channel_code, display_name, status, connection_mode, credentials_json, integration_installation_id
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (account_id) DO UPDATE SET
+        ON CONFLICT (tenant_id, account_id) DO UPDATE SET
             marketplace_code = EXCLUDED.marketplace_code,
             channel_code = EXCLUDED.channel_code,
             display_name = EXCLUDED.display_name,
@@ -48,7 +48,7 @@ func (r *Repository) SavePolicy(ctx context.Context, policy domain.Policy) error
             tenant_id, policy_id, account_id, commission_percent, commission_override, fixed_fee_amount,
             default_shipping_amount, tax_percent, min_margin_percent, sla_question_minutes, sla_dispatch_hours, shipping_provider
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        ON CONFLICT (policy_id) DO UPDATE SET
+        ON CONFLICT (tenant_id, policy_id) DO UPDATE SET
             account_id = EXCLUDED.account_id,
             commission_percent = EXCLUDED.commission_percent,
             commission_override = EXCLUDED.commission_override,
@@ -99,7 +99,7 @@ func (r *Repository) ListPolicies(ctx context.Context) ([]domain.Policy, error) 
 			p.sla_question_minutes, p.sla_dispatch_hours,
 			p.shipping_provider
 		FROM marketplace_pricing_policies p
-		LEFT JOIN marketplace_accounts a ON a.account_id = p.account_id
+		LEFT JOIN marketplace_accounts a ON a.account_id = p.account_id AND a.tenant_id = p.tenant_id
 		WHERE p.tenant_id = $1
 		ORDER BY p.policy_id
 	`, r.tenantID)
@@ -140,7 +140,7 @@ func (r *Repository) ListPoliciesByIDs(ctx context.Context, policyIDs []string) 
 			p.sla_question_minutes, p.sla_dispatch_hours,
 			p.shipping_provider
 		FROM marketplace_pricing_policies p
-		LEFT JOIN marketplace_accounts a ON a.account_id = p.account_id
+		LEFT JOIN marketplace_accounts a ON a.account_id = p.account_id AND a.tenant_id = p.tenant_id
 		WHERE p.tenant_id = $1 AND p.policy_id = ANY($2)
 		ORDER BY p.policy_id
 	`, r.tenantID, policyIDs)

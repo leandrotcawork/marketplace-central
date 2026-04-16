@@ -1104,6 +1104,7 @@ components:
         - account_id
         - tenant_id
         - channel_code
+        - marketplace_code
         - display_name
         - status
         - connection_mode
@@ -1113,6 +1114,8 @@ components:
         tenant_id:
           type: string
         channel_code:
+          type: string
+        marketplace_code:
           type: string
         display_name:
           type: string
@@ -1922,9 +1925,12 @@ components:
                 Module-specific error code following the pattern MODULE_ENTITY_REASON.
                 Known codes include: CATALOG_PRODUCT_NOT_FOUND, CATALOG_ENRICHMENT_INVALID,
                 CLASSIFICATIONS_ENTITY_NOT_FOUND, CLASSIFICATIONS_DUPLICATE_NAME,
-                MARKETPLACES_ACCOUNT_NOT_FOUND, MARKETPLACES_POLICY_NOT_FOUND,
-                MARKETPLACES_DUPLICATE_ACCOUNT, MARKETPLACES_DUPLICATE_POLICY,
-                PRICING_SIMULATION_INVALID, PRICING_SIMULATION_NOT_FOUND,
+                MARKETPLACES_ACCOUNT_INVALID, MARKETPLACES_POLICY_INVALID,
+                MARKETPLACES_METHOD_NOT_ALLOWED, MARKETPLACES_FEESCHEDULE_PARAM_MISSING,
+                MARKETPLACES_DEFINITIONS_FETCH_FAILED, MARKETPLACES_INTERNAL_ERROR,
+                PRICING_SIMULATION_INVALID, PRICING_SIMULATION_INVALID_IDENTITY,
+                PRICING_SIMULATION_INVALID_BASE_PRICE, PRICING_SIMULATION_INVALID_VALUES,
+                PRICING_SIMULATION_NOT_FOUND, PRICING_METHOD_NOT_ALLOWED,
                 CONNECTORS_BATCH_NOT_FOUND, CONNECTORS_RETRY_MISSING_PRODUCT,
                 INTERNAL_ERROR, INVALID_REQUEST, NOT_FOUND, CONFLICT.
             message:
@@ -1956,6 +1962,7 @@ components:
                     - CONNECTORS_VTEX_NOT_FOUND
                     - CONNECTORS_VTEX_TRANSIENT
                     - CONNECTORS_VTEX_AUTH
+                    - CONNECTORS_METHOD_NOT_ALLOWED
                     - CONNECTORS_ME_METHOD_NOT_ALLOWED
                     - CONNECTORS_ME_STATE_GENERATION_FAILED
                     - CONNECTORS_ME_STATE_MISSING

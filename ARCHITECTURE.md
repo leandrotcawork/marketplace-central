@@ -54,7 +54,8 @@ apps/
         messaging/      # [planned] Centralized customer messages from all marketplaces
         orders/         # [planned] Order tracking with SLA monitoring
         alerts/         # [planned] SLA guardrails and notifications
-        connectors/     # [planned] Marketplace API adapters (VTEX, ML, Magalu, etc.)
+        connectors/     # Marketplace API adapters (VTEX implemented; others incremental)
+        integrations/   # Integration lifecycle (install/auth/credential/fee-sync operations)
       platform/
         config/         # Environment configuration
         httpx/          # HTTP helpers (JSON writer, router)
@@ -130,15 +131,24 @@ Scope: deadline calculation, alert generation, notification dispatch (initially 
 
 Reads from: `messaging` and `orders` modules for SLA data.
 
-### `connectors` (planned — phase 2)
+### `connectors` (implemented foundation)
 
-Marketplace API adapters. Each marketplace (VTEX, Mercado Livre, Magalu, Amazon) implements a common port interface.
+Marketplace API adapters. VTEX publish/validation and Melhor Envio auth/status are implemented.
+Other marketplaces (Mercado Livre, Magalu, Amazon) are integrated incrementally by capability.
 
 Scope: authentication management, API request/response mapping, rate limiting, error handling.
 
 Pattern: one adapter package per marketplace under `connectors/adapters/`. The module owns the port interfaces; adapters implement them.
 
-Initial connector: VTEX only (phase 1 focus). Other marketplaces added as needed.
+Current connector baseline: VTEX operations + integration hooks. Other marketplaces are capability-driven additions.
+
+### `integrations` (implemented foundation)
+
+Integration lifecycle module for provider definitions, installation records, auth flows,
+credential lifecycle, and fee-sync operation tracking.
+
+Scope: provider registry, installation draft/connection states, OAuth/API-key auth flow,
+credential rotation, operation runs, capability state transitions, and scheduled refresh/cleanup jobs.
 
 ## Platform packages
 
@@ -206,3 +216,5 @@ The merge should be a module migration, not a rewrite. This is why structure com
 - `IMPLEMENTATION_PLAN.md` — phased execution plan
 - `contracts/api/marketplace-central.openapi.yaml` — API source of truth
 - `docs/marketplaces/*.md` — per-marketplace API reference
+
+

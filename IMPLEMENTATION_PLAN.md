@@ -2,7 +2,7 @@
 
 ## Status
 
-Active. Phase 1 foundation scaffold is complete. Next: wire handlers to database.
+Active. Core foundation, pricing simulator, marketplace registry, integrations auth, and fee sync foundations are implemented. Current focus: hardening, contract alignment, and VTEX connector depth (catalog sync and production-grade operations).
 
 ## Phase overview
 
@@ -12,7 +12,7 @@ Active. Phase 1 foundation scaffold is complete. Next: wire handlers to database
 | 1 | Foundation wiring | Connect handlers to Postgres, real CRUD, SDK methods | done |
 | 2 | Pricing simulator | Full simulation engine with frontend UI | done |
 | 3 | Marketplace Registry & Fee Foundation | Registry plugin, fee schedules, tenant accounts, BatchOrchestrator | done |
-| 4 | VTEX connector | Product registration via VTEX API, catalog sync | planned |
+| 4 | VTEX connector | Product registration via VTEX API, catalog sync | in_progress |
 | 5 | Messaging + Orders | Message centralization, order monitoring, SLA alerts | planned |
 | 6 | Multi-marketplace | Additional connectors (ML, Magalu), unified inbox | planned |
 

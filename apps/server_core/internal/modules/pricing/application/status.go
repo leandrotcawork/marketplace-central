@@ -1,5 +1,7 @@
 package application
 
+import "math"
+
 const (
 	statusHealthy  = "healthy"
 	statusWarning  = "warning"
@@ -10,6 +12,9 @@ const (
 )
 
 func simulationStatusForSingle(marginPercent, minMarginPercent float64) string {
+	if math.IsNaN(marginPercent) || math.IsInf(marginPercent, 0) {
+		return statusCritical
+	}
 	if marginPercent < 0 {
 		return statusCritical
 	}

@@ -182,3 +182,30 @@ func TestPricingBatchEndpointRejectsEmptyProductIDs(t *testing.T) {
 		t.Fatalf("expected PRICING_REQUEST_INVALID, got %v", errObj["code"])
 	}
 }
+
+func TestPricingHandlerReturnsValidationErrorForZeroBasePrice(t *testing.T) {
+	mux := http.NewServeMux()
+	h, _ := newPricingHandlerWithStub()
+	h.Register(mux)
+
+	body := `{"simulation_id":"sim-2","product_id":"prod-1","account_id":"acct-1","base_price_amount":0,"cost_amount":60.0,"commission_percent":0.16,"fixed_fee_amount":5.0,"shipping_amount":10.0,"min_margin_percent":0.10}`
+	req := httptest.NewRequest(http.MethodPost, "/pricing/simulations", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var result map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	errObj, ok := result["error"].(map[string]any)
+	if !ok {
+		t.Fatal("expected error object")
+	}
+	if errObj["code"] != "PRICING_SIMULATION_INVALID_BASE_PRICE" {
+		t.Fatalf("expected PRICING_SIMULATION_INVALID_BASE_PRICE, got %v", errObj["code"])
+	}
+}

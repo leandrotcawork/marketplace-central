@@ -2,6 +2,7 @@ package unit
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"marketplace-central/apps/server_core/internal/modules/pricing/application"
@@ -103,6 +104,52 @@ func TestRunSimulationMarksNegativeMarginAsCritical(t *testing.T) {
 
 	if simulation.Status != "critical" {
 		t.Fatalf("expected critical when margin is negative, got %q", simulation.Status)
+	}
+}
+
+func TestRunSimulationRejectsZeroBasePrice(t *testing.T) {
+	repo := &pricingRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	_, err := service.RunSimulation(context.Background(), application.RunSimulationInput{
+		SimulationID:      "sim-zero",
+		ProductID:         "SKU-000",
+		AccountID:         "main",
+		BasePriceAmount:   0,
+		CostAmount:        10,
+		CommissionPercent: 0.1,
+		FixedFeeAmount:    1,
+		ShippingAmount:    1,
+		MinMarginPercent:  0.1,
+	})
+	if err == nil {
+		t.Fatal("expected error for zero base price")
+	}
+	if !strings.Contains(err.Error(), "PRICING_SIMULATION_INVALID_BASE_PRICE") {
+		t.Fatalf("expected PRICING_SIMULATION_INVALID_BASE_PRICE, got %v", err)
+	}
+}
+
+func TestRunSimulationRejectsEmptyIDs(t *testing.T) {
+	repo := &pricingRepoStub{}
+	service := application.NewService(repo, "tenant_default")
+
+	_, err := service.RunSimulation(context.Background(), application.RunSimulationInput{
+		SimulationID:      "",
+		ProductID:         "",
+		AccountID:         "",
+		BasePriceAmount:   100,
+		CostAmount:        10,
+		CommissionPercent: 0.1,
+		FixedFeeAmount:    1,
+		ShippingAmount:    1,
+		MinMarginPercent:  0.1,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing IDs")
+	}
+	if !strings.Contains(err.Error(), "PRICING_SIMULATION_INVALID_IDENTITY") {
+		t.Fatalf("expected PRICING_SIMULATION_INVALID_IDENTITY, got %v", err)
 	}
 }
 

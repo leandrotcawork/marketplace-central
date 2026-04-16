@@ -100,8 +100,8 @@ func TestMarketplacesAccountsHandlerPostReturns400OnInvalidInput(t *testing.T) {
 		t.Fatalf("decode error: %v", err)
 	}
 	errObj, _ := result["error"].(map[string]any)
-	if errObj["code"] != "invalid_request" {
-		t.Fatalf("expected code invalid_request, got %v", errObj["code"])
+	if errObj["code"] != "MARKETPLACES_ACCOUNT_INVALID" {
+		t.Fatalf("expected code MARKETPLACES_ACCOUNT_INVALID, got %v", errObj["code"])
 	}
 }
 

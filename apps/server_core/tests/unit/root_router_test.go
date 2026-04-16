@@ -1,12 +1,8 @@
 package unit
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
-	"strings"
 	"testing"
 
 	"marketplace-central/apps/server_core/internal/composition"
@@ -14,25 +10,15 @@ import (
 )
 
 func TestNewRootRouterRequiresVTEXCredentials(t *testing.T) {
-	if os.Getenv("TEST_NEW_ROOT_ROUTER_MISSING_CREDENTIALS") == "1" {
-		composition.NewRootRouter(nil, nil, pgdb.Config{
-			DefaultTenantID: "tenant_default",
-			EncryptionKey:   "0123456789abcdef0123456789abcdef",
-		})
-		return
-	}
+	t.Setenv("VTEX_APP_KEY", "")
+	t.Setenv("VTEX_APP_TOKEN", "")
 
-	cmd := exec.Command(os.Args[0], "-test.run=^TestNewRootRouterRequiresVTEXCredentials$")
-	cmd.Env = append(filteredEnv(os.Environ(), "VTEX_APP_KEY", "VTEX_APP_TOKEN"), "TEST_NEW_ROOT_ROUTER_MISSING_CREDENTIALS=1")
-
-	err := cmd.Run()
+	_, err := composition.NewRootRouter(nil, nil, pgdb.Config{
+		DefaultTenantID: "tenant_default",
+		EncryptionKey:   "0123456789abcdef0123456789abcdef",
+	})
 	if err == nil {
-		t.Fatal("expected NewRootRouter to exit when VTEX credentials are missing")
-	}
-
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected subprocess exit error, got %v", err)
+		t.Fatal("expected NewRootRouter to return error when VTEX credentials are missing")
 	}
 }
 
@@ -42,10 +28,13 @@ func TestNewRootRouterBuildsWhenVTEXCredentialsArePresent(t *testing.T) {
 	t.Setenv("ME_CLIENT_ID", "test-client")
 	t.Setenv("ME_CLIENT_SECRET", "test-secret")
 
-	router := composition.NewRootRouter(nil, nil, pgdb.Config{
+	router, err := composition.NewRootRouter(nil, nil, pgdb.Config{
 		DefaultTenantID: "tenant_default",
 		EncryptionKey:   "0123456789abcdef0123456789abcdef",
 	})
+	if err != nil {
+		t.Fatalf("expected NewRootRouter without error, got %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -61,26 +50,4 @@ func TestNewRootRouterBuildsWhenVTEXCredentialsArePresent(t *testing.T) {
 	if startRec.Code == http.StatusNotFound {
 		t.Fatal("expected Melhor Envio auth route to be registered")
 	}
-}
-
-func filteredEnv(env []string, keys ...string) []string {
-	blocked := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		blocked[key] = struct{}{}
-	}
-
-	filtered := make([]string, 0, len(env))
-	for _, entry := range env {
-		key, _, found := strings.Cut(entry, "=")
-		if !found {
-			filtered = append(filtered, entry)
-			continue
-		}
-		if _, blockedKey := blocked[key]; blockedKey {
-			continue
-		}
-		filtered = append(filtered, entry)
-	}
-
-	return filtered
 }

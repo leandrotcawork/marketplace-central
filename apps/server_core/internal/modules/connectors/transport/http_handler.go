@@ -121,7 +121,7 @@ func (h *Handler) handlePublish(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		writeConnectorsError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		writeConnectorsError(w, http.StatusMethodNotAllowed, "CONNECTORS_METHOD_NOT_ALLOWED", "method not allowed")
 		slog.Info("connectors.publish", "action", "reject_method", "result", "405", "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
@@ -214,7 +214,7 @@ func (h *Handler) handleBatchStatus(w http.ResponseWriter, r *http.Request, batc
 
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
-		writeConnectorsError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		writeConnectorsError(w, http.StatusMethodNotAllowed, "CONNECTORS_METHOD_NOT_ALLOWED", "method not allowed")
 		slog.Info("connectors.batch_status", "action", "reject_method", "result", "405", "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
@@ -268,7 +268,7 @@ func (h *Handler) handleRetry(w http.ResponseWriter, r *http.Request, batchID st
 
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		writeConnectorsError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		writeConnectorsError(w, http.StatusMethodNotAllowed, "CONNECTORS_METHOD_NOT_ALLOWED", "method not allowed")
 		slog.Info("connectors.retry", "action", "reject_method", "result", "405", "duration_ms", time.Since(start).Milliseconds())
 		return
 	}
@@ -326,7 +326,7 @@ func (h *Handler) handleValidateConnection(w http.ResponseWriter, r *http.Reques
 
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		writeConnectorsError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		writeConnectorsError(w, http.StatusMethodNotAllowed, "CONNECTORS_METHOD_NOT_ALLOWED", "method not allowed")
 		slog.Info("connectors.validate_connection", "action", "reject_method", "result", "405", "duration_ms", time.Since(start).Milliseconds())
 		return
 	}

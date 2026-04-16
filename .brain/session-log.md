@@ -1,23 +1,21 @@
-# Last Session — Marketplace Central
-> Date: 2026-04-11 | Session: #13
+# Last Session - Marketplace Central
+> Date: 2026-04-13 | Session: #16
 
 ## What Was Accomplished
-- Fixed integrations lifecycle transition matrix to allow `requires_reauth -> pending_connection` (kept `-> disconnected`)
-- Aligned `packages/sdk-runtime` with OpenAPI for integrations auth endpoints (authorize + auth status)
-- Implemented missing SDK client methods: `startIntegrationAuthorization`, `getIntegrationAuthStatus`
-- Updated SDK unit tests to match the contract response shape (`auth_url`, `status`, `health_status`)
-- Verified gates: `apps/server_core go build ./...`, `apps/server_core go test ./internal/modules/integrations/...`, `npm -w packages/sdk-runtime test`
-- Created commit: `feat(integrations): implement OAuth + credential lifecycle (phases A–I)`
+- Closed `T-029` as `DONE_WITH_CONCERNS` with consolidated evidence in `docs/superpowers/evidence/2026-04-13-t-029-validation-evidence.md`
+- Captured fresh UI evidence for integrations runtime (`mercado_livre`, `magalu`, `shopee`) in `docs/superpowers/evidence/screenshots/`
+- Re-validated API flows and logs for auth status parity, reauth start, disconnect idempotency, fee-sync queue/timeline, and tenant isolation checks
+- Added tenant-scoped SQL verification output to the evidence ledger and synced `roadmap.json` task state for `T-029`
 
 ## What Changed in the System
-- `packages/sdk-runtime/src/index.ts` now exposes client calls for `/integrations/installations/{id}/auth/authorize` and `/integrations/installations/{id}/auth/status`
-- Integrations domain lifecycle state machine now supports reauth restart without creating a new installation
+- No architectural or module-structure changes in this session
+- Evidence artifacts expanded with screenshot files under `docs/superpowers/evidence/screenshots/`
 
 ## Decisions Made This Session
-- Keep SDK method naming and response types contract-first (OpenAPI is source of truth)
+- Marked `T-029` complete as `DONE_WITH_CONCERNS` instead of full `DONE`, because interactive OAuth sandbox callback success still depends on external provider consent execution
 
 ## What's Immediately Next
-- Start `T-028`: implement the web UI connection/sync screens using `sdk-runtime` only (no direct fetch)
+- Execute `T-028` (frontend connection/sync UX) and then run a final OAuth callback success pass to remove the remaining `DONE_WITH_CONCERNS` note
 
 ## Open Questions
 - None

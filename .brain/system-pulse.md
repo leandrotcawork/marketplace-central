@@ -1,5 +1,5 @@
 # System Pulse - Marketplace Central
-> Last updated: 2026-04-11 | Session: #13
+> Last updated: 2026-04-13 | Session: #16
 
 ## Project Identity
 
@@ -56,7 +56,7 @@ apps/server_core/
       httpx/
       logging/
       pgdb/
-  migrations/  # 0001-0016
+  migrations/  # 0001-0018
 
 apps/web/
 packages/sdk-runtime/
@@ -96,19 +96,20 @@ contracts/api/
 Completed in this phase:
 1. OAuth + credential lifecycle (provider operational)
 2. Fee sync architecture (installation-scoped) with audit remediation
+3. Operational E2E validation (`T-029`) closed as `DONE_WITH_CONCERNS`
 
 Next in sequence:
-3. Frontend connection/sync UX
+4. Frontend connection/sync UX (T-028)
 
 ---
 
 ## Recent Changes
 
+- 2026-04-13: Closed `T-029` as `DONE_WITH_CONCERNS` with consolidated API/UI/log/SQL evidence and new runtime screenshots
+- 2026-04-13: Re-ran the full backend+frontend verification workflow after power interruption; all gates passed with only known non-blocking third-party build warnings
+- 2026-04-13: Applied migration `0018_marketplaces_tenant_isolation.sql` via `cmd/migrate` and confirmed idempotent re-run (`applied 1`, then `applied 0`)
+- 2026-04-13: Re-verified impacted backend/frontend flows for the new implementation (`go test ./...`, `npm test -- --runInBand`, `npm run build`)
 - 2026-04-11: Aligned integrations lifecycle and `sdk-runtime` auth methods with OpenAPI contract (authorize + auth status)
-- 2026-04-10: Completed `T-027` fee-sync implementation end-to-end (executor runtime split, orchestration service, transport/OpenAPI/SDK, scheduler wiring, integration coverage)
-- 2026-04-10: Completed fee-sync audit remediation (bounded transient retry policy, manual-after-cap behavior, compile-time transport contract)
-- 2026-04-10: Added `tests/integration/integrations_fee_sync_test.go` and kept full backend verification green (`go test ./...`, `go build ./...`)
-- 2026-04-10: Completed OAuth lifecycle remediation tasks 6-8, including expiring-session refresh ticker, OAuth state cleanup job, and integration auth-flow security coverage
 
 ---
 
@@ -132,4 +133,5 @@ Next in sequence:
 - `.brain/` remains gitignored by default (project memory can diverge across machines)
 - Migration runner `cmd/migrate/main.go` still needs production-hardening workflow
 - Frontend operational UX (`T-028`) is not delivered yet for new fee-sync/auth backend states
+- OAuth callback success evidence for external provider consent remains dependent on sandbox availability (tracked as `DONE_WITH_CONCERNS` in `T-029`)
 - Windows environments may require local absolute `GOCACHE` for stable test runs

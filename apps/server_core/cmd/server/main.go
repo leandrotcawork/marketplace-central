@@ -38,5 +38,9 @@ func main() {
 	}
 
 	logger.Printf("server starting on %s", cfg.Addr)
-	log.Fatal(http.ListenAndServe(cfg.Addr, composition.NewRootRouter(pool, msPool, dbCfg)))
+	router, err := composition.NewRootRouter(pool, msPool, dbCfg)
+	if err != nil {
+		log.Fatalf("root router: %v", err)
+	}
+	log.Fatal(http.ListenAndServe(cfg.Addr, router))
 }
