@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type {
   IntegrationAuthStatusResponse,
   IntegrationInstallation,
@@ -37,9 +38,21 @@ export function InstallationDrawer({
   onSubmitCredentials,
   onClose,
 }: InstallationDrawerProps) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
     <div
       role="dialog"
+      aria-modal="true"
       aria-label={`${installation.display_name} details`}
       className={[
         "mt-4 flex w-full flex-col rounded-2xl border border-slate-200 bg-white shadow-sm",
@@ -90,6 +103,7 @@ export function InstallationDrawer({
         </section>
 
         <AuthStatusPanel
+          key={installation.installation_id}
           authStatus={authStatus}
           installationStatus={installation.status}
           healthStatus={installation.health_status}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type {
   IntegrationAuthStatusResponse,
@@ -128,6 +128,7 @@ function getResolvedStatus(
 }
 
 function buildAuthActions(params: {
+  provider: IntegrationProviderDefinition | undefined;
   resolvedStatus: IntegrationAuthStatusResponse["status"] | IntegrationInstallation["status"];
   pendingAction: string | null;
   onAuthorize: () => void;
@@ -135,19 +136,30 @@ function buildAuthActions(params: {
   onDisconnect: () => void;
   onFeeSync: () => void;
 }): AuthStatusAction[] {
-  const { resolvedStatus, pendingAction, onAuthorize, onReauthorize, onDisconnect, onFeeSync } = params;
+  const {
+    provider,
+    resolvedStatus,
+    pendingAction,
+    onAuthorize,
+    onReauthorize,
+    onDisconnect,
+    onFeeSync,
+  } = params;
 
   const actions: AuthStatusAction[] = [];
+  const supportsOAuthAuthorization =
+    provider?.auth_strategy === "oauth2" && provider.install_mode !== "manual";
 
   if (
-    resolvedStatus === "draft" ||
-    resolvedStatus === "pending_connection" ||
-    resolvedStatus === "disconnected"
+    supportsOAuthAuthorization &&
+    (resolvedStatus === "draft" ||
+      resolvedStatus === "pending_connection" ||
+      resolvedStatus === "disconnected")
   ) {
     actions.push({ key: "authorize", label: "Authorize", variant: "primary", onClick: onAuthorize });
   }
 
-  if (resolvedStatus === "requires_reauth") {
+  if (supportsOAuthAuthorization && resolvedStatus === "requires_reauth") {
     actions.push({ key: "reauthorize", label: "Reauthorize", variant: "primary", onClick: onReauthorize });
   }
 
@@ -179,7 +191,11 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   const [syncFailures24hCount, setSyncFailures24hCount] = useState(0);
   const [syncFailureInstallationIDs, setSyncFailureInstallationIDs] = useState<Set<string>>(new Set());
   const [searchParams, setSearchParams] = useSearchParams();
+  const selectedInstallationId = searchParams.get("installation") ?? "";
   const [callbackNotice, setCallbackNotice] = useState<CallbackNotice | null>(null);
+  const installationsRef = useRef<IntegrationInstallation[]>([]);
+  const selectedInstallationIdRef = useRef("");
+  const syncFailureRefreshSequenceRef = useRef(0);
   const [drawerState, setDrawerState] = useState<DrawerSnapshot>({
     authStatus: null,
     authStatusLoading: false,
@@ -192,6 +208,78 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   });
 
   const fetchInstallations = useCallback(() => client.listIntegrationInstallations(), [client]);
+
+  const refreshSyncFailureMetrics = useCallback(
+    async (installationsToScan: IntegrationInstallation[] = installationsRef.current) => {
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const refreshSequence = syncFailureRefreshSequenceRef.current + 1;
+      syncFailureRefreshSequenceRef.current = refreshSequence;
+
+      if (installationsToScan.length === 0) {
+        if (syncFailureRefreshSequenceRef.current !== refreshSequence) {
+          return;
+        }
+        setSyncFailureInstallationIDs(new Set());
+        setSyncFailures24hCount(0);
+        return;
+      }
+
+      const results = await Promise.allSettled(
+        installationsToScan.map(async (installation) => {
+          const result = await client.listIntegrationOperationRuns(installation.installation_id);
+          return { installationID: installation.installation_id, runs: result.items };
+        })
+      );
+
+      if (syncFailureRefreshSequenceRef.current !== refreshSequence) {
+        return;
+      }
+
+      const failedInstallations = new Set<string>();
+      let failureCount = 0;
+
+      for (const result of results) {
+        if (result.status !== "fulfilled") {
+          continue;
+        }
+
+        for (const run of result.value.runs) {
+          const createdAt = Date.parse(run.created_at);
+          if (
+            run.operation_type === "fee_sync" &&
+            run.status === "failed" &&
+            Number.isFinite(createdAt) &&
+            createdAt >= cutoff
+          ) {
+            failureCount += 1;
+            failedInstallations.add(result.value.installationID);
+          }
+        }
+      }
+
+      setSyncFailureInstallationIDs(failedInstallations);
+      setSyncFailures24hCount(failureCount);
+    },
+    [client]
+  );
+
+  const setDrawerStateIfCurrent = useCallback(
+    (
+      installationId: string,
+      update: DrawerSnapshot | ((current: DrawerSnapshot) => DrawerSnapshot),
+    ) => {
+      setDrawerState((current) => {
+        if (selectedInstallationIdRef.current !== installationId) {
+          return current;
+        }
+
+        return typeof update === "function"
+          ? (update as (current: DrawerSnapshot) => DrawerSnapshot)(current)
+          : update;
+      });
+    },
+    []
+  );
 
   const applyAuthStatusSnapshot = useCallback((authStatus: IntegrationAuthStatusResponse) => {
     setInstallations((current) =>
@@ -216,6 +304,14 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       })
     );
   }, []);
+
+  useEffect(() => {
+    installationsRef.current = installations;
+  }, [installations]);
+
+  useEffect(() => {
+    selectedInstallationIdRef.current = selectedInstallationId;
+  }, [selectedInstallationId]);
 
   useEffect(() => {
     const authParam = searchParams.get("auth");
@@ -261,8 +357,10 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
           return;
         }
 
+        installationsRef.current = installationResult.items;
         setInstallations(installationResult.items);
         setState("ready");
+        void refreshSyncFailureMetrics(installationResult.items);
       })
       .catch((error) => {
         if (cancelled) {
@@ -276,7 +374,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     return () => {
       cancelled = true;
     };
-  }, [fetchInstallations]);
+  }, [fetchInstallations, refreshSyncFailureMetrics]);
 
   useEffect(() => {
     let cancelled = false;
@@ -351,7 +449,6 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     syncFailureInstallationIDs,
   ]);
 
-  const selectedInstallationId = searchParams.get("installation") ?? "";
   const selectedInstallation = useMemo(
     () => installations.find((installation) => installation.installation_id === selectedInstallationId) ?? null,
     [installations, selectedInstallationId]
@@ -373,56 +470,6 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     () => installations.filter((installation) => installation.health_status === "critical").length,
     [installations]
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-
-    if (installations.length === 0) {
-      setSyncFailureInstallationIDs(new Set());
-      setSyncFailures24hCount(0);
-      return;
-    }
-
-    Promise.allSettled(
-      installations.map(async (installation) => {
-        const result = await client.listIntegrationOperationRuns(installation.installation_id);
-        return { installationID: installation.installation_id, runs: result.items };
-      })
-    ).then((results) => {
-      if (cancelled) {
-        return;
-      }
-
-      const failedInstallations = new Set<string>();
-      let failureCount = 0;
-
-      for (const result of results) {
-        if (result.status !== "fulfilled") {
-          continue;
-        }
-        for (const run of result.value.runs) {
-          const createdAt = Date.parse(run.created_at);
-          if (
-            run.operation_type === "fee_sync" &&
-            run.status === "failed" &&
-            Number.isFinite(createdAt) &&
-            createdAt >= cutoff
-          ) {
-            failureCount += 1;
-            failedInstallations.add(result.value.installationID);
-          }
-        }
-      }
-
-      setSyncFailureInstallationIDs(failedInstallations);
-      setSyncFailures24hCount(failureCount);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [client, installations]);
 
   useEffect(() => {
     if (!selectedInstallationId || !selectedInstallation) {
@@ -502,19 +549,20 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
 
   async function reloadOperationRuns(installationId: string) {
     try {
-      setDrawerState((current) => ({
+      setDrawerStateIfCurrent(installationId, (current) => ({
         ...current,
         operationRunsLoading: true,
         operationRunsError: null,
       }));
       const result = await client.listIntegrationOperationRuns(installationId);
-      setDrawerState((current) => ({
+      setDrawerStateIfCurrent(installationId, (current) => ({
         ...current,
         operationRuns: result.items,
         operationRunsLoading: false,
       }));
+      await refreshSyncFailureMetrics();
     } catch (error) {
-      setDrawerState((current) => ({
+      setDrawerStateIfCurrent(installationId, (current) => ({
         ...current,
         operationRunsLoading: false,
         operationRunsError: formatErrorForUI(error),
@@ -523,7 +571,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
   }
 
   async function reloadDrawerSnapshot(installationId: string) {
-    setDrawerState((current) => ({
+    setDrawerStateIfCurrent(installationId, (current) => ({
       ...current,
       authStatusLoading: true,
       operationRunsLoading: true,
@@ -540,7 +588,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       applyAuthStatusSnapshot(authStatusResult.value);
     }
 
-    setDrawerState((current) => ({
+    setDrawerStateIfCurrent(installationId, (current) => ({
       ...current,
       authStatus: authStatusResult.status === "fulfilled" ? authStatusResult.value : current.authStatus,
       authStatusLoading: false,
@@ -552,14 +600,15 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       operationRunsError:
         operationRunsResult.status === "rejected" ? formatErrorForUI(operationRunsResult.reason) : null,
     }));
+    await refreshSyncFailureMetrics();
   }
 
-  async function runAction(actionKey: string, handler: () => Promise<void>) {
-    if (!selectedInstallation) {
+  async function runAction(actionKey: string, installationId: string, handler: () => Promise<void>) {
+    if (!installationId) {
       return;
     }
 
-    setDrawerState((current) => ({
+    setDrawerStateIfCurrent(installationId, (current) => ({
       ...current,
       actionError: null,
       pendingAction: actionKey,
@@ -568,7 +617,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
     try {
       await handler();
     } catch (error) {
-      setDrawerState((current) => ({
+      setDrawerStateIfCurrent(installationId, (current) => ({
         ...current,
         actionError: formatErrorForUI(error),
         pendingAction: null,
@@ -576,7 +625,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       return;
     }
 
-    setDrawerState((current) => ({
+    setDrawerStateIfCurrent(installationId, (current) => ({
       ...current,
       pendingAction: null,
     }));
@@ -587,8 +636,10 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       return;
     }
 
-    await runAction("authorize", async () => {
-      const result = await client.startIntegrationAuthorization(selectedInstallation.installation_id);
+    const installationId = selectedInstallation.installation_id;
+
+    await runAction("authorize", installationId, async () => {
+      const result = await client.startIntegrationAuthorization(installationId);
       const redirect = onAuthRedirect ?? ((authUrl: string) => window.location.assign(authUrl));
       redirect(result.auth_url);
     });
@@ -599,8 +650,10 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       return;
     }
 
-    await runAction("reauthorize", async () => {
-      const result = await client.startIntegrationReauthorization(selectedInstallation.installation_id);
+    const installationId = selectedInstallation.installation_id;
+
+    await runAction("reauthorize", installationId, async () => {
+      const result = await client.startIntegrationReauthorization(installationId);
       const redirect = onAuthRedirect ?? ((authUrl: string) => window.location.assign(authUrl));
       redirect(result.auth_url);
     });
@@ -611,20 +664,24 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       return;
     }
 
-    await runAction("disconnect", async () => {
+    const installationId = selectedInstallation.installation_id;
+    const displayName = selectedInstallation.display_name;
+
+    await runAction("disconnect", installationId, async () => {
       const confirmed = window.confirm(
-        `Disconnect ${selectedInstallation.display_name}? This stops the installation from syncing until it is reconnected.`,
+        `Disconnect ${displayName}? This stops the installation from syncing until it is reconnected.`,
       );
 
       if (!confirmed) {
         return;
       }
 
-      await client.disconnectIntegrationInstallation(selectedInstallation.installation_id);
+      await client.disconnectIntegrationInstallation(installationId);
       const installationResult = await fetchInstallations();
+      installationsRef.current = installationResult.items;
       setInstallations(installationResult.items);
       setState("ready");
-      await reloadDrawerSnapshot(selectedInstallation.installation_id);
+      await reloadDrawerSnapshot(installationId);
     });
   }
 
@@ -633,9 +690,11 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       return;
     }
 
-    await runAction("fee_sync", async () => {
-      await client.startIntegrationFeeSync(selectedInstallation.installation_id);
-      await reloadOperationRuns(selectedInstallation.installation_id);
+    const installationId = selectedInstallation.installation_id;
+
+    await runAction("fee_sync", installationId, async () => {
+      await client.startIntegrationFeeSync(installationId);
+      await reloadOperationRuns(installationId);
     });
   }
 
@@ -644,12 +703,15 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
       return;
     }
 
-    await runAction("credentials", async () => {
-      await client.submitIntegrationCredentials(selectedInstallation.installation_id, { api_key: apiKey });
+    const installationId = selectedInstallation.installation_id;
+
+    await runAction("credentials", installationId, async () => {
+      await client.submitIntegrationCredentials(installationId, { api_key: apiKey });
       const installationResult = await fetchInstallations();
+      installationsRef.current = installationResult.items;
       setInstallations(installationResult.items);
       setState("ready");
-      await reloadDrawerSnapshot(selectedInstallation.installation_id);
+      await reloadDrawerSnapshot(installationId);
     });
   }
 
@@ -736,6 +798,7 @@ export function IntegrationsHubPage({ client, onAuthRedirect }: IntegrationsHubP
 
   const drawerActions = selectedInstallation
     ? buildAuthActions({
+        provider: selectedProvider,
         resolvedStatus: resolvedStatus ?? selectedInstallation.status,
         pendingAction: drawerState.pendingAction,
         onAuthorize: handleAuthorize,

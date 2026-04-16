@@ -1,10 +1,10 @@
 {
     "project":  "marketplace-central",
-    "last_updated":  "2026-04-11T14:46:56Z",
+    "last_updated":  "2026-04-16T20:31:12Z",
     "current_phase_id":  "phase-7",
     "summary":  {
                     "completed_phases":  3,
-                    "completed_tasks":  15,
+                    "completed_tasks":  17,
                     "total_tasks":  26
                 },
     "phases":  [
@@ -239,15 +239,15 @@
                                          "id":  "T-028",
                                          "title":  "Frontend connection and sync UX",
                                          "description":  "Deliver Marketplace Integrations UX for connect, health status, and sync actions based on backend operational states.",
-                                         "status":  "planned",
+                                         "status":  "done",
                                          "priority":  "medium",
                                          "depends_on":  [
                                                             "T-026",
                                                             "T-027"
                                                         ],
-                                         "started_at":  null,
-                                         "completed_at":  null,
-                                         "notes":  null,
+                                         "started_at":  "2026-04-16T20:31:12Z",
+                                         "completed_at":  "2026-04-16T20:31:12Z",
+                                         "notes":  "Runtime hub UX delivered and hardened: stale async guard on selection switch, provider-aware auth CTAs, credential form reset on installation switch, sync-failure KPI refresh after fee-sync reload cycle, drawer accessibility (`aria-modal` + Escape close), and targeted regressions added.",
                                          "subtasks":  [
                                                           "Add provider installation flows in web UI",
                                                           "Expose auth/capability/sync status states and actions",
@@ -258,7 +258,7 @@
                                          "id":  "T-029",
                                          "title":  "Operational E2E validation",
                                          "description":  "Run end-to-end validation against provider sandbox/test accounts and publish runbook.",
-                                         "status":  "in_progress",
+                                         "status":  "done",
                                          "priority":  "medium",
                                          "depends_on":  [
                                                             "T-026",
@@ -266,8 +266,8 @@
                                                             "T-028"
                                                         ],
                                          "started_at":  "2026-04-13",
-                                         "completed_at":  null,
-                                         "notes":  "Automated baseline and API-level operational validation executed. OAuth success callback + UI screenshot evidence still pending sandbox/browser completion.",
+                                         "completed_at":  "2026-04-14T00:20:50Z",
+                                         "notes":  "Classified as DONE_WITH_CONCERNS. Full backend/frontend workflow, auth status parity, fee-sync timeline, disconnect idempotency, tenant isolation (API+SQL), logs, and UI screenshots were captured. Remaining concern: sandbox interactive OAuth callback success after reauth still depends on external provider consent execution.",
                                          "subtasks":  [
                                                           "Define smoke scenarios and expected evidence",
                                                           "Execute backend+sdk+ui flow validation",
