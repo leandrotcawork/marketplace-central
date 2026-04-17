@@ -2,28 +2,22 @@
 
 # Wiki Index
 
-Auto-regenerated from frontmatter of every `wiki/**/*.md` page. Run `make wiki-index` to rebuild. CI verifies via `python -m tools.wiki.index --check`.
+Auto-regenerated. Run `make wiki-index` to rebuild.
 
 ## Modules
-
 _No pages yet._
 
 ## Features
-
 _No pages yet._
 
 ## Flows
-
 _No pages yet._
 
 ## Marketplaces
-
 _No pages yet._
 
 ## Platform
-
 _No pages yet._
 
 ## Contracts
-
 _No pages yet._
