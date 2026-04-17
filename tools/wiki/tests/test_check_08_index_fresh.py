@@ -58,6 +58,35 @@ class IndexFreshCheckTests(unittest.TestCase):
         self.assertEqual(findings[0].severity, "warn")
         self.assertIn("not yet present", findings[0].message)
 
+    def _patch_index_module(self, fake_module: types.ModuleType):
+        """Return a context manager that injects fake_module as tools.wiki.index.
+
+        Patching sys.modules alone is insufficient once the real module has been
+        imported, because Python resolves ``import tools.wiki.index`` via the
+        parent package attribute (``tools.wiki.index``) rather than
+        ``sys.modules``.  We therefore patch both locations.
+        """
+        import contextlib
+        import tools.wiki  # ensure parent package is imported
+
+        @contextlib.contextmanager
+        def _ctx():
+            original = getattr(tools.wiki, "index", None)
+            tools.wiki.index = fake_module  # type: ignore[attr-defined]
+            try:
+                with patch.dict(sys.modules, {"tools.wiki.index": fake_module}):
+                    yield
+            finally:
+                if original is None:
+                    try:
+                        delattr(tools.wiki, "index")
+                    except AttributeError:
+                        pass
+                else:
+                    tools.wiki.index = original  # type: ignore[attr-defined]
+
+        return _ctx()
+
     def test_pass_index_matches_generated(self) -> None:
         """Generated content matches wiki/index.md → no findings."""
         root = self._new_repo_root()
@@ -65,7 +94,7 @@ class IndexFreshCheckTests(unittest.TestCase):
         self._write(root, "wiki/index.md", expected)
 
         fake_module = self._make_index_module(expected)
-        with patch.dict(sys.modules, {"tools.wiki.index": fake_module}):
+        with self._patch_index_module(fake_module):
             findings = run(self._ctx(root))
 
         self.assertEqual(findings, [])
@@ -78,7 +107,7 @@ class IndexFreshCheckTests(unittest.TestCase):
         self._write(root, "wiki/index.md", actual)
 
         fake_module = self._make_index_module(expected)
-        with patch.dict(sys.modules, {"tools.wiki.index": fake_module}):
+        with self._patch_index_module(fake_module):
             findings = run(self._ctx(root))
 
         self.assertEqual(len(findings), 1)
@@ -92,7 +121,7 @@ class IndexFreshCheckTests(unittest.TestCase):
         expected = "# Wiki Index\n\nGenerated content.\n"
 
         fake_module = self._make_index_module(expected)
-        with patch.dict(sys.modules, {"tools.wiki.index": fake_module}):
+        with self._patch_index_module(fake_module):
             findings = run(self._ctx(root))
 
         self.assertEqual(len(findings), 1)

@@ -150,10 +150,51 @@ class RuntimeBudgetTests(unittest.TestCase):
 class ExitCodeAdapterTests(unittest.TestCase):
     """Test 5: Exit-code mapping for the pre-commit hook adapter."""
 
-    @unittest.skipUnless(shutil.which("bash"), "bash not available")
+    @staticmethod
+    def _bash_can_run_shebang_script() -> bool:
+        """Return True only if bash can execute a shebang script without WSL relay.
+
+        On Windows with Git Bash + WSL installed, running a shebang script may
+        trigger a WSL relay that fails with 'execvpe(/bin/bash) failed'.  We
+        detect this by running a probe script and checking for that marker in
+        stderr.
+        """
+        import stat as _stat
+        import tempfile
+
+        bash = shutil.which("bash")
+        if not bash:
+            return False
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".sh", delete=False, encoding="utf-8"
+            ) as fh:
+                fh.write("#!/usr/bin/env bash\nset -uo pipefail\nexit 0\n")
+                tmp_path = fh.name
+            Path(tmp_path).chmod(Path(tmp_path).stat().st_mode | _stat.S_IEXEC)
+            r = subprocess.run([bash, tmp_path], capture_output=True, timeout=5)
+            if b"WSL" in r.stderr and b"execvpe" in r.stderr:
+                return False
+            return r.returncode == 0
+        except Exception:  # noqa: BLE001
+            return False
+        finally:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+
     def test_exit_code_adapters_pre_commit(self) -> None:
+        if not self._bash_can_run_shebang_script():
+            self.skipTest(
+                "bash shebang-script execution not available on this platform "
+                "(WSL relay, missing bash, or other OS-level restriction)"
+            )
         import stat
         import tempfile
+
+        bash_bin = shutil.which("bash")
+        assert bash_bin is not None  # guaranteed by _bash_can_run_shebang_script
 
         hooks_dir = WORKTREE / "tools" / "wiki" / "hooks"
         pre_commit_path = hooks_dir / "pre-commit"
@@ -164,12 +205,13 @@ class ExitCodeAdapterTests(unittest.TestCase):
 
         # (lint_exit, expected_pre_commit_exit)
         # exit 0 → clean → allow commit
-        # exit 1 → HARD policy → block commit (pre-commit = 1)
+        # exit 1 → HARD findings → advisory at pre-commit (warn only, allow commit → 0)
         # exit 2 → WARN → advisory, allow commit (pre-commit = 0)
         # exit 3 → infra error → block commit (pre-commit = 3)
+        # Note: pre-commit is warn-only. Hard blocking happens at pre-push.
         cases = [
             (0, 0),
-            (1, 1),
+            (1, 0),
             (2, 0),
             (3, 3),
         ]
@@ -180,19 +222,21 @@ class ExitCodeAdapterTests(unittest.TestCase):
                 stub = tmp_path / "stub_lint.py"
                 stub.write_text(f"import sys; sys.exit({lint_exit})\n", encoding="utf-8")
 
+                # Use forward-slash path so bash can resolve it on all platforms.
+                stub_posix = stub.as_posix()
                 patched = pre_commit_text.replace(
                     "python -m tools.wiki.lint --json",
-                    f"python {stub} --json",
+                    f"python {stub_posix} --json",
                 ).replace(
                     "python -m tools.wiki.lint",
-                    f"python {stub}",
+                    f"python {stub_posix}",
                 )
                 hook_file = tmp_path / "pre-commit"
                 hook_file.write_text(patched, encoding="utf-8")
                 hook_file.chmod(hook_file.stat().st_mode | stat.S_IEXEC)
 
                 r = subprocess.run(
-                    ["bash", str(hook_file)],
+                    [bash_bin, str(hook_file)],
                     capture_output=True,
                     cwd=str(WORKTREE),
                 )

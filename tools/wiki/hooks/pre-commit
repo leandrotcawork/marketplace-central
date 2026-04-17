@@ -15,5 +15,5 @@ case $code in
   *) echo "✗ wiki-lint INFRA ERROR (exit=$code) — the linter itself crashed" >&2
      cat /tmp/wiki-lint.err >&2
      echo "   fix tools/wiki/ before committing" >&2
-     exit 1 ;;
+     exit $code ;;
 esac
