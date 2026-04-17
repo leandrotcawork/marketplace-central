@@ -3,23 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from tools.wiki.checks.common import Finding, LintContext, parse_frontmatter, run_git
+from tools.wiki.checks.common import (
+    Finding,
+    LintContext,
+    is_na_marker,
+    parse_frontmatter,
+    run_git,
+    strip_frontmatter,
+)
 
 CHECK_NAME = "citations"
 CITATION_CAPTURE_RE = re.compile(
     r"((apps|packages|contracts|raw|tools)/[^\s:@)]+):(\d+)(?:-(\d+))?@([0-9a-f]{7,40})"
 )
-NA_MARKER_RE = re.compile(r"^_N/A\s+[—-]\s+.+_$")
-
-
-def _strip_frontmatter(text: str) -> str:
-    lines = text.replace("\r\n", "\n").split("\n")
-    if not lines or lines[0] != "---":
-        return text
-    for idx in range(1, len(lines)):
-        if lines[idx] == "---":
-            return "\n".join(lines[idx + 1 :])
-    return text
 
 
 def _collect_sections(markdown: str) -> list[tuple[str, int, str]]:
@@ -40,11 +36,6 @@ def _collect_sections(markdown: str) -> list[tuple[str, int, str]]:
         sections.append((heading, idx + 1, body))
         idx = end
     return sections
-
-
-def _is_na_marker(body: str) -> bool:
-    compact = " ".join(line.strip() for line in body.splitlines() if line.strip())
-    return bool(compact) and bool(NA_MARKER_RE.match(compact))
 
 
 def _findings_for_page(
@@ -77,8 +68,8 @@ def _findings_for_page(
         return []
 
     findings: list[Finding] = []
-    for heading, line_no, body in _collect_sections(_strip_frontmatter(text)):
-        if not body or _is_na_marker(body):
+    for heading, line_no, body in _collect_sections(strip_frontmatter(text)):
+        if not body or is_na_marker(body):
             continue
 
         matches = list(CITATION_CAPTURE_RE.finditer(body))

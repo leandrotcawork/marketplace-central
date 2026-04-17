@@ -6,7 +6,8 @@ import json
 import os
 from pathlib import Path
 import sys
-from typing import Callable
+import types
+from typing import Callable, Union
 
 from tools.wiki.checks.common import (
     Finding,
@@ -15,15 +16,38 @@ from tools.wiki.checks.common import (
     load_path_map,
     run_git,
 )
+from tools.wiki.checks import (
+    check_01_frontmatter,
+    check_02_sections,
+    check_03_citations,
+    check_04_backlinks,
+    check_05_contract_drift,
+    check_06_staleness,
+    check_07_log_entry,
+    check_08_index_fresh,
+    check_09_orphans,
+    check_10_stub_escape,
+    check_11_wiki_scope,
+    check_12_rename_invariants,
+)
 
-# Register checks in deterministic order here as modules are added.
-# Example:
-# CHECK_MODULES = [
-#     "tools.wiki.checks.check_01_frontmatter",
-#     "tools.wiki.checks.check_02_schema",
-# ]
 CHECK_MODULES: list[str] = []
-CHECKS: list[Callable[[LintContext], list[Finding]]] = []
+# CHECKS holds module objects in deterministic order 1→12.
+# Each module must expose run(ctx: LintContext) -> list[Finding].
+CHECKS: list[types.ModuleType] = [
+    check_01_frontmatter,
+    check_02_sections,
+    check_03_citations,
+    check_04_backlinks,
+    check_05_contract_drift,
+    check_06_staleness,
+    check_07_log_entry,
+    check_08_index_fresh,
+    check_09_orphans,
+    check_10_stub_escape,
+    check_11_wiki_scope,
+    check_12_rename_invariants,
+]
 
 
 def _infer_repo_root() -> Path:
@@ -145,10 +169,19 @@ def main(argv: list[str] | None = None) -> int:
 
         findings: list[Finding] = []
         for check in checks:
+            # Support both module objects (check.run) and plain callables.
+            check_fn: Callable[[LintContext], list[Finding]]
+            check_name: str
+            if isinstance(check, types.ModuleType):
+                check_fn = check.run  # type: ignore[attr-defined]
+                check_name = check.__name__
+            else:
+                check_fn = check  # type: ignore[assignment]
+                check_name = getattr(check, "__name__", repr(check))
             try:
-                results = check(context)
+                results = check_fn(context)
             except Exception as exc:
-                print(f"[infra] check {check.__name__} crashed: {exc}", file=sys.stderr)
+                print(f"[infra] check {check_name} crashed: {exc}", file=sys.stderr)
                 return 3
 
             if results:

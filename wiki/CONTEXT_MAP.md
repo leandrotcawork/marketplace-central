@@ -2,7 +2,9 @@
 kind: flow
 title: Context Map — module bounded contexts
 status: stub
-owners: [claude, leandro]
+owners:
+  - claude
+  - leandro
 since: 2026-04-17
 last_verified: 2026-04-17
 depends_on: []

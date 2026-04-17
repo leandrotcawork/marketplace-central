@@ -3,22 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from tools.wiki.checks.common import Finding, LintContext, parse_yaml
+from tools.wiki.checks.common import Finding, LintContext, parse_yaml, strip_frontmatter
 
 CHECK_NAME = "contract-drift"
 METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 MODULE_PAGE_RE = re.compile(r"^wiki/modules/([^/]+)\.md$")
 TRANSPORT_ITEM_RE = re.compile(r"^\s*[-*]\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(/\S+)\s*$")
-
-
-def _strip_frontmatter(text: str) -> str:
-    lines = text.replace("\r\n", "\n").split("\n")
-    if not lines or lines[0] != "---":
-        return text
-    for idx in range(1, len(lines)):
-        if lines[idx] == "---":
-            return "\n".join(lines[idx + 1 :])
-    return text
 
 
 def _section_body(markdown: str, heading: str) -> str:
@@ -39,7 +29,7 @@ def _section_body(markdown: str, heading: str) -> str:
 
 def _transport_pairs(page_path: Path) -> set[tuple[str, str]]:
     text = page_path.read_text(encoding="utf-8")
-    body = _section_body(_strip_frontmatter(text), "Transport")
+    body = _section_body(strip_frontmatter(text), "Transport")
     pairs: set[tuple[str, str]] = set()
     if not body:
         return pairs

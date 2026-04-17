@@ -8,6 +8,8 @@ from pathlib import Path
 from tools.wiki.checks.common import (
     Finding,
     LintContext,
+    as_str_list,
+    load_frontmatter_safe,
     parse_frontmatter,
     resolve_wiki_pages,
     run_git,
@@ -29,23 +31,9 @@ def _load_frontmatter_from_text(text: str) -> dict:
     return fm if isinstance(fm, dict) else {}
 
 
-def _load_frontmatter(page_path: Path) -> dict:
-    try:
-        text = page_path.read_text(encoding="utf-8")
-    except OSError:
-        return {}
-    return _load_frontmatter_from_text(text)
-
-
-def _as_list(value: object) -> list[str]:
-    if isinstance(value, list):
-        return [str(item) for item in value if item]
-    return []
-
-
 def _frontmatter_refs(page_path: Path) -> list[str]:
-    fm = _load_frontmatter(page_path)
-    return _as_list(fm.get("related")) + _as_list(fm.get("depends_on"))
+    fm = load_frontmatter_safe(page_path)
+    return as_str_list(fm.get("related")) + as_str_list(fm.get("depends_on"))
 
 
 def _expand_one_hop(pages: set[str], repo_root: Path) -> set[str]:
@@ -105,7 +93,7 @@ def _base_frontmatter_refs(base_sha: str, page: str, repo_root: Path) -> list[st
     if result.returncode != 0:
         return []
     fm = _load_frontmatter_from_text(result.stdout)
-    return _as_list(fm.get("related")) + _as_list(fm.get("depends_on"))
+    return as_str_list(fm.get("related")) + as_str_list(fm.get("depends_on"))
 
 
 def _check_dep_list_shrinkage(

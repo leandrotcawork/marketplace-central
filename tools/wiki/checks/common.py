@@ -405,8 +405,49 @@ def find_wiki_pages(repo_root: Path) -> list[str]:
         return pages
 
     for page in wiki_root.rglob("*.md"):
-        if page.name.lower() in {"index.md", "log.md"}:
+        if page.name.lower() in {"index.md", "log.md", "schema.md"}:
             continue
         pages.append(page.relative_to(repo_root).as_posix())
 
     return sorted(pages)
+
+
+# ---------------------------------------------------------------------------
+# Shared markdown helpers (used by multiple checks)
+# ---------------------------------------------------------------------------
+
+def strip_frontmatter(text: str) -> str:
+    """Return the markdown body after stripping the YAML frontmatter block."""
+    lines = text.replace("\r\n", "\n").split("\n")
+    if not lines or lines[0] != "---":
+        return text
+    for idx in range(1, len(lines)):
+        if lines[idx] == "---":
+            return "\n".join(lines[idx + 1:])
+    return text
+
+
+_NA_MARKER_RE = re.compile(r"^_N/A\s+[—-]\s+.+_$")
+
+
+def is_na_marker(body: str) -> bool:
+    """Return True if body is a single-line N/A marker like '_N/A — reason_'."""
+    compact = " ".join(line.strip() for line in body.splitlines() if line.strip())
+    return bool(compact) and bool(_NA_MARKER_RE.match(compact))
+
+
+def load_frontmatter_safe(page_path: Path) -> dict:
+    """Read and parse frontmatter from a file; return empty dict on any failure."""
+    try:
+        text = page_path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    parsed = parse_frontmatter(text)
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def as_str_list(value: object) -> list[str]:
+    """Coerce a YAML list value to list[str], ignoring falsy entries."""
+    if isinstance(value, list):
+        return [str(item) for item in value if item]
+    return []

@@ -1,31 +1,15 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from tools.wiki.checks.common import (
     Finding,
     LintContext,
-    parse_frontmatter,
+    as_str_list,
+    load_frontmatter_safe,
 )
 
 CHECK_NAME = "orphans"
 
 _EXCLUDED = {"wiki/index.md", "wiki/log.md", "wiki/CONTEXT_MAP.md"}
-
-
-def _load_frontmatter(page_path: Path) -> dict:
-    try:
-        text = page_path.read_text(encoding="utf-8")
-    except OSError:
-        return {}
-    parsed = parse_frontmatter(text)
-    return parsed if isinstance(parsed, dict) else {}
-
-
-def _as_list(value: object) -> list[str]:
-    if isinstance(value, list):
-        return [str(item) for item in value if item]
-    return []
 
 
 def run(ctx: LintContext) -> list[Finding]:
@@ -34,13 +18,13 @@ def run(ctx: LintContext) -> list[Finding]:
     # Build frontmatter cache
     fm_cache: dict[str, dict] = {}
     for page in all_pages:
-        fm_cache[page] = _load_frontmatter(ctx.repo_root / page)
+        fm_cache[page] = load_frontmatter_safe(ctx.repo_root / page)
 
     # Build inbound reference map: page → set of pages that reference it
     inbound: dict[str, set[str]] = {page: set() for page in all_pages}
 
     for page, fm in fm_cache.items():
-        refs = _as_list(fm.get("related")) + _as_list(fm.get("depends_on"))
+        refs = as_str_list(fm.get("related")) + as_str_list(fm.get("depends_on"))
         for ref in refs:
             # Refs may be bare names or full paths
             # Try exact match first, then prefix-based resolution

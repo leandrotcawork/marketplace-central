@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
 
-from tools.wiki.checks.common import Finding, LintContext, parse_frontmatter
+from tools.wiki.checks.common import (
+    Finding,
+    LintContext,
+    is_na_marker,
+    parse_frontmatter,
+    strip_frontmatter,
+)
 
 CHECK_NAME = "sections"
-NA_MARKER_RE = re.compile(r"^_N/A\s+[—-]\s+.+_$")
 
 REQUIRED_SECTIONS: dict[str, list[str]] = {
     "module": [
@@ -73,16 +77,6 @@ REQUIRED_SECTIONS: dict[str, list[str]] = {
 }
 
 
-def _strip_frontmatter(text: str) -> str:
-    lines = text.replace("\r\n", "\n").split("\n")
-    if not lines or lines[0] != "---":
-        return text
-    for idx in range(1, len(lines)):
-        if lines[idx] == "---":
-            return "\n".join(lines[idx + 1 :])
-    return text
-
-
 def _collect_sections(markdown: str) -> dict[str, tuple[int, str]]:
     lines = markdown.splitlines()
     sections: dict[str, tuple[int, str]] = {}
@@ -101,11 +95,6 @@ def _collect_sections(markdown: str) -> dict[str, tuple[int, str]]:
         sections[heading] = (idx + 1, body)
         idx = end
     return sections
-
-
-def _is_na_marker(body: str) -> bool:
-    compact = " ".join(line.strip() for line in body.splitlines() if line.strip())
-    return bool(compact) and bool(NA_MARKER_RE.match(compact))
 
 
 def _validate_page(page: str, page_path: Path) -> Finding | None:
@@ -135,7 +124,7 @@ def _validate_page(page: str, page_path: Path) -> Finding | None:
     if required is None:
         return None
 
-    sections = _collect_sections(_strip_frontmatter(text))
+    sections = _collect_sections(strip_frontmatter(text))
 
     missing: list[str] = []
     blank: list[str] = []
@@ -150,10 +139,10 @@ def _validate_page(page: str, page_path: Path) -> Finding | None:
         line, body = section
         if first_line == 1:
             first_line = line
-        if not body and not _is_na_marker(body):
+        if not body and not is_na_marker(body):
             blank.append(heading)
             continue
-        if body and _is_na_marker(body):
+        if body and is_na_marker(body):
             continue
         if not body.strip():
             blank.append(heading)
