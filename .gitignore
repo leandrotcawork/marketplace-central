@@ -17,3 +17,5 @@ data/
 certificates/
 .claude/
 .trello-agent/project.json
+__pycache__/
+.tmp_test_workspace/
