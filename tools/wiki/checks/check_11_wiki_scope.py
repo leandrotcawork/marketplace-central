@@ -137,11 +137,11 @@ def run(ctx: LintContext) -> list[Finding]:
     # Step 2: A = E ∪ 1-hop expansion of related/depends_on
     a_pages = _expand_one_hop(e_pages, ctx.repo_root)
 
-    # Step 3: M = wiki pages actually changed in this PR (excluding index/log)
+    # Step 3: M = wiki .md pages actually changed in this PR (excluding index/log/meta)
     m_pages: set[str] = {
         f
         for f in ctx.changed_files
-        if f.startswith("wiki/") and f not in _EXCLUDED_FROM_M
+        if f.startswith("wiki/") and f.endswith(".md") and f not in _EXCLUDED_FROM_M
     }
 
     # Determine severity based on whether we have authoritative PR description
