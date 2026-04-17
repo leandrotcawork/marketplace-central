@@ -1,0 +1,47 @@
+name: wiki-lint
+on:
+  pull_request:
+    paths:
+      - "wiki/**"
+      - "tools/wiki/**"
+      - "apps/**"
+      - "packages/**"
+      - "contracts/**"
+      - "raw/**"
+      - ".github/workflows/wiki-lint.yml"
+  push:
+    branches: [master, main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run wiki-lint (warn-only for policy at M1, hard-fail on infra errors)
+        id: lint
+        run: |
+          set +e
+          python -m tools.wiki.lint --json > wiki-lint-findings.json
+          code=$?
+          cat wiki-lint-findings.json
+          if [ $code -ge 3 ]; then
+            echo "::error::wiki-lint infra error (exit=$code) — linter crashed"
+            exit $code
+          fi
+          if [ $code -eq 1 ]; then
+            echo "::warning::wiki-lint HARD findings present (advisory at M1)"
+          fi
+          exit 0
+      - name: Run unit tests
+        run: python -m unittest discover tools/wiki/tests -v
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-lint-findings
+          path: wiki-lint-findings.json

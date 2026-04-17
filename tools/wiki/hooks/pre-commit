@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -uo pipefail
+if ! command -v python >/dev/null 2>&1; then exit 0; fi
+if [ ! -f "tools/wiki/lint.py" ]; then exit 0; fi
+
+python -m tools.wiki.lint --json >/tmp/wiki-lint.json 2>/tmp/wiki-lint.err
+code=$?
+case $code in
+  0) exit 0 ;;
+  1) echo "⚠ wiki-lint HARD findings (advisory at pre-commit — blocks on pre-push)" >&2
+     echo "   run 'make wiki-lint' to see details" >&2
+     exit 0 ;;
+  2) echo "⚠ wiki-lint WARN findings (advisory)" >&2
+     exit 0 ;;
+  *) echo "✗ wiki-lint INFRA ERROR (exit=$code) — the linter itself crashed" >&2
+     cat /tmp/wiki-lint.err >&2
+     echo "   fix tools/wiki/ before committing" >&2
+     exit $code ;;
+esac

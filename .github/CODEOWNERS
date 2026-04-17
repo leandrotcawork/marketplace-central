@@ -1,0 +1,5 @@
+# LLM Wiki — semantic backstop past mechanical lint
+wiki/**                               @leandrotcawork
+tools/wiki/**                         @leandrotcawork
+.github/workflows/wiki-lint.yml       @leandrotcawork
+brain/decisions/004-llm-wiki-adopted.md  @leandrotcawork

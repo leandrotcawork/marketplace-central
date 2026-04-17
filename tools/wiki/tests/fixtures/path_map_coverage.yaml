@@ -1,0 +1,11 @@
+# representative_path: [expected pages in resolution order]
+"apps/server_core/internal/modules/pricing/domain/simulation.go": ["wiki/modules/pricing.md"]
+"apps/server_core/internal/modules/integrations/application/oauth_handler.go":
+  ["wiki/flows/oauth.md", "wiki/modules/integrations.md"]
+"apps/server_core/internal/platform/pgdb/pool.go": ["wiki/platform/pgdb.md"]
+"packages/feature-marketplaces/src/MarketplaceSettingsPage.tsx": ["wiki/features/feature-marketplaces.md"]
+"packages/sdk-runtime/src/client.ts": ["wiki/contracts/sdk-runtime.md"]
+"contracts/api/marketplace-central.openapi.yaml": ["wiki/contracts/openapi.md"]
+"raw/marketplaces/vtex/api-reference.pdf": ["wiki/marketplaces/vtex.md"]
+"README.md": []
+"AGENTS.md": []

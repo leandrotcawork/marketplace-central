@@ -1,0 +1,41 @@
+# Authoritative path→wiki-page mapping. Changes require an ADR.
+# Glob syntax: POSIX fnmatch extended with `**` recursion.
+# Placeholders <mod>, <pkg>, <name>, <p>, <NNNN> bind named capture groups
+# resolved at match time. All paths root-relative to repo root.
+# Precedence: top-down first-match for canonical page; scope uses union of all matches.
+path_to_page:
+  # Special-case flows first (most specific → least specific).
+  "apps/server_core/internal/modules/integrations/application/oauth*.go":
+    - "wiki/flows/oauth.md"
+    - "wiki/modules/integrations.md"
+
+  # Go modules — one page per module dir.
+  "apps/server_core/internal/modules/<mod>/**":
+    - "wiki/modules/<mod>.md"
+
+  # Go platform packages.
+  "apps/server_core/internal/platform/<pkg>/**":
+    - "wiki/platform/<pkg>.md"
+
+  # Frontend feature packages.
+  "packages/feature-<name>/**":
+    - "wiki/features/feature-<name>.md"
+
+  # SDK runtime (single shared page).
+  "packages/sdk-runtime/**":
+    - "wiki/contracts/sdk-runtime.md"
+
+  # OpenAPI contract.
+  "contracts/api/marketplace-central.openapi.yaml":
+    - "wiki/contracts/openapi.md"
+
+  # SQL migrations resolved via _meta/migration-module.json.
+  "apps/server_core/migrations/<NNNN>_*.sql":
+    - "__resolve_via__: wiki/_meta/migration-module.json"
+
+  # Raw vendor content per marketplace.
+  "raw/marketplaces/<p>/**":
+    - "wiki/marketplaces/<p>.md"
+
+  # Fall-through — unmapped paths produce zero expected pages.
+  "**/*": []
