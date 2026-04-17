@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "condition": "command contains 'git commit'",
+        "message": "Run /wiki-ingest if this commit touched mapped code paths (apps/, packages/, contracts/, raw/)."
+      }
+    ]
+  }
+}
