@@ -8,6 +8,7 @@ from tools.wiki.checks.common import (
     LintContext,
     parse_frontmatter,
     resolve_wiki_pages,
+    run_git,
 )
 
 CHECK_NAME = "stub-escape"
@@ -125,6 +126,10 @@ def _is_fully_populated(fm: dict, text: str) -> bool:
             return False
         if STUB_BODY_RE.search(body):
             return False
+        # Section must have substantive content — not just whitespace/single token
+        stripped = body.strip()
+        if len(stripped) < 20 or len(stripped.split()) < 4:
+            return False
 
     return True
 
@@ -139,11 +144,26 @@ def run(ctx: LintContext) -> list[Finding]:
         page_path = ctx.repo_root / page
         fm, text = _load_page(page_path)
 
-        if fm.get("status") != "stub":
+        status = fm.get("status")
+        if status != "stub":
+            # Check stub->active transitions: verify fully populated if page was a stub at base.
+            if status == "active" and ctx.base_sha and page in ctx.changed_files:
+                base_result = run_git("show", f"{ctx.base_sha}:{page}", cwd=ctx.repo_root)
+                if base_result.returncode == 0:
+                    base_fm = parse_frontmatter(base_result.stdout)
+                    if isinstance(base_fm, dict) and base_fm.get("status") == "stub":
+                        if not _is_fully_populated(fm, text):
+                            findings.append(Finding(
+                                check=CHECK_NAME,
+                                severity="hard",
+                                path=page,
+                                line=1,
+                                message=f"[{CHECK_NAME}] page transitioned stub to active but sections not substantively populated",
+                                fix_hint="fill all required sections with real content (>20 chars, no _N/A stub_ markers)",
+                            ))
             continue
 
-        # The page is a stub and was resolved via changed_files.
-        # Check if this same page is in changed_files AND is now fully populated.
+        # The page is currently a stub and was resolved via changed_files.
         if page in ctx.changed_files and _is_fully_populated(fm, text):
             continue
 

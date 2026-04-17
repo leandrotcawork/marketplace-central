@@ -405,7 +405,7 @@ def find_wiki_pages(repo_root: Path) -> list[str]:
         return pages
 
     for page in wiki_root.rglob("*.md"):
-        if page.name.lower() in {"index.md", "log.md", "schema.md"}:
+        if page.name.lower() in {"index.md", "log.md"}:
             continue
         pages.append(page.relative_to(repo_root).as_posix())
 

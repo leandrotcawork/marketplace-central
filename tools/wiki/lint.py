@@ -58,12 +58,26 @@ def _resolve_base_sha(repo_root: Path, cli_base: str | None) -> str:
     if cli_base:
         return cli_base
 
-    merge_base = run_git("merge-base", "HEAD", "origin/master", cwd=repo_root)
-    if merge_base.returncode == 0 and merge_base.stdout.strip():
-        return merge_base.stdout.strip()
+    # Try GITHUB_BASE_REF first (authoritative in CI)
+    base_ref = os.environ.get("GITHUB_BASE_REF")
+    if base_ref:
+        result = run_git("merge-base", "HEAD", f"origin/{base_ref}", cwd=repo_root)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
 
-    fallback = run_git("rev-parse", "HEAD~1", cwd=repo_root, check=True)
-    return fallback.stdout.strip()
+    # Try common remote branch names
+    for remote_branch in ("origin/master", "origin/main"):
+        result = run_git("merge-base", "HEAD", remote_branch, cwd=repo_root)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+
+    # HEAD~1 is only valid if there is a parent commit
+    result = run_git("rev-parse", "--verify", "HEAD~1", cwd=repo_root)
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+
+    # Single-commit repo: compare against empty tree
+    return "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 def _read_pr_description(args_file: str | None, repo_root: Path) -> str:
@@ -182,7 +196,15 @@ def main(argv: list[str] | None = None) -> int:
                 results = check_fn(context)
             except Exception as exc:
                 print(f"[infra] check {check_name} crashed: {exc}", file=sys.stderr)
-                return 3
+                findings.append(Finding(
+                    check="infra",
+                    severity="hard",
+                    path="",
+                    line=0,
+                    message=f"[infra] check crashed: {exc}",
+                    fix_hint="fix tools/wiki/checks/",
+                ))
+                continue
 
             if results:
                 findings.extend(results)

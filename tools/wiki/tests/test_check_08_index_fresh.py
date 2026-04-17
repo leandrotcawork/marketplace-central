@@ -46,7 +46,7 @@ class IndexFreshCheckTests(unittest.TestCase):
         return module
 
     def test_skip_when_no_index_py(self) -> None:
-        """Import failure → warn finding about missing index.py."""
+        """Import failure → hard finding about missing index.py (infra error)."""
         root = self._new_repo_root()
 
         # Ensure tools.wiki.index is NOT importable by removing it if present
@@ -55,7 +55,7 @@ class IndexFreshCheckTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].check, "index-fresh")
-        self.assertEqual(findings[0].severity, "warn")
+        self.assertEqual(findings[0].severity, "hard")
         self.assertIn("not yet present", findings[0].message)
 
     def _patch_index_module(self, fake_module: types.ModuleType):

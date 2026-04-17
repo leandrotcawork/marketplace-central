@@ -17,10 +17,10 @@ def run(ctx: LintContext) -> list[Finding]:
         return [
             Finding(
                 check=CHECK_NAME,
-                severity="warn",
+                severity="hard",   # was "warn" — import failure is infra error, not advisory
                 path="wiki/index.md",
                 line=1,
-                message=f"[{CHECK_NAME}] index.py not yet present — skipping",
+                message=f"[{CHECK_NAME}] index.py not yet present — install tools/wiki/index.py",
                 fix_hint="install tools/wiki/index.py",
             )
         ]
