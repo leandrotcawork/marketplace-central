@@ -405,7 +405,10 @@ def find_wiki_pages(repo_root: Path) -> list[str]:
         return pages
 
     for page in wiki_root.rglob("*.md"):
-        if page.name.lower() in {"index.md", "log.md"}:
+        # index.md and log.md are auto-generated/append-only; SCHEMA.md is governance meta
+        # (not a content page — no kind/frontmatter). Excluded from per-page checks.
+        # Check 07 (log-entry) catches SCHEMA.md changes via changed_files, not wiki_pages.
+        if page.name.lower() in {"index.md", "log.md", "schema.md"}:
             continue
         pages.append(page.relative_to(repo_root).as_posix())
 
